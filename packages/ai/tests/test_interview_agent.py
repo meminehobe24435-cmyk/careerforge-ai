@@ -425,26 +425,46 @@ class TestConsistencyRulePrecision:
 
         assert claimed_skills("因为直接操作全局变量会带来竞态，所以改用队列。") == set()
 
-    def test_declared_skills_are_excluded_from_conflicts(self) -> None:
-        # The resume already lists Rust, so repeating it is consistent, not a conflict.
-        from pathlib import Path as _Path
+    async def test_a_declared_but_unproven_skill_is_a_gap_not_a_conflict(
+        self, executor: WorkflowExecutor, job: JDAnalysis, graph
+    ) -> None:
+        """The resume lists Rust, so saying it again is consistent, not a contradiction.
 
-        source = (_Path(careerforge_ai_path()) / "agents" / "interview.py").read_text(
-            encoding="utf-8"
+        The distinction matters: a gap is something to close, a conflict is something
+        that reads as inflated. Conflating them would tell a candidate they had a
+        credibility problem for restating their own resume.
+        """
+        from careerforge_ai.schemas.common import SkillCategory, SkillLevel
+        from careerforge_ai.schemas.profile import CandidateProfile, ProfileSkill, SkillRef
+
+        profile = CandidateProfile(
+            slug="alex",
+            skills=[
+                ProfileSkill(
+                    skill=SkillRef(
+                        canonical_id="rust", display_name="Rust", category=SkillCategory.LANGUAGE
+                    ),
+                    level=SkillLevel.MODERATE,
+                    evidence_count=0,
+                )
+            ],
         )
-        assert "- declared)" in source, "declared skills must be excluded"
-
-
-def careerforge_ai_path() -> str:
-    import careerforge_ai
-
-    return str(_path_of(careerforge_ai))
-
-
-def _path_of(module: object) -> object:
-    from pathlib import Path as _Path
-
-    return _Path(getattr(module, "__file__", "")).parent
+        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        assert session is not None
+        session, _ = await submit_answer(
+            executor,
+            session=session,
+            answer="我用 Rust 重写过一部分工具链。",
+            profile=profile,
+            graph=graph,
+        )
+        assert session is not None
+        scorecard, _ = await finish_interview(
+            executor, session=session, profile=profile, graph=graph
+        )
+        assert scorecard is not None
+        flagged = {conflict.evidence_state for conflict in scorecard.evidence_conflicts}
+        assert not any("rust" in state.lower() for state in flagged)
 
 
 class TestWorkflowShape:
