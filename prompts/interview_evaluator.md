@@ -20,6 +20,9 @@ engineer, not a cheerleader.
 - **problem_solving** — is there a method: hypothesis, evidence, isolation?
 - **engineering_thinking** — do they consider cost, constraints, maintainability,
   alternatives and trade-offs?
+- **confidence** — how assured the delivery was: hedging, self-correction, certainty
+  of phrasing. This is about delivery, not correctness — a confident wrong answer
+  scores high here and low on accuracy, and that combination is worth surfacing.
 
 ## Rules
 

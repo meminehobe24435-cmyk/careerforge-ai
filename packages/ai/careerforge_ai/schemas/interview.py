@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
 from pydantic import Field
@@ -69,6 +70,11 @@ class TurnEvaluation(CFBaseModel):
     technical_accuracy: Unit = 0.0
     depth: Unit = 0.0
     communication: Unit = 0.0
+    #: Measured per answer rather than derived from another dimension. Deriving a
+    #: reported score from an unrelated one is quiet fabrication.
+    problem_solving: Unit = 0.0
+    engineering_thinking: Unit = 0.0
+    confidence: Unit = 0.0
 
     missing_knowledge: list[str] = Field(default_factory=list)
     feedback: str = ""
@@ -140,7 +146,8 @@ class InterviewScorecard(CFBaseModel):
     algorithm_version: str = "scorecard@1.0.0"
 
     #: Canonical dimension keys, in the order shown on the radar chart.
-    DIMENSION_KEYS: tuple[str, ...] = (
+    #: A ClassVar so it stays a class constant rather than becoming a Pydantic field.
+    DIMENSION_KEYS: ClassVar[tuple[str, ...]] = (
         "technical_accuracy",
         "communication",
         "depth",
@@ -214,6 +221,11 @@ class ExtractedTurnEvaluation(StrictModel):
     communication: float = Field(default=0.0, description="0–100")
     problem_solving: float = Field(default=0.0, description="0–100")
     engineering_thinking: float = Field(default=0.0, description="0–100")
+    confidence: float = Field(
+        default=0.0,
+        description="0–100. How assured the delivery was, judged from hedging and self-correction, "
+        "not from whether the answer was right.",
+    )
     missing_knowledge: list[str] = Field(default_factory=list)
     strong_points: list[str] = Field(default_factory=list)
     feedback: str = Field(default="", description="Two sentences, addressed to the candidate")

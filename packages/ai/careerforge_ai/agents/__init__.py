@@ -50,6 +50,13 @@ from careerforge_ai.agents.evidence import (
     build_graph,
     build_workflow as build_evidence_workflow,
 )
+from careerforge_ai.agents.interview import (
+    INTERVIEW_AGENT,
+    InterviewAgent,
+    finish_interview,
+    start_interview,
+    submit_answer,
+)
 from careerforge_ai.agents.job import (
     JOB_AGENT,
     JobAgent,
@@ -83,6 +90,7 @@ from careerforge_ai.agents.validator import (
 
 __all__ = [
     "COACH_AGENT",
+    "INTERVIEW_AGENT",
     "EVIDENCE_AGENT",
     "RESUME_AGENT",
     "JOB_AGENT",
@@ -95,6 +103,7 @@ __all__ = [
     "CoachAgent",
     "DocumentChunkInput",
     "EvidenceAgent",
+    "InterviewAgent",
     "JobAgent",
     "MatchAgent",
     "ProfileAgent",
@@ -114,8 +123,11 @@ __all__ = [
     "normalise_whitespace",
     "render_bullets",
     "compute_match",
+    "finish_interview",
     "import_profile",
     "optimize_resume",
+    "start_interview",
+    "submit_answer",
     "strip_markup",
     "truncate_for_prompt",
     "validate_claim_text",
