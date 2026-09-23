@@ -6,6 +6,39 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 2b · Career entities and the profile import path
+
+- `educations`, `experiences`, `projects`, `achievements` and `profile_skills` (§2.2) with
+  migration `0005`, verified column-for-column against the ORM models.
+- `POST /profile/import` extracts entities from text or from a stored document and persists
+  them; `GET /profile` returns what is stored. Both are the *assembled* profile every other
+  feature reads, so what a client shows and what the system scores cannot diverge.
+- `origin` is returned on every entity and every declared skill: a row a model extracted and
+  nobody has checked stays visibly different from one a candidate corrected.
+- Three consumers were rewired to read real entities — the graph builder, the match engine and
+  the dashboard — which is what the tables were for.
+
+### Fixed — PHASE 2b
+
+- **A declared skill with evidence was reported as a gap.** Declarations come from résumé
+  extraction with an `evidence_count` of zero, and the match engine reads that as "claimed but
+  unproven" — so STM32, FreeRTOS and CAN were all listed as gaps while the graph held eight
+  pieces of evidence for each. The declared skills and the evidence graph are now merged: levels
+  are kept, counts are corrected, and skills that have evidence but were never declared are
+  added. Measured on a fresh database: `skill` 0.0 → **39.16**, `evidence` 0.0 → **87.0**, total
+  score 16.4 → **40.76**, and the gap list went from three false gaps to `['autosar']`.
+- **Re-importing a profile orphaned its graph edges.** The writers deleted and re-inserted rows,
+  so every project and experience got a new UUID and the edges pointing at the old ones stopped
+  resolving — the canvas showed `project:de6dd367`, a node nobody can open. `dedupe_key` exists to
+  identify the same entity across imports; the writers now upsert on it, and an entity the source
+  really dropped is deleted together with its edges. Verified live: a second import leaves the
+  graph and the score identical, with zero placeholder nodes.
+- **The documented `origin` CHECK could not express the extractor's own vocabulary.** §2.2 lists
+  `llm` / `user_corrected` / `import`, while the AI core's `Origin` enum also carries
+  `heuristic` — the zero-key path. Written as documented, every heuristic extraction would have
+  violated the constraint; recording it as `llm` would have been a false claim about provenance.
+  The value is added in all three places (model, migration, docs), with the reasoning recorded.
+
 ### Added — PHASE 5 · Dashboard endpoint and the first live frontend↔API run
 
 - `GET /dashboard` implements the `DashboardResponse` contract the frontend has carried since

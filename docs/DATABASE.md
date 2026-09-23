@@ -131,6 +131,16 @@ erDiagram
 
 ### 2.2 职业实体（career）
 
+> **状态：已实现（PHASE 2b，迁移 `0005`）** — 模型 `apps/api/src/careerforge_api/models/profile_entity.py`。
+> 两处与本文档的偏差，均为有意为之：
+> ① `origin` 的取值增加了 **`heuristic`**：AI 核心的 `Origin` 枚举用它标注「零 Key 的
+> heuristic 提取器」产出的行，而这条路径在本产品里是一等公民（ADR-009）。把它记成 `llm`
+> 是对来源的谎报，而这个列存在的意义正是防止这种谎报。
+> ② `projects.repository_id` 是**无外键**的裸 uuid：它指向 §2.4 的 `repositories`，该表随
+> GitHub Intelligence 一起到来，而指向不存在表的外键无法创建。
+> `project_skills` / `experience_skills` 暂缺：唯一消费者是 WF-09 项目深挖，而图谱目前从
+> `projects.tech_stack` 文本推导 project→skill 边；加入无人读取的关联表只是脚手架。
+
 #### `educations`
 `school`, `degree`, `major`, `start_date`, `end_date`, `gpa numeric(3,2)`, `highlights jsonb`, `evidence_strength numeric(4,3)`, `origin`(CHECK `llm`/`user_corrected`/`import`), `source_document_id uuid`
 

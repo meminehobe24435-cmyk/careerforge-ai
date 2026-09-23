@@ -160,17 +160,30 @@ AI 相关响应统一携带：
 
 ### 2.2 画像与 Career Profile `/profile`
 
+> **状态：`GET /profile` 与 `POST /profile/import` 已实现（PHASE 2b）**，实体表见 §2.2（迁移 `0005`）。
+> `POST /profile/import` 接受 `{ text }` 或 `{ documentId }`，是**同步**的：它跑一次确定性的抽取，
+> 返回抽取结果与计数，用户正看着屏幕等。`origin` 由调用方声明（`import` / `user_corrected`），
+> 服务端不替它猜——这是「抽取结果」与「人工修正」必须可区分的地方。
+> **重复导入是更新而非重建**：实体按 `dedupe_key`（学校+学位、公司+职位、项目名）定位同一行并就地
+> 更新，因此行的 UUID 不变，图谱中指向它的边继续有效。真被删掉的实体会连同它的边一起删除，
+> 而不是留下一个打不开的占位节点。
+> 声明技能与证据图谱会**合并**后再参与匹配：只在简历里声明、图谱里没有证据的技能仍是缺口（正确），
+> 但图谱里有证据、简历里没写的技能会以 moderate 等级补上——存在证据却报缺口，等于告诉候选人
+> 他们缺一个自己明明有的东西。
+> 尚未实现：`PATCH /profile`、`/profile/strength`、逐实体 CRUD、`/profile/import/github`（PHASE 10）、
+> `deep-dive`（WF-09）。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/profile` | 完整画像（含 education/experience/project/skill/achievement 聚合） |
-| PATCH | `/profile` | 更新基本信息 |
-| POST | `/profile/import` | 上传简历/文档导入（multipart）→ **202 任务** |
-| POST | `/profile/import/github` | 绑定 GitHub 触发分析 → 202 |
-| GET | `/profile/strength` | Profile Strength 拆解 + 改进建议 |
-| GET/POST | `/profile/educations` · `/experiences` · `/projects` · `/achievements` | 列表 / 新建 |
-| GET/PATCH/DELETE | `/profile/{entity}/{id}` | 详情 / 更新 / 删除 |
-| POST | `/profile/projects/{id}/deep-dive` | Project Deep Dive（WF-09）→ 202 或 200 |
-| POST | `/profile/import/confirm` | 确认/修正抽取结果（`origin=user_corrected`） |
+| GET | `/profile` | 完整画像（education/experience/project/skill/achievement 聚合，每项带 `origin` 与 `evidenceStrength`） |
+| PATCH | `/profile` | 更新基本信息 — 未实现 |
+| POST | `/profile/import` | 从 `text` 或 `documentId` 抽取并落库 → 200，返回计数与画像 |
+| POST | `/profile/import/github` | 绑定 GitHub 触发分析 → 202 — PHASE 10 |
+| GET | `/profile/strength` | Profile Strength 拆解 + 改进建议 — 未实现（分数已随 `GET /dashboard` 返回） |
+| GET/POST | `/profile/educations` · `/experiences` · `/projects` · `/achievements` | 列表 / 新建 — 未实现 |
+| GET/PATCH/DELETE | `/profile/{entity}/{id}` | 详情 / 更新 / 删除 — 未实现 |
+| POST | `/profile/projects/{id}/deep-dive` | Project Deep Dive（WF-09）— 未实现 |
+| POST | `/profile/import/confirm` | 确认/修正抽取结果（`origin=user_corrected`）— 未实现 |
 
 ```jsonc
 // GET /profile/strength → 200

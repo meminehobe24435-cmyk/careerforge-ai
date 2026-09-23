@@ -273,6 +273,7 @@ graph LR
 | 2026-09-24 | PHASE 4b | `fix(scoring): measure the evidence dimension over met requirements` | 证据强度维度此前按**被高亮的技能**（effective ≥ 0.5）计算，导致「5 项要求命中、每项都有证据」的候选人该维度得 **0.00**；改为按命中的要求计算，实测 11.56 → 20.26 分（证据维度 0.0 → 87.0） |
 | 2026-09-24 | PHASE 5a | `feat(api): implement GET /dashboard for the frozen client contract` | 前端自 PHASE 0 冻结的 `DashboardResponse` 契约终于有实现：六项指标全部由已存行推导；数据源尚不存在的三项（投递/面试/Offer）在 `meta.unavailable` 中具名而非静默为零；`meta.definitions` 随数字给出真实口径；`profileStrength` 来自确定性引擎 |
 | 2026-09-24 | PHASE 5b | `test(web): run the real client against a live API` | 前端**首次真正连上后端**：`smoke:api` 用 `@careerforge/shared` 的真实客户端 + 运行时守卫打真实服务，7/7 通过（登录、dashboard 守卫、健康状态归一、证据图谱、岗位、匹配、404 信封）；`next build` 全绿并逐页 200；仪表盘新增「尚未接入」渲染 |
+| 2026-09-24 | PHASE 2c | `feat(api): persist the career entities and read the real profile everywhere` | `educations` / `experiences` / `projects` / `achievements` / `profile_skills` + 迁移 `0005`；`POST /profile/import` 与 `GET /profile`；三个下游（图谱、匹配、仪表盘）改为读取真实画像。实测（全新库）：图 16 节点、**0 个占位节点**（此前 project/experience 全是 `project:de6dd367` 这类占位）；匹配 `skill` 0.0 → **39.16**、`evidence` 0.0 → **87.0**、总分 16.4 → **40.76**，缺口从 `['stm32','free_rtos','can']`（三个假缺口）修正为 `['autosar']` |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -332,3 +333,14 @@ graph LR
 | 4 | 响应里的 `strengths`/`gaps`/`unknowns` 直接透出引擎的 snake_case 字典，与其余 camelCase 字段不一致（与 PHASE 3 的 locator 同类） | 端到端 HTTP 测试（KeyError: canonicalId） | 修复：改为三个显式响应模型 |
 | 5 | `test_models.py` 因逐阶段追加断言而超过 500 行守卫 | 自建守卫脚本 | 拆分而非豁免：新的 `test_schema_inventory.py` 负责「模式声明了什么」，`test_models.py` 负责「数据库实际拦住了什么」 |
 | 6 | 新加的租户键测试立刻抓到 `ai_caches` / `llm_calls` / `agent_runs` / `background_jobs` 的 `user_id` 可空 | 新测试 | 不是缺陷而是文档化例外（§2.11 系统级行）：把例外连同理由写进测试，而不是放宽断言 |
+
+### PHASE 2b 实测问题记录（发现 → 修复）
+
+结构化职业实体落库后，真实服务立刻暴露出两处**会给出错误结论**的缺陷：
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | **文档化的 CHECK 写不出抽取器自己的词汇**：§2.2 的 `origin` 只允许 `llm`/`user_corrected`/`import`，而 AI 核心的 `Origin` 枚举还包含 `heuristic`——零 Key 路径的产出来源。按文档写约束，heuristic 抽取的每一行都会违反约束；把它记成 `llm` 则是对来源的谎报 | 写服务时对照枚举发现 | 修复：三处（模型 / 迁移 / 文档）一致地加入 `heuristic` 并写明理由 |
+| 2 | **「已声明且有证据」的技能被判为缺口**：声明行来自简历抽取，其 `evidence_count` 为 0，引擎的规则 2（声明但无证据 → 缺口）因此把 STM32/FreeRTOS/CAN 全部报成缺口——而图谱里它们各有 8 条证据。等于告诉候选人他们缺三样自己明明有的东西 | 真实服务端到端跑分（`gaps=['stm32','free_rtos','can']` 与 EVIDENCED_BY 边自相矛盾） | 修复：声明技能与证据图谱**并集合并**（保留声明等级、补上真实计数、补上有证据但未声明的技能）；实测 `skill` 0.0 → 39.16、`evidence` 0.0 → 87.0、总分 16.4 → 40.76，缺口修正为 `['autosar']` |
+| 3 | **重复导入会重建实体行**：`_replace_*` 用 delete+insert，行的 UUID 随之改变，图谱中指向旧 UUID 的边全部失联，画布上出现 `project:de6dd367` 这种打不开的占位节点——而 `dedupe_key` 的存在意义正是跨导入识别同一实体 | 真实服务连续两次导入 + 图谱对照 | 修复：改为按 `dedupe_key` 就地更新（行身份稳定，边继续有效）；真被删除的实体连同其边一起删除。实测：第二次导入后图与分数与第一次**完全一致**、占位节点 0 |
+| 4 | `profile_service.py` 触及 500 行守卫（两次：529 行、501 行） | 自建守卫脚本 | 两次都拆分而非豁免：行→schema 映射独立为 `profile_mapping.py`；`node_id_for_row` 归入同一模块（那里已是「行如何映射到身份」的归属地） |
