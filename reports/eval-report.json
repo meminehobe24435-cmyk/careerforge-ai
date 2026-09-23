@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-23T20:24:02.250015+00:00",
-  "gitSha": "b0efa3c",
+  "generatedAt": "2026-09-23T20:26:07.348964+00:00",
+  "gitSha": "0d05345",
   "provider": "heuristic",
   "providerChain": [
     "heuristic"
@@ -130,7 +130,7 @@
       },
       "failures": [],
       "skipped": null,
-      "duration_ms": 479
+      "duration_ms": 462
     },
     "claim_validation": {
       "samples": 120,
@@ -172,7 +172,7 @@
       },
       "failures": [],
       "skipped": null,
-      "duration_ms": 34
+      "duration_ms": 33
     },
     "retrieval_recall": {
       "samples": 59,
@@ -231,7 +231,7 @@
         }
       ],
       "skipped": null,
-      "duration_ms": 32
+      "duration_ms": 30
     }
   }
 }

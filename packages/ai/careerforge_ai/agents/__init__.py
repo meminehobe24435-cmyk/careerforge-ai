@@ -13,8 +13,8 @@ Agent                                Status
 ``JobAgent``                         ✅ WF-03 · JD → structured, normalised analysis
 ``ValidatorAgent``                   ✅ WF-06 · claim verification and the gate
 ``MatchAgent``                       ✅ WF-04 · explainable match scoring
-``ProfileAgent``                     ⬜ WF-01 · extraction handler exists in the heuristic provider
-``EvidenceAgent``                    ⬜ WF-02 · graph construction exists in ``graph/``
+``ProfileAgent``                     ✅ WF-01 · resume/document → structured profile
+``EvidenceAgent``                    ✅ WF-02 · material → evidence nodes and graph
 ``ResumeAgent``                      ⬜ WF-05
 ``InterviewAgent``                   ⬜ WF-07
 ``CoachAgent``                       ⬜ WF-08
@@ -37,6 +37,13 @@ from careerforge_ai.agents.base import (
     strip_markup,
     truncate_for_prompt,
 )
+from careerforge_ai.agents.evidence import (
+    EVIDENCE_AGENT,
+    DocumentChunkInput,
+    EvidenceAgent,
+    build_graph,
+    build_workflow as build_evidence_workflow,
+)
 from careerforge_ai.agents.job import (
     JOB_AGENT,
     JobAgent,
@@ -49,6 +56,12 @@ from careerforge_ai.agents.match import (
     build_workflow as build_match_workflow,
     compute_match,
 )
+from careerforge_ai.agents.profile import (
+    PROFILE_AGENT,
+    ProfileAgent,
+    build_workflow as build_profile_workflow,
+    import_profile,
+)
 from careerforge_ai.agents.validator import (
     VALIDATOR_AGENT,
     ValidatorAgent,
@@ -57,23 +70,32 @@ from careerforge_ai.agents.validator import (
 )
 
 __all__ = [
+    "EVIDENCE_AGENT",
     "JOB_AGENT",
     "MATCH_AGENT",
+    "PROFILE_AGENT",
     "PROMPT_CHAR_BUDGET",
     "VALIDATOR_AGENT",
     "Agent",
     "AgentOutcome",
+    "DocumentChunkInput",
+    "EvidenceAgent",
     "JobAgent",
     "MatchAgent",
+    "ProfileAgent",
     "ValidatorAgent",
+    "build_evidence_workflow",
+    "build_graph",
     "build_jd_analysis",
     "build_job_workflow",
+    "build_profile_workflow",
     "build_match_workflow",
     "build_validator_workflow",
     "merge_workflow_warnings",
     "normalise_whitespace",
     "render_bullets",
     "compute_match",
+    "import_profile",
     "strip_markup",
     "truncate_for_prompt",
     "validate_claim_text",

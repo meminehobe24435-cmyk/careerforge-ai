@@ -88,6 +88,22 @@ SECTION_HEADERS: Mapping[str, tuple[str, ...]] = {
     "skill": ("技能", "专业技能", "skills", "technical skills"),
 }
 
+#: Words that belong to a heading rather than to its content. Stripped from an
+#: inline remainder so "项目经历 Balance Robot" yields "Balance Robot".
+_HEADER_NOISE: tuple[str, ...] = (
+    "经历",
+    "经验",
+    "情况",
+    "简介",
+    "描述",
+    "信息",
+    "专业技能",
+    "技能",
+)
+
+#: Shorter remainders are treated as heading text, not as content.
+_MIN_INLINE_CONTENT = 4
+
 _DATE_RE = re.compile(r"(?P<year>20\d{2}|19\d{2})\s*[./年-]?\s*(?P<month>0?[1-9]|1[0-2])?")
 
 
@@ -116,9 +132,16 @@ def split_sections(text: str) -> dict[str, list[str]]:
             remainder = line
             for keyword in SECTION_HEADERS[matched_header]:
                 if keyword in lowered:
-                    remainder = line[lowered.index(keyword) + len(keyword) :].strip(" :：-—")
+                    remainder = line[lowered.index(keyword) + len(keyword) :]
                     break
-            if remainder:
+            # Strip the words that are part of a heading rather than content.
+            # Without this, "教育经历" left "经历" behind and that fragment was
+            # recorded as an education entry — a junk row whose only visible effect
+            # was a wrong first entry in the list.
+            for noise in _HEADER_NOISE:
+                remainder = remainder.replace(noise, "")
+            remainder = remainder.strip(" :：-—·|")
+            if len(remainder) >= _MIN_INLINE_CONTENT:
                 sections[current].append(remainder)
             continue
 
