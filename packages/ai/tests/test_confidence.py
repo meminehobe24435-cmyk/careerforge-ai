@@ -56,6 +56,10 @@ class TestAuthority:
             (EvidenceKind.COMMIT, SourceAuthority.CODE_OR_COMMIT),
             (EvidenceKind.README, SourceAuthority.README),
             (EvidenceKind.DOCUMENT_CHUNK, SourceAuthority.UPLOADED_DOCUMENT),
+            # Hand-typed evidence sits with résumé claims, not with documents: it has no
+            # file, no commit and no locator a reviewer can open. Nothing caught this
+            # mapping drifting to the document tier, so it is asserted by name now.
+            (EvidenceKind.MANUAL, SourceAuthority.RESUME_SELF_REPORT),
             (EvidenceKind.LLM_INFERENCE, SourceAuthority.LLM_INFERENCE),
         ],
     )
@@ -63,6 +67,32 @@ class TestAuthority:
         self, kind: EvidenceKind, expected: SourceAuthority
     ) -> None:
         assert authority_for_kind(kind) is expected
+
+    def test_typed_evidence_scores_below_an_uploaded_document(self) -> None:
+        """The product promise: typing a claim is weaker than uploading material.
+
+        Measured, with the difference pinned to the authority weight rather than asserted
+        loosely, because the size of the gap is the thing that matters: identical content
+        and identical locator, so only the tier differs.
+        """
+        locator = EvidenceLocator(url="https://example.com")
+        typed = compute_confidence(kind=EvidenceKind.MANUAL, locator=locator, now=utcnow())
+        uploaded = compute_confidence(
+            kind=EvidenceKind.DOCUMENT_CHUNK, locator=locator, now=utcnow()
+        )
+        assert typed.score < uploaded.score
+        # The gap is exactly the authority difference carried by its weight (0.30), and it
+        # is not rounded away.
+        authority_gap = (
+            AUTHORITY_SCORES[SourceAuthority.UPLOADED_DOCUMENT]
+            - AUTHORITY_SCORES[SourceAuthority.RESUME_SELF_REPORT]
+        )
+        assert round(uploaded.score - typed.score, 3) == round(
+            DEFAULT_WEIGHTS["authority"] * authority_gap, 3
+        )
+        # A self-report still *counts* — the docs' wording — and reaches the claim
+        # threshold on its own; what it cannot do is outrank real material.
+        assert typed.score > 0
 
     def test_unknown_authority_string_degrades_to_weakest(self) -> None:
         # Ingestion must never fail because a novel source string appeared.

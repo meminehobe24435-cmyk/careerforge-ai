@@ -111,6 +111,10 @@ def extract_subgraph(
     effective_types = set(node_types or (settings.node_types if settings else []) or [])
     effective_min = settings.min_confidence if settings else min_confidence
     effective_limit = settings.limit if settings else limit
+    # Read from the query object too. It was the one field the settings branch did not
+    # forward, so ``includeOrphans=true`` was accepted and silently ignored whenever a
+    # GraphQuery was passed — which is every API call.
+    effective_orphans = settings.include_orphans if settings else include_orphans
 
     by_id: dict[UUID, GraphNode] = {node.id: node for node in nodes}
     adjacency = _adjacency(edges)
@@ -143,7 +147,7 @@ def extract_subgraph(
             continue
         filtered.append(node)
 
-    if not include_orphans:
+    if not effective_orphans:
         connected = {endpoint for edge in edges for endpoint in (edge.source, edge.target)}
         filtered = [node for node in filtered if node.id in connected or node.id == focus_id]
 

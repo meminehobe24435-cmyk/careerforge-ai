@@ -89,7 +89,12 @@ _KIND_AUTHORITY: Mapping[EvidenceKind, SourceAuthority] = {
     EvidenceKind.EXPERIENCE: SourceAuthority.UPLOADED_DOCUMENT,
     EvidenceKind.PROJECT: SourceAuthority.UPLOADED_DOCUMENT,
     EvidenceKind.ACHIEVEMENT: SourceAuthority.UPLOADED_DOCUMENT,
-    EvidenceKind.MANUAL: SourceAuthority.UPLOADED_DOCUMENT,
+    # A hand-typed entry is a *self-report*, not a document a reviewer can open: it has no
+    # file, no commit and no locator anyone else can check. Scoring it at the uploaded-
+    # document tier (0.80) would let a candidate type a claim and receive near-document-
+    # grade confidence, which is the exact failure mode this product exists to prevent.
+    # It sits with résumé claims instead, and only corroboration lifts it (`docs/PRD.md` §4).
+    EvidenceKind.MANUAL: SourceAuthority.RESUME_SELF_REPORT,
     EvidenceKind.LLM_INFERENCE: SourceAuthority.LLM_INFERENCE,
 }
 

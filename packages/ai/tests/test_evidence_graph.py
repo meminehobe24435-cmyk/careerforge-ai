@@ -29,7 +29,7 @@ from careerforge_ai.schemas.common import (
     SourceAuthority,
     utcnow,
 )
-from careerforge_ai.schemas.evidence import EvidenceItem, EvidenceLocator
+from careerforge_ai.schemas.evidence import EvidenceItem, EvidenceLocator, GraphNode, GraphQuery
 from careerforge_ai.schemas.job import JDAnalysis, JDSkill
 from careerforge_ai.schemas.profile import CandidateProfile
 
@@ -147,6 +147,28 @@ class TestBuild:
         )
         # No orphan evidence: each item should be reachable from a skill node.
         assert result.orphan_evidence == []
+
+    def test_every_edge_has_a_stored_link(self, profile: CandidateProfile) -> None:
+        """An edge without a link exists in memory and disappears when the graph is saved.
+
+        ``GraphEdge`` is what the query layer walks; ``EvidenceLink`` is what
+        ``evidence_links`` stores (``docs/DATABASE.md`` §2.5). Four relations used to be
+        emitted as edges only — including the candidate's own ``HAS`` edges to its skills —
+        so a persisted graph lost its root and every education/experience node. The
+        relation is asserted as a set so no future call site can forget its pair.
+        """
+        result = build_evidence_graph(
+            profile=profile,
+            evidence=[
+                _evidence(EvidenceKind.REPO_FILE, "a.c", "STM32 与 FreeRTOS"),
+                _evidence(EvidenceKind.README, "README.md", "基于 STM32 的平衡小车项目"),
+            ],
+        )
+        edge_relations = {(edge.source, edge.target, edge.relation) for edge in result.edges}
+        link_relations = {(link.from_id, link.to_id, link.relation) for link in result.links}
+        assert edge_relations == link_relations
+        # ... and the candidate root is among them, which is what made this visible.
+        assert any(link.from_type is GraphNodeType.CANDIDATE for link in result.links)
 
     def test_is_deterministic(self, profile: CandidateProfile) -> None:
         build = lambda: build_evidence_graph(  # noqa: E731 - a local helper reads better here
@@ -375,6 +397,25 @@ class TestSubgraph:
         sub = extract_subgraph(graph.nodes, graph.edges)
         assert sub.node_count > 0
         assert sub.edge_count > 0
+
+    def test_include_orphans_is_honoured_when_a_query_object_is_passed(self, graph) -> None:
+        """The flag was accepted and silently ignored whenever a ``GraphQuery`` was passed.
+
+        Every API call passes one, so ``includeOrphans=true`` did nothing: it was the single
+        field the query branch did not forward. The isolated node has to be built here —
+        a graph produced by a build has no orphans by construction.
+        """
+        isolated = GraphNode(
+            id=node_id(GraphNodeType.SKILL, "no-evidence-at-all"),
+            type=GraphNodeType.SKILL,
+            label="Unsupported Skill",
+        )
+        nodes = [*graph.nodes, isolated]
+        default = extract_subgraph(nodes, graph.edges, query=GraphQuery())
+        with_orphans = extract_subgraph(nodes, graph.edges, query=GraphQuery(include_orphans=True))
+        assert all(node.id != isolated.id for node in default.nodes)
+        assert any(node.id == isolated.id for node in with_orphans.nodes)
+        assert with_orphans.node_count == default.node_count + 1
 
     def test_counts_match_the_payload(self, graph) -> None:
         sub = extract_subgraph(graph.nodes, graph.edges)

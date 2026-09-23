@@ -171,6 +171,16 @@ def build_evidence_graph(
                 relation=EvidenceRelation.HAS,
             )
         )
+        result.links.append(
+            EvidenceLink(
+                from_type=GraphNodeType.CANDIDATE,
+                from_id=candidate_node,
+                to_type=GraphNodeType.EDUCATION,
+                to_id=eid,
+                relation=EvidenceRelation.HAS,
+                rationale="候选人拥有该教育经历",
+            )
+        )
 
     for experience in profile.experiences:
         key = f"{experience.company}:{experience.title}"
@@ -191,6 +201,16 @@ def build_evidence_graph(
                 relation=EvidenceRelation.HAS,
             )
         )
+        result.links.append(
+            EvidenceLink(
+                from_type=GraphNodeType.CANDIDATE,
+                from_id=candidate_node,
+                to_type=GraphNodeType.EXPERIENCE,
+                to_id=xid,
+                relation=EvidenceRelation.HAS,
+                rationale="候选人拥有该段经历",
+            )
+        )
 
     for achievement in profile.achievements:
         aid = node_id(GraphNodeType.ACHIEVEMENT, achievement.title)
@@ -203,6 +223,16 @@ def build_evidence_graph(
                 source=candidate_node,
                 target=aid,
                 relation=EvidenceRelation.HAS,
+            )
+        )
+        result.links.append(
+            EvidenceLink(
+                from_type=GraphNodeType.CANDIDATE,
+                from_id=candidate_node,
+                to_type=GraphNodeType.ACHIEVEMENT,
+                to_id=aid,
+                relation=EvidenceRelation.HAS,
+                rationale="候选人获得了该成果",
             )
         )
 
@@ -312,6 +342,17 @@ def build_evidence_graph(
                 confidence=confidence or None,
             )
         )
+        result.links.append(
+            EvidenceLink(
+                from_type=GraphNodeType.CANDIDATE,
+                from_id=candidate_node,
+                to_type=GraphNodeType.SKILL,
+                to_id=sid,
+                relation=EvidenceRelation.HAS,
+                confidence=confidence or None,
+                rationale="候选人的材料中出现了该技能",
+            )
+        )
 
         # Projects and experiences that legitimately demonstrate the skill.
         for project in profile.projects:
@@ -334,6 +375,17 @@ def build_evidence_graph(
                         target=sid,
                         relation=EvidenceRelation.DEMONSTRATES,
                         confidence=confidence or None,
+                    )
+                )
+                result.links.append(
+                    EvidenceLink(
+                        from_type=GraphNodeType.PROJECT,
+                        from_id=project_node,
+                        to_type=GraphNodeType.SKILL,
+                        to_id=sid,
+                        relation=EvidenceRelation.DEMONSTRATES,
+                        confidence=confidence or None,
+                        rationale=f"项目描述中出现 {skill_id}",
                     )
                 )
 
