@@ -83,6 +83,23 @@ class TestNormalisation:
             skill = normalize_skill(text)
             assert skill is None or skill.canonical_id != "c", text
 
+    def test_file_extension_is_not_a_language(self) -> None:
+        # "motor.c" is a file. Reading its extension as a claim to know C inflated
+        # skill coverage from file names alone, which the evidence graph surfaced.
+        for text in ("motor.c", "Core/Src/main.c", "a.c", "README.md"):
+            assert "c" not in {
+                skill.canonical_id for skill, _, _ in extract_skill_mentions(text)
+            }, text
+
+    def test_slash_separated_languages_still_both_resolve(self) -> None:
+        # The dot rule must not spill over: "C/C++" is two skills, not one.
+        found = {skill.canonical_id for skill, _, _ in extract_skill_mentions("熟悉 C/C++ 开发")}
+        assert {"c", "cplusplus"} <= found
+
+    def test_sentence_final_language_name_still_resolves(self) -> None:
+        found = {skill.canonical_id for skill, _, _ in extract_skill_mentions("主要使用 C。")}
+        assert "c" in found
+
     def test_unknown_skill_returns_none(self) -> None:
         assert normalize_skill("Quantum Flux Welding") is None
 

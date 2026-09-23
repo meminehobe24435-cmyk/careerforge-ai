@@ -257,7 +257,11 @@ _TOKEN_BOUNDARY = r"[a-z0-9]"
 def _build_pattern(alias: str) -> re.Pattern[str]:
     escaped = re.escape(alias)
     if len(alias) <= _SHORT_ALIAS_MAXLEN:
-        pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
+        # A short alias must also not follow a dot: "motor.c" is a file, not a
+        # claim to know C. Measured on the evidence graph, treating the extension
+        # as a skill mention inflated skill coverage from file names alone.
+        # A slash is deliberately *not* excluded, so "C/C++" still reports both.
+        pattern = rf"(?<![a-z0-9.]){escaped}(?![a-z0-9])"
     else:
         pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])" if alias.isalnum() else escaped
     return re.compile(pattern, re.IGNORECASE)
