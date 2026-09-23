@@ -9,7 +9,7 @@
 
 <!-- Badges: activated in PHASE 15 once the remote repository exists -->
 ![Status](https://img.shields.io/badge/status-in%20development-orange)
-![Phase](https://img.shields.io/badge/phase-0%20%2F%2015-blue)
+![Phase](https://img.shields.io/badge/phase-2%20%2F%2015-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
@@ -17,9 +17,12 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1)
 
-> 🚧 **Project status: actively under development (PHASE 0 / 15 complete).**
-> Architecture, database and API designs are frozen; implementation starts at PHASE 1.
-> Every number that appears in this README will come from real build/test/eval artifacts — never from estimates.
+> 🚧 **Project status: actively under development (PHASE 2 / 15 complete).**
+> The AI core (orchestration, providers, retrieval, evidence graph, scoring, 9 agents),
+> the API (contract, auth, middleware, persistence) and the frontend shell are built and
+> tested; uploaded documents are now parsed, chunked and stored through the queued
+> worker. Every number in this README comes from a real build/test/eval artifact — never
+> from an estimate.
 > See [ROADMAP.md](./docs/ROADMAP.md) for the live phase tracker.
 
 ---
@@ -295,7 +298,8 @@ CareerForge AI is a portfolio-grade system, not a production SaaS. Known boundar
 
 ## Roadmap
 
-See [ROADMAP.md](./docs/ROADMAP.md). Current: **PHASE 0 ✅ → PHASE 1 (project initialization)**.
+See [ROADMAP.md](./docs/ROADMAP.md). Current: **PHASE 0 ✅ → PHASE 1 ✅ → PHASE 2 ✅ →
+PHASE 3 (evidence graph persistence and the canvas)**.
 
 ---
 

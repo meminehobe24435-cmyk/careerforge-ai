@@ -191,13 +191,20 @@ AI 相关响应统一携带：
 
 ### 2.3 文档 `/documents`
 
+> **状态：已实现（PHASE 2）**。上传先把字节暂存到 `UPLOAD_DIR`、写入 `pending` 行，
+> 再入队 `document.ingest`；worker 解析、分块、写入后删除暂存文件。同一用户上传相同
+> 字节（`sha256` 相同）幂等：返回既有文档、`deduplicated: true`、`taskId: null`。
+> 无法解析的类型在**上传时**即返回 `400 UNSUPPORTED_FILE_TYPE`，不会先 202 再失败。
+> `DELETE` 返回 `204` 且**无响应体**（RFC 9110 §6.4.1）——这是信封规则唯一的例外。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/documents` | 上传（multipart `file` + `kind`）→ 202（自动触发 WF-01） |
-| GET | `/documents` | 列表（`?kind=&status=`） |
+| GET | `/documents` | 列表（`?kind=&status=`，`status` 在 SQL 层过滤） |
 | GET | `/documents/{id}` | 详情（Local Mode 下 `rawText` 为 null） |
 | GET | `/documents/{id}/chunks` | 分块列表（调试与解释用） |
-| DELETE | `/documents/{id}` | 删除（级联 chunks/evidence） |
+| GET | `/documents/{id}/text` | 存留的原文；未存留时返回 `unavailableReason` |
+| DELETE | `/documents/{id}` | 删除（级联 chunks/evidence）→ 204 无响应体 |
 
 ### 2.4 GitHub Intelligence `/github`
 

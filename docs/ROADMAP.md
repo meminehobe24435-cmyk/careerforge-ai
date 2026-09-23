@@ -1,4 +1,4 @@
-﻿# CareerForge AI · 开发路线图
+# CareerForge AI · 开发路线图
 
 | 字段 | 值 |
 |---|---|
@@ -244,22 +244,29 @@ graph LR
 
 ## 6. 进度日志
 
+> 日期与提交均取自 `git log`；「关键结果」只写可复现的实测数字。
+
 | 日期 | 阶段 | 提交 | 关键结果 |
 |---|---|---|---|
-| 2026-02-11 | PHASE 0 | `docs: add phase 0 product and architecture design` | 7 篇设计文档 + 目录树 + 仓库初始化（47 文件） |
-| 2026-02-11 | PHASE 1a | `feat(ai): add deterministic AI core` | `packages/ai` 9,165 行 / 62 文件；10 个版本化 Prompt；173 → 201 测试通过 |
-| 2026-02-11 | PHASE 1b | `refactor(ai): split oversized modules; add architecture guard scripts` | 三个守卫脚本（分层 / 500 行 / 设计令牌）；CI 双路径（SQLite + PostgreSQL）；docker-compose 全栈 |
-| 2026-02-11 | PHASE 1c | `feat(web): scaffold Next.js app; feat(evals): labeled benchmark` | 前端 83 文件全部 typecheck/lint/build 通过；评测框架实测出 100% distractor 泄漏与 13.3% 误判并修复为 0 |
-| 2026-02-11 | PHASE 3a | `feat(rag): hybrid retrieval with RRF fusion` | `rag/` 分块 + BM25 + RRF + 精确向量检索 + 混合检索器（40 测试）；Recall@5 评测 0.966；共享分词层抽取；评测工具链拆分至全部 < 500 行 |
-| 2026-02-11 | PHASE 3b | `feat(graph): evidence graph builder, subgraph queries and provenance tracing` | 证据图谱引擎（两遍置信度 + 独立来源corroboration + 子图查询 + 断言溯源）；修复文件扩展名被当作技能的真实缺陷；279 测试通过 |
-| 2026-02-11 | PHASE 2a | eat(agents): JobAgent and ValidatorAgent | Agent 层建立：WF-03 JD 解析、WF-06 断言门禁；抽出共享 claim 规则层；修复空输入时「从 prompt 模板里提取技能」的静默错误 |
-| 2026-02-11 | PHASE 5a | eat(agents): MatchAgent | WF-04 可解释匹配；叙述 schema 无任何数值字段，结构上无法改动分数 |
-| 2026-02-11 | PHASE 2b | 
-| 2026-02-11 | PHASE 6a | eat(agents): ResumeAgent | WF-05 简历 Copilot：每条 bullet 过门禁；被拦截的断言附具体补证建议；修复「无检索器时全部判为无证据」与「verdict 忽略直接传入的证据文本」两个真实缺陷 |
-| 2026-02-11 | PHASE 8a | 
-| 2026-02-11 | PHASE 7a | `feat(agents): InterviewAgent` | WF-07 自适应面试：三条工作流（start/turn/finish）；难度阶梯为纯函数可边界测试；证据一致性由集合比较得出；修复 7 处真实缺陷（起始问题读取未赋值计划、评估器把答案当问题、三个维度是推导而非测量等） |
-| 2026-02-11 | PHASE 7b | `refactor(agents): split interview into a package` | interview.py 854 行超限 → 拆为 plan/turns/scorecard/agent；并用行为断言替换了一个读取源码文本的假测试 |eat(agents): CoachAgent | WF-08 技能缺口 → 30 天计划；每个缺口必须产出 mini project；修复 horizon 未通过结构化通道传递的缺陷 |
-| 2026-02-11 | PHASE 1d | 待提交（API 层） | 独立验证：apps/api 142 测试通过；实际启动服务并 curl 验证信封 / 404 / 401 / Demo 登录 / refresh / system.info 全部符合契约 |eat(agents): ProfileAgent and EvidenceAgent | WF-01 简历导入、WF-02 材料转证据图谱；修复标题行残余被当作正文的真实缺陷；reinstall 可编辑安装以消除陈旧副本 |
+| 2026-09-24 | PHASE 0 | `docs: add phase 0 product and architecture design` | 7 篇设计文档（PRD / 架构 / 数据库 / API / UI / 路线图 / 22 条 ADR）+ 仓库骨架 |
+| 2026-09-24 | PHASE 1a | `feat(ai): add deterministic AI core (orchestrator, providers, scoring)` | `packages/ai` 62 文件：自研 DAG 编排器 + 4 个 Provider 实现（含零 Key 的 heuristic）+ 确定性评分引擎 + 10 个版本化 Prompt |
+| 2026-09-24 | PHASE 1b | `refactor(ai): split oversized modules; add architecture guard scripts` | 三个守卫脚本（分层 / 500 行 / 设计令牌）进入 pre-commit 与 CI；CI 双路径（SQLite + PostgreSQL）；docker-compose 六服务 |
+| 2026-09-24 | PHASE 1c | `feat(web,evals): scaffold Next.js app and add a measured benchmark` | 前端 83 文件 typecheck / lint / build 全绿；评测框架实测出 100% distractor 泄漏与 13.3% 断言误判，修复后均为 0 |
+| 2026-09-24 | PHASE 3a | `feat(rag): hybrid retrieval with RRF, and a third measured suite` | 标题感知分块 + BM25 + RRF(k=60) + 精确向量检索；Recall@5 **0.966**、MRR **0.901**（59 条标注查询） |
+| 2026-09-24 | PHASE 3b | `feat(graph): evidence graph builder, subgraph queries and provenance tracing` | 证据图谱引擎（两遍置信度、独立来源 corroboration、子图查询、断言溯源）；修复「文件扩展名被当作技能」的真实缺陷 |
+| 2026-09-24 | PHASE 4a | `feat(agents): JobAgent and ValidatorAgent, plus the shared claim-rule layer` | WF-03 JD 解析 + WF-06 断言门禁；抽出共享 claim 规则层；修复空输入时「从 prompt 模板里提取技能」的静默错误 |
+| 2026-09-24 | PHASE 5a | `feat(agents): MatchAgent with a narrative that cannot alter the score` | WF-04 可解释匹配；叙述 schema 不含任何数值字段，结构上无法篡改分数 |
+| 2026-09-24 | PHASE 2a | `feat(agents): ProfileAgent and EvidenceAgent complete the ingest path` | WF-01 简历导入、WF-02 材料转证据；修复标题行残余被当作正文的缺陷；重装可编辑安装以消除陈旧副本 |
+| 2026-09-24 | PHASE 6a | `feat(agents): ResumeAgent — every generated bullet passes the gate` | WF-05 简历 Copilot：每条 bullet 过门禁，被拦截的断言附具体补证建议；修复「无检索器时全部判为无证据」与「verdict 忽略直接传入证据」两个缺陷 |
+| 2026-09-24 | PHASE 8a | `feat(agents): CoachAgent — every gap ends in a provable artefact` | WF-08 技能缺口 → 学习计划；每个缺口必须产出可验证的 mini project；修复 horizon 未通过结构化通道传递的缺陷 |
+| 2026-09-24 | PHASE 7a | `feat(agents): InterviewAgent — adaptive interview with a measured scorecard` | WF-07 三段工作流；难度阶梯为纯函数可边界测试；证据一致性由集合比较得出；修复 7 处真实缺陷 |
+| 2026-09-24 | PHASE 7b | `refactor(agents): split interview into a package` | `interview.py` 854 行超限 → 拆为 plan / turns / scorecard / agent；用行为断言替换了一个读取源码文本的假测试 |
+| 2026-09-24 | PHASE 10a | `feat(agents): RecruiterAgent and the PII layer — the public evidence page` | 公开页只链接陌生人可打开的material；PII 在投影时脱敏而非入库时 |
+| 2026-09-24 | PHASE 1d | `feat(api): FastAPI application — contract, auth, middleware and persistence` | 信封 / 错误码 / 请求 ID / 限流 / 幂等队列；170 测试通过；ruff 与 mypy 全绿 |
+| 2026-09-24 | PHASE 1e | `feat(api): expose the agent layer over HTTP` | 9 个 Agent 全部经 HTTP 暴露；真实启动服务并 curl 验证信封 / 404 / 401 / Demo 登录 / 面试会话全链路 |
+| 2026-09-24 | PHASE 7c | `fix(ai): stop the interviewer repeating its opening question` | 真实 HTTP 请求暴露三处缺陷：追问复读开场问题、confidence 维度恒为 0、改写后残留悬空的度量动词；`safer_rewrite_rate` 实测由 **0.489 → 0.622** |
+| 2026-09-24 | PHASE 12a | `fix(ai): make mypy --strict pass across the AI core` | 默认配置 51 个类型错误 + strict 专属 8 个全部清零；顺带修掉 3 个潜在缺陷（`Mapping`/`dict` 逆变、naive datetime 静默强制转换、不可达回退分支）；`ci` 提交移除 `continue-on-error` |
+| 2026-09-24 | PHASE 2b | `feat(api): persist uploaded documents and parse them in the worker` | 见下方「PHASE 2 实测问题记录」 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -279,3 +286,18 @@ graph LR
 | 10 | 公司简介里的早期提及吞掉任职要求里的合法提及 | 新回归测试 | 修复（`dedupe=False`） |
 | 11 | fresh clone 的首次 `pnpm install` 失败 | 前端构建者报告 | 修复（显式批准 1 个依赖构建脚本） |
 | 12 | 我自己写的三个文件超过 500 行 | 自建守卫脚本 | 拆分而非豁免 |
+
+### PHASE 2 实测问题记录（发现 → 修复）
+
+上传一份真实简历、经队列解析、再读回证据链，这条路径上暴露的问题：
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | 请求事务未提交就入队，worker 读不到刚写入的 `documents` 行；SQLite 上第二个连接直接 `database is locked` | 端到端 HTTP 测试 | 修复：入队前显式提交，并在注释中写明两个原因 |
+| 2 | 任务处理器在**自己的写事务持有锁期间**再次上报进度，同样 `database is locked` | 端到端 HTTP 测试 | 修复：进度只在上报点之前写，`report` 自带独立连接 |
+| 3 | 无法解析的文件类型被接受（202）后才在 worker 里失败 | 端到端 HTTP 测试 | 修复：`stage_upload` 先做格式校验 → 400 `UNSUPPORTED_FILE_TYPE` |
+| 4 | `DELETE` 返回 204 却带 JSON 信封体（违反 RFC 9110 §6.4.1） | 端到端 HTTP 测试 | 修复：204/304 一律不套信封 |
+| 5 | PDF 夹具用 latin-1 `replace` 编码，中文静默变成 `???`，会让断言假通过 | 自建夹具时发现 | 修复：夹具对非 ASCII 直接报错，中文覆盖交给 DOCX/TXT 路径 |
+| 6 | `utf-8-sig` 解码无 BOM 的文件也自称 `utf-8-sig`（声称了一个不存在的 BOM） | 单元测试 | 修复：按实际字节报告编码 |
+| 7 | 列表的 `status` 过滤在 `LIMIT` 之后做，页码与总数会互相矛盾 | 自查 | 修复：过滤下推到 SQL，`byKind` 改为一次 GROUP BY |
+| 8 | 夹具字节在同一 session 的共享数据库里重复，导致第二个测试的上传被去重成空操作 | 测试间互相污染 | 修复：夹具字节每次唯一，并在文件头说明原因 |

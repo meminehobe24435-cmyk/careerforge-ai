@@ -156,6 +156,11 @@ erDiagram
 
 ### 2.3 材料与解析（documents）
 
+> **状态：已实现（PHASE 2）** — 模型 `apps/api/src/careerforge_api/models/document.py`、
+> 迁移 `alembic/versions/0002_documents.py`。`metadata jsonb` 承载解析格式、实际解码
+> 编码、摄取警告（如扫描件）与 PII 命中数量；`storage_path` 只在校验与解析之间指向
+> 暂存文件，解析完成后立即置空并删除文件。
+
 #### `documents`
 | 列 | 类型 | 说明 |
 |---|---|---|
