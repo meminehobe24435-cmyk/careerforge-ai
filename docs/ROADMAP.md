@@ -44,7 +44,7 @@ NEXT    — 下一阶段目标
 | 3 | **Evidence Graph** | 证据模型、置信度引擎、图谱 API 与可视化（RAG 核心已完成） | 🔄 进行中 |
 | 4 | JD Analyzer | JD 结构化解析、技能树、解析基准 | ⬜ |
 | 5 | Job Matching | 五维可解释评分 + Why 展开 + Gaps/Unknowns（引擎与 Agent 已完成） | 🔄 进行中 |
-| 6 | Resume Copilot | 生成 + 验证门禁 + Diff + 版本管理 | ⬜ |
+| 6 | Resume Copilot | 生成 + 验证门禁 + Diff + 版本管理（Agent 已完成） | 🔄 进行中 |
 | 7 | Interview Simulator | 六模式、自适应难度、Scorecard、证据一致性 | ⬜ |
 | 8 | Application Tracker | 看板、拖拽、事件历史、Timeline | ⬜ |
 | 9 | Career Analytics | 漏斗、比率、技能相关性、类别表现 | ⬜ |
@@ -254,7 +254,10 @@ graph LR
 | 2026-02-11 | PHASE 3b | `feat(graph): evidence graph builder, subgraph queries and provenance tracing` | 证据图谱引擎（两遍置信度 + 独立来源corroboration + 子图查询 + 断言溯源）；修复文件扩展名被当作技能的真实缺陷；279 测试通过 |
 | 2026-02-11 | PHASE 2a | eat(agents): JobAgent and ValidatorAgent | Agent 层建立：WF-03 JD 解析、WF-06 断言门禁；抽出共享 claim 规则层；修复空输入时「从 prompt 模板里提取技能」的静默错误 |
 | 2026-02-11 | PHASE 5a | eat(agents): MatchAgent | WF-04 可解释匹配；叙述 schema 无任何数值字段，结构上无法改动分数 |
-| 2026-02-11 | PHASE 2b | eat(agents): ProfileAgent and EvidenceAgent | WF-01 简历导入、WF-02 材料转证据图谱；修复标题行残余被当作正文的真实缺陷；reinstall 可编辑安装以消除陈旧副本 |
+| 2026-02-11 | PHASE 2b | 
+| 2026-02-11 | PHASE 6a | eat(agents): ResumeAgent | WF-05 简历 Copilot：每条 bullet 过门禁；被拦截的断言附具体补证建议；修复「无检索器时全部判为无证据」与「verdict 忽略直接传入的证据文本」两个真实缺陷 |
+| 2026-02-11 | PHASE 8a | eat(agents): CoachAgent | WF-08 技能缺口 → 30 天计划；每个缺口必须产出 mini project；修复 horizon 未通过结构化通道传递的缺陷 |
+| 2026-02-11 | PHASE 1d | 待提交（API 层） | 独立验证：apps/api 142 测试通过；实际启动服务并 curl 验证信封 / 404 / 401 / Demo 登录 / refresh / system.info 全部符合契约 |eat(agents): ProfileAgent and EvidenceAgent | WF-01 简历导入、WF-02 材料转证据图谱；修复标题行残余被当作正文的真实缺陷；reinstall 可编辑安装以消除陈旧副本 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
