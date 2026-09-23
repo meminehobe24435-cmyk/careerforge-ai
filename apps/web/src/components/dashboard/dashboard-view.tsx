@@ -243,7 +243,10 @@ export function DashboardView() {
                 label={definition.label}
                 value={stats[definition.key]}
                 kind={definition.kind}
-                definition={definition.definition}
+                // The API ships the definition it actually computed with; the local copy is
+                // only the fallback, so the label and the arithmetic cannot drift apart.
+                definition={meta?.definitions?.[definition.key] ?? definition.definition}
+                unavailable={meta?.unavailable?.[definition.key] ?? null}
               />
             ))}
           </div>

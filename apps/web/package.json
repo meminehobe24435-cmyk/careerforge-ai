@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke:api": "node --experimental-strip-types scripts/smoke-live-api.mts",
     "test": "node -e \"console.log('@careerforge/web: no tests yet (scheduled PHASE 12)')\""
   },
   "dependencies": {

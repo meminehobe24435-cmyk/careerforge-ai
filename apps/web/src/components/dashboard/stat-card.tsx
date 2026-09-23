@@ -12,6 +12,14 @@ export interface StatCardProps {
   definition: string;
   /** Optional 7-day delta once the backend exposes it (docs/API.md §2.10 has no trend yet). */
   delta?: number | null;
+  /**
+   * Set when the API reports this metric in `meta.unavailable`.
+   *
+   * A zero on a dashboard reads as "you have none". For a metric whose data source does not
+   * exist yet — the application tracker — that would be a claim the system cannot make, so
+   * the card says "not tracked yet" and keeps the number out of the way.
+   */
+  unavailable?: string | null;
 }
 
 /**
@@ -21,7 +29,7 @@ export interface StatCardProps {
  * trend series today, so the card shows the documented value and states where the trend
  * will come from instead of drawing a decorative fake sparkline.
  */
-export function StatCard({ label, value, kind, definition, delta }: StatCardProps) {
+export function StatCard({ label, value, kind, definition, delta, unavailable }: StatCardProps) {
   const display = kind === 'fraction' ? formatFractionPercent(value) : formatCount(value);
   const isMissing = display === EMPTY_VALUE;
 
@@ -44,27 +52,38 @@ export function StatCard({ label, value, kind, definition, delta }: StatCardProp
           </Tooltip>
         </div>
 
-        <p className="text-primary font-mono text-2xl tabular-nums leading-none">{display}</p>
+        {unavailable ? (
+          <>
+            <p className="text-secondary font-mono text-sm leading-none">尚未接入</p>
+            <p className="text-tertiary font-mono text-[11px]">{unavailable}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-primary font-mono text-2xl tabular-nums leading-none">
+              {display}
+            </p>
 
-        <div className="flex items-center gap-2">
-          {typeof delta === 'number' ? (
-            <span
-              className={
-                delta > 0
-                  ? 'text-evidence font-mono text-[11px] tabular-nums'
-                  : 'text-secondary font-mono text-[11px] tabular-nums'
-              }
-            >
-              {delta > 0 ? `+${delta}` : `${delta}`} / 7d
-            </span>
-          ) : (
-            <span className="text-tertiary font-mono text-[11px]">7d trend · PHASE 10</span>
-          )}
-        </div>
+            <div className="flex items-center gap-2">
+              {typeof delta === 'number' ? (
+                <span
+                  className={
+                    delta > 0
+                      ? 'text-evidence font-mono text-[11px] tabular-nums'
+                      : 'text-secondary font-mono text-[11px] tabular-nums'
+                  }
+                >
+                  {delta > 0 ? `+${delta}` : `${delta}`} / 7d
+                </span>
+              ) : (
+                <span className="text-tertiary font-mono text-[11px]">7d trend · PHASE 10</span>
+              )}
+            </div>
 
-        {isMissing ? (
-          <p className="text-weak text-[11px]">接口未返回该字段 —— 不显示推测值</p>
-        ) : null}
+            {isMissing ? (
+              <p className="text-weak text-[11px]">接口未返回该字段 —— 不显示推测值</p>
+            ) : null}
+          </>
+        )}
       </CardContent>
     </Card>
   );

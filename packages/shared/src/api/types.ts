@@ -182,6 +182,16 @@ export interface DashboardNextAction {
 export interface DashboardMeta {
   cacheHit?: boolean;
   tookMs?: number;
+  /**
+   * Metric key → the phase that will provide its data source.
+   *
+   * A zero on a dashboard reads as "you have none". For a metric whose feature does not
+   * exist yet (the application tracker), that would be a claim the system cannot make, so
+   * the API names it here and the UI says "not tracked yet" instead of showing the zero.
+   */
+  unavailable?: Record<string, string>;
+  /** Metric key → the definition actually used to compute it (`口径`), shipped with the number. */
+  definitions?: Record<string, string>;
 }
 
 /** `data` of `GET /dashboard` (API.md §2.10). */
