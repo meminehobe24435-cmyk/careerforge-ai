@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/OWNER/careerforge-ai/tree/main/docs
+    about: PRD, architecture, database, API, UI and ADRs — most questions are answered here.
+  - name: Architecture decisions
+    url: https://github.com/OWNER/careerforge-ai/blob/main/docs/DECISIONS.md
+    about: Why the project is built this way, and what alternatives were rejected.
+  - name: Security issue
+    url: https://github.com/OWNER/careerforge-ai/blob/main/docs/ARCHITECTURE.md
+    about: Please do not open a public issue for security vulnerabilities.

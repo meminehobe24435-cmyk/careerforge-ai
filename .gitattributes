@@ -1,0 +1,38 @@
+# Normalise line endings across platforms
+* text=auto eol=lf
+
+# Explicit text types
+*.py    text diff=python
+*.ts    text diff=typescript
+*.tsx   text diff=typescript
+*.js    text
+*.json  text
+*.md    text
+*.yml   text
+*.yaml  text
+*.sql   text
+*.toml  text
+*.css   text
+
+# Binary — never normalise, never diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.db    binary
+*.sqlite binary
+
+# Generated / vendored — keep out of language stats and diffs
+pnpm-lock.yaml    -diff linguist-generated
+package-lock.json -diff linguist-generated
+*.min.js          linguist-vendored
+*.min.css         linguist-vendored
+docs/assets/**    linguist-documentation
+docs/**           linguist-documentation
+reports/**        linguist-generated
+evals/datasets/** linguist-data

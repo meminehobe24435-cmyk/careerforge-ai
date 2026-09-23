@@ -1,0 +1,546 @@
+# CareerForge AI · API 设计
+
+| 字段 | 值 |
+|---|---|
+| 文档版本 | v1.0 |
+| Base URL | `http://localhost:8000/api/v1` |
+| 规范 | REST + JSON；流式用 SSE；OpenAPI 3.1 自动生成于 `/api/v1/openapi.json`，交互文档 `/docs` |
+| 关联 | [PRD.md](./PRD.md) · [DATABASE.md](./DATABASE.md) · [UI.md](./UI.md) |
+
+---
+
+## 1. 通用约定
+
+### 1.1 响应信封（所有端点强制）
+
+```jsonc
+// 成功
+{ "success": true, "data": { /* ... */ }, "error": null, "requestId": "req_01HQ8Z..." }
+
+// 失败
+{ "success": false, "data": null,
+  "error": { "code": "VALIDATION_ERROR", "message": "Request validation failed",
+             "details": [{ "field": "username", "issue": "required" }] },
+  "requestId": "req_01HQ8Z..." }
+```
+
+- `requestId` 同时通过响应头 `X-Request-Id` 返回，并写入 `agent_runs.request_id` / `llm_calls.request_id`
+- 客户端可在请求头提供 `X-Request-Id` 用于串联（缺失则服务端生成）
+
+### 1.2 认证
+
+| 项 | 约定 |
+|---|---|
+| 方式 | `Authorization: Bearer <access_token>`（JWT HS256） |
+| 有效期 | access 30 分钟；refresh 7 天（`POST /auth/refresh` 轮换） |
+| Demo | `POST /auth/demo` 无需凭据，返回 Demo 用户 token |
+| 失败 | 缺失/无效 → `401 UNAUTHORIZED`；权限不足 → `403 FORBIDDEN`；**跨用户资源 → `404 NOT_FOUND`**（不泄露存在性） |
+
+### 1.3 分页
+
+统一游标分页（列表端点）：
+
+```jsonc
+// GET /jobs?limit=20&cursor=eyJjcmVhdGVkX2F0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoifQ
+{ "success": true, "data": {
+    "items": [ /* ... */ ],
+    "nextCursor": "eyJjcmVhdGVkX2F0Ijoi..." | null,
+    "total": 42 } }
+```
+
+- `limit` 默认 20，最大 100
+- 支持 `sort`（白名单字段）、`order`（`asc|desc`）、以及各端点声明的过滤参数
+- 偏移分页仅在明确需要（如管理页）时用 `?page=&pageSize=`
+
+### 1.4 长任务约定
+
+耗时 > 2s 的操作返回 `202 Accepted`：
+
+```jsonc
+{ "success": true, "data": { "taskId": "tsk_01HQ...", "status": "queued",
+                             "streamUrl": "/api/v1/tasks/tsk_01HQ.../stream" } }
+```
+
+| 操作方式 | 端点 |
+|---|---|
+| 轮询 | `GET /tasks/{id}` → `{status, progress, stage, result, error}` |
+| 流式 | `GET /tasks/{id}/stream`（SSE，事件 `stage` / `progress` / `result` / `error`） |
+| 取消 | `POST /tasks/{id}/cancel` |
+| 幂等 | 请求头 `Idempotency-Key`，24h 内相同键返回首次结果 |
+
+### 1.5 SSE 事件格式
+
+```
+event: stage
+data: {"stage":"parsing","label":"Analyzing resume","progress":10}
+
+event: delta
+data: {"text":"基于 STM32 "}
+
+event: result
+data: {"<最终结构>"}
+
+event: error
+data: {"code":"AI_PROVIDER_ERROR","message":"..."}
+```
+
+前端必须实现阶段进度 UI（PRD FR-2.4），禁止裸 Spinner。
+
+### 1.6 错误码表
+
+| HTTP | code | 含义 |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | 请求体/参数校验失败（含 `details`） |
+| 400 | `UNSUPPORTED_FILE_TYPE` | 文件类型不在白名单（MIME + 魔数校验失败） |
+| 400 | `FILE_TOO_LARGE` | 超过 10MB |
+| 401 | `UNAUTHORIZED` | 未认证 / token 失效 |
+| 401 | `TOKEN_EXPIRED` | access token 过期（客户端应 refresh） |
+| 403 | `FORBIDDEN` | 权限不足 |
+| 404 | `NOT_FOUND` | 资源不存在或不属于当前用户 |
+| 409 | `CONFLICT` | 唯一约束冲突（如重复导入同 JD） |
+| 413 | `PAYLOAD_TOO_LARGE` | 请求体超限 |
+| 422 | `CLAIM_REJECTED` | 断言未通过证据门禁（业务语义拒绝，非请求错误） |
+| 429 | `RATE_LIMITED` | 触发限流（含 `Retry-After`） |
+| 429 | `AI_BUDGET_EXCEEDED` | 超出用户日 AI 预算（响应中标注已降级 provider） |
+| 502 | `AI_PROVIDER_ERROR` | 上游 LLM 失败（可重试） |
+| 502 | `GITHUB_ERROR` | GitHub API 失败 |
+| 503 | `DEPENDENCY_UNAVAILABLE` | DB/Redis/向量库不可用 |
+| 503 | `AI_PROVIDER_UNAVAILABLE` | 全部 provider 不可用（已尝试降级） |
+| 500 | `INTERNAL_ERROR` | 未预期错误（已记录 requestId） |
+
+### 1.7 速率限制
+
+| 端点组 | 限制 |
+|---|---|
+| 认证（login/register） | 10 / 分钟 / IP |
+| 读端点 | 300 / 分钟 / 用户 |
+| 写端点 | 60 / 分钟 / 用户 |
+| AI 端点（analyze/match/optimize/interview） | 20 / 分钟 / 用户；单用户日预算护栏 |
+| 上传 | 20 / 小时 / 用户 |
+
+响应头：`X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`。
+
+### 1.8 降级可观测字段
+
+AI 相关响应统一携带：
+
+```jsonc
+"meta": { "provider": "deepseek", "model": "deepseek-chat", "promptVersion": "jd_analysis@v2",
+          "degraded": false, "cacheHit": true, "confidence": 0.91, "tookMs": 1420 }
+```
+
+`degraded: true` 表示已从主 provider 降级（如 heuristic），前端必须显示提示徽章 —— **不隐瞒降级**。
+
+---
+
+## 2. 端点总览
+
+### 2.1 认证与账户 `/auth` `/me`
+
+| 方法 | 路径 | 说明 | 认证 |
+|---|---|---|---|
+| POST | `/auth/register` | 注册 | — |
+| POST | `/auth/login` | 登录 | — |
+| POST | `/auth/demo` | 一键 Demo 登录 | — |
+| POST | `/auth/refresh` | 刷新 token | refresh |
+| POST | `/auth/logout` | 注销（吊销 refresh） | ✅ |
+| GET | `/auth/me` | 当前用户 | ✅ |
+| GET | `/me/settings` | 隐私/AI 设置 | ✅ |
+| PATCH | `/me/settings` | 更新设置（Local Mode、公开项、预算） | ✅ |
+| GET | `/me/export` | 导出全部数据（JSON） | ✅ |
+| DELETE | `/me` | 彻底删除账号与数据 | ✅ |
+
+```jsonc
+// POST /auth/demo  → 200
+{ "success": true, "data": {
+    "accessToken": "eyJ...", "refreshToken": "eyJ...", "expiresIn": 1800,
+    "user": { "id": "uuid", "email": "demo@careerforge.ai", "displayName": "Alex Chen",
+              "isDemo": true, "storageScope": "cloud" } } }
+```
+
+### 2.2 画像与 Career Profile `/profile`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/profile` | 完整画像（含 education/experience/project/skill/achievement 聚合） |
+| PATCH | `/profile` | 更新基本信息 |
+| POST | `/profile/import` | 上传简历/文档导入（multipart）→ **202 任务** |
+| POST | `/profile/import/github` | 绑定 GitHub 触发分析 → 202 |
+| GET | `/profile/strength` | Profile Strength 拆解 + 改进建议 |
+| GET/POST | `/profile/educations` · `/experiences` · `/projects` · `/achievements` | 列表 / 新建 |
+| GET/PATCH/DELETE | `/profile/{entity}/{id}` | 详情 / 更新 / 删除 |
+| POST | `/profile/projects/{id}/deep-dive` | Project Deep Dive（WF-09）→ 202 或 200 |
+| POST | `/profile/import/confirm` | 确认/修正抽取结果（`origin=user_corrected`） |
+
+```jsonc
+// GET /profile/strength → 200
+{ "success": true, "data": {
+    "score": 82,
+    "breakdown": [
+      {"key":"completeness","label":"资料完整度","raw":0.90,"weight":0.30,"weighted":27.0,
+       "hint":"补充 1 段实习描述可再 +3"},
+      {"key":"evidenceCoverage","label":"证据覆盖率","raw":0.72,"weight":0.25,"weighted":18.0},
+      {"key":"evidenceQuality","label":"证据质量","raw":0.81,"weight":0.20,"weighted":16.2},
+      {"key":"githubSignal","label":"GitHub 信号","raw":0.78,"weight":0.15,"weighted":11.7},
+      {"key":"achievementBonus","label":"成果加分","raw":0.90,"weight":0.10,"weighted":9.0}
+    ],
+    "suggestions": [
+      {"action":"为 CAN 补充证据","impact":4,"how":"把 CAN 相关代码推到 GitHub 或补充项目文档"}
+    ] } }
+```
+
+### 2.3 文档 `/documents`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/documents` | 上传（multipart `file` + `kind`）→ 202（自动触发 WF-01） |
+| GET | `/documents` | 列表（`?kind=&status=`） |
+| GET | `/documents/{id}` | 详情（Local Mode 下 `rawText` 为 null） |
+| GET | `/documents/{id}/chunks` | 分块列表（调试与解释用） |
+| DELETE | `/documents/{id}` | 删除（级联 chunks/evidence） |
+
+### 2.4 GitHub Intelligence `/github`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/github/analyze` | `{ "username": "..." }` → 202（WF-02） |
+| GET | `/github/profile` | Engineering Profile：语言占比、方向判定、置信度 |
+| GET | `/github/repositories` | 仓库列表（含 `analysis` 摘要） |
+| GET | `/github/repositories/{id}` | 仓库详情（README、关键文件、commits） |
+| POST | `/github/repositories/{id}/reanalyze` | 重新分析（忽略缓存） |
+| GET | `/github/rate-limit` | 当前限额状态 |
+
+```jsonc
+// GET /github/profile → 200
+{ "success": true, "data": {
+    "username": "alexchen",
+    "languages": [ {"name":"C","percent":35.2}, {"name":"Python","percent":25.1},
+                   {"name":"TypeScript","percent":18.4}, {"name":"C++","percent":12.3},
+                   {"name":"Other","percent":9.0} ],
+    "engineeringProfile": [
+      {"label":"Embedded Systems","score":0.92,"signals":["FreeRTOS","STM32 HAL","PID","UART DMA"]},
+      {"label":"Backend","score":0.61,"signals":["FastAPI","PostgreSQL","Docker"]},
+      {"label":"AI Applications","score":0.55,"signals":["RAG","LLM orchestration"]} ],
+    "totalStars": 47, "totalCommitsSampled": 312, "lastAnalyzedAt": "2026-02-11T08:12:00Z",
+    "meta": {"provider":"heuristic","degraded":true,"cacheHit":false,"tookMs":812} } }
+```
+
+### 2.5 证据与图谱 `/evidence` `/evidence-graph` `/claims` ★
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/evidence-graph` | 子图查询：`?focus=skill:stm32&depth=2&types=project,repo_file&limit=` |
+| GET | `/evidence` | 证据列表（`?kind=&minConfidence=&projectId=&since=&q=`） |
+| GET | `/evidence/{id}` | 证据详情（locator、置信度拆解、来源） |
+| POST | `/evidence` | 手工添加证据（`manual` 类型） |
+| DELETE | `/evidence/{id}` | 删除 |
+| GET | `/evidence/{id}/trace` | 反向溯源：该证据支持了哪些 Claim |
+| POST | `/evidence/validate` | **Claim Validator（单条）** — 同步返回 |
+| POST | `/evidence/validate/batch` | 批量验证（≤ 20 条） |
+| GET | `/claims` | 断言列表（`?status=&versionId=&jobId=`） |
+| GET | `/claims/{id}` | 断言详情（含检索详情与判定理由） |
+| POST | `/claims/{id}/accept` · `/reject` | 接受/拒绝 AI 改写建议 |
+| GET | `/claims/{id}/validations` | 验证历史 |
+
+```jsonc
+// GET /evidence-graph?focus=skill:stm32&depth=2 → 200
+{ "success": true, "data": {
+    "nodes": [
+      {"id":"uuid-cand","type":"candidate","label":"Alex Chen","confidence":null},
+      {"id":"uuid-proj","type":"project","label":"Balance Robot","confidence":0.93},
+      {"id":"uuid-file","type":"repo_file","label":"motor_control.c","confidence":0.97,
+       "meta":{"repo":"stm32-balance-car","path":"Core/Src/motor_control.c","locator":{"line":42}}},
+      {"id":"uuid-skill","type":"skill","label":"STM32","confidence":0.95},
+      {"id":"uuid-claim","type":"claim","label":"基于 STM32 + FreeRTOS 开发实时控制系统","confidence":0.92} ],
+    "edges": [
+      {"id":"e1","source":"uuid-proj","target":"uuid-file","relation":"EVIDENCED_BY","confidence":0.97},
+      {"id":"e2","source":"uuid-proj","target":"uuid-skill","relation":"DEMONSTRATES","confidence":0.95},
+      {"id":"e3","source":"uuid-file","target":"uuid-claim","relation":"SUPPORTS","confidence":0.94} ],
+    "meta": {"nodeCount":5,"edgeCount":3,"truncated":false,"depth":2} } }
+```
+
+```jsonc
+// POST /evidence/validate
+// request
+{ "text": "基于 FreeRTOS 开发多任务实时控制系统，任务调度周期 1ms",
+  "jobId": "uuid-job", "projectId": "uuid-proj" }
+
+// 200
+{ "success": true, "data": {
+    "claim": "基于 FreeRTOS 开发多任务实时控制系统，任务调度周期 1ms",
+    "status": "partially_supported",
+    "confidence": 0.68,
+    "hasQuantifiedClaim": true,
+    "sources": [
+      {"evidenceId":"uuid-e1","title":"freertos.c","kind":"repo_file","relevance":0.94,
+       "channel":"both","locator":{"path":"Core/Src/freertos.c","line":18},
+       "url":"https://github.com/.../freertos.c#L18"},
+      {"evidenceId":"uuid-e2","title":"README.md","kind":"readme","relevance":0.81,"channel":"semantic"} ],
+    "reasons": [
+      {"rule":"numeric_without_evidence","severity":"warning",
+       "message":"「1ms 调度周期」在证据中未找到量化支撑，建议删除具体数值或补充实测数据"} ],
+    "safeRewrite": "基于 FreeRTOS 开发多任务实时控制系统，完成任务划分、队列通信与优先级配置",
+    "unknowns": ["实际调度周期未在证据中体现"] } }
+```
+
+**状态语义**：`supported` / `partially_supported` / `unsupported` / `contradicted`（详见 PRD 4.4）。
+
+### 2.6 岗位与匹配 `/jobs`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/jobs/analyze` | `{ "text": "JD..." }` 或 `{ "documentId": "..." }` → 200/202（WF-03） |
+| GET | `/jobs` | 列表（`?status=&companyId=&minScore=&q=`） |
+| GET | `/jobs/{id}` | 详情（含 `analysis`） |
+| GET | `/jobs/{id}/skill-tree` | Required / Preferred / Bonus 三层树（每项带 JD 原文出处） |
+| PATCH | `/jobs/{id}` | 修正解析结果（用户纠正提升 `parse_confidence`） |
+| DELETE | `/jobs/{id}` | 删除 |
+| POST | `/jobs/{id}/match` | 计算匹配（WF-04）→ 同步（确定性评分，快） |
+| GET | `/jobs/{id}/match` | 最新匹配结果（含 `why`） |
+| POST | `/jobs/match` | 不保存 JD 的即时匹配（`{ text, ... }`） |
+| POST | `/jobs/{id}/skill-gap` | 缺口矩阵 |
+| POST | `/jobs/{id}/learning-plan` | 30 天计划 + mini projects（WF-08） |
+| POST | `/jobs/{id}/applications` | 加入投递看板 |
+
+```jsonc
+// POST /jobs/{id}/match → 200
+{ "success": true, "data": {
+    "jobId": "uuid-job", "score": 86.0,
+    "dimensions": {
+      "skill":      {"score": 91.0, "weight": 0.40, "weighted": 36.4,
+                     "matched": ["stm32","freertos","c","embedded_debugging"],
+                     "missed":  ["can","autosar"]},
+      "experience": {"score": 88.0, "weight": 0.25, "weighted": 22.0},
+      "project":    {"score": 84.0, "weight": 0.20, "weighted": 16.8},
+      "education":  {"score": 100.0,"weight": 0.05, "weighted": 5.0},
+      "evidence":   {"score": 78.0, "weight": 0.10, "weighted": 7.8} },
+    "strengths": [ {"skill":"stm32","label":"STM32","reason":"3 个项目 + 12 条代码证据"},
+                   {"skill":"freertos","label":"FreeRTOS","reason":"freertos.c + 任务划分提交"} ],
+    "gaps":  [ {"skill":"can","label":"CAN","severity":"high","jdEvidence":"熟悉 CAN/CANopen 总线"},
+               {"skill":"autosar","label":"AUTOSAR","severity":"high"} ],
+    "unknowns": [ {"skill":"rt_thread","label":"RT-Thread","reason":"简历未提及且无相关证据",
+                   "askUser":"你是否接触过 RT-Thread？"} ],
+    "why": {
+      "formula": "0.40·skill + 0.25·experience + 0.20·project + 0.05·education + 0.10·evidence",
+      "algorithmVersion": "match@1.0.0",
+      "evidenceUsed": ["uuid-e1","uuid-e2","uuid-e7"],
+      "notes": ["证据强度维度因 CAN/AUTOSAR 缺失被扣分，反映「要求但无证据」的真实风险"] } } }
+```
+
+### 2.7 简历 Copilot `/resume`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/resume/optimize` | `{ jobId \| text, versionId?, tones? }` → 202（WF-05） |
+| GET | `/resume/versions` | 版本列表 |
+| GET | `/resume/versions/{id}` | 版本详情（结构化 bullet + claim 状态） |
+| POST | `/resume/versions/{id}/rollback` | 回滚为当前版本 |
+| PATCH | `/resume/versions/{id}/claims/{claimId}` | 接受/拒绝单条改写 |
+| GET | `/resume/versions/{id}/export?format=md\|pdf` | 导出 |
+| GET | `/resume/diff?from=&to=` | 版本对比 |
+
+```jsonc
+// GET /resume/versions/{id} → 200（节选）
+{ "success": true, "data": {
+    "id": "uuid-v3", "label": "Embedded Engineer @ 某公司 定制版",
+    "targetJobId": "uuid-job", "integrityScore": 0.86,
+    "claimStats": {"supported": 11, "partiallySupported": 3, "unsupported": 1, "contradicted": 0},
+    "bullets": [
+      { "id":"uuid-c1", "section":"project", "status":"supported", "confidence":0.92,
+        "original":"参与无人机项目开发。",
+        "optimized":"基于 PX4 完成无人机控制链路集成与调试，负责嵌入式控制模块、通信接口及飞控参数验证。",
+        "evidence":[{"evidenceId":"uuid-e9","title":"px4_ctrl.cpp","kind":"repo_file"}] },
+      { "id":"uuid-c2", "section":"project", "status":"contradicted", "confidence":0.21,
+        "original":"优化算法性能，提升 70%。",
+        "optimized":null,
+        "reasons":[{"rule":"numeric_without_evidence","severity":"blocker",
+                    "message":"「70%」无任何实测数据支撑，已拒绝写入简历"}],
+        "safeRewrite":"重构控制回路，降低单周期计算开销（需补充实测数据后可量化表述）" } ] } }
+```
+
+### 2.8 面试 `/interview`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/interview/start` | `{ mode, jobId?, projectId?, difficulty? }` → 返回 session + 首题 |
+| POST | `/interview/{id}/message` | 提交回答 → 返回下一题（含 `evaluate` 与难度变化） |
+| GET | `/interview/{id}/stream` | SSE 流式出题（推荐） |
+| POST | `/interview/{id}/finish` | 结束并生成 Scorecard |
+| GET | `/interview/{id}` | 会话详情（含全部消息） |
+| GET | `/interview/{id}/scorecard` | 七维评分卡 |
+| GET | `/interview` | 历史列表（`?mode=&status=`） |
+| POST | `/interview/{id}/abandon` | 放弃（保留记录） |
+
+```jsonc
+// POST /interview/start
+{ "mode": "technical", "jobId": "uuid-job", "difficulty": 1 }
+
+// 200
+{ "success": true, "data": {
+    "interviewId": "uuid-iv", "mode": "technical", "status": "in_progress",
+    "plan": [ {"topic":"freertos","targetLevel":1,"reason":"简历与 freertos.c 证据命中岗位要求"},
+              {"topic":"spi_debugging","targetLevel":2,"reason":"项目含 SPI 传感器驱动"} ],
+    "message": { "turnIndex": 0, "role": "interviewer", "questionLevel": 1, "topic": "freertos",
+                 "content": "你在 Balance Robot 里用了 FreeRTOS，为什么选择它而不是裸机前后台？" } } }
+
+// POST /interview/{id}/message  → 200
+{ "success": true, "data": {
+    "evaluation": { "turnIndex": 0, "score": 7.5, "technicalAccuracy": 0.8, "depth": 0.6,
+                    "missingKnowledge": ["优先级反转与互斥量优先级继承"],
+                    "feedback": "概念正确，但未涉及中断与任务的同步边界。" },
+    "difficultyChange": { "from": 1, "to": 2, "reason": "回答正确，进入工程层追问" },
+    "message": { "turnIndex": 1, "role": "interviewer", "questionLevel": 2, "topic": "freertos",
+                 "content": "Task 与 ISR 之间你用什么方式通信？为什么不用全局变量？" } } }
+```
+
+```jsonc
+// GET /interview/{id}/scorecard → 200
+{ "success": true, "data": {
+    "overallScore": 78.0,
+    "dimensions": [
+      {"key":"technicalAccuracy","label":"技术准确性","score":82},
+      {"key":"communication","label":"表达沟通","score":75},
+      {"key":"depth","label":"技术深度","score":70},
+      {"key":"problemSolving","label":"问题解决","score":80},
+      {"key":"engineeringThinking","label":"工程思维","score":76},
+      {"key":"confidence","label":"自信度","score":79},
+      {"key":"evidenceConsistency","label":"证据一致性","score":88} ],
+    "evidenceConflicts": [
+      {"claim":"熟悉 CAN 总线","evidenceState":"图谱中无 CAN 相关证据",
+       "severity":"medium","advice":"面试前补齐或调整表述，避免追问失分"} ],
+    "perQuestion": [ {"turnIndex":0,"topic":"freertos","level":1,"verdict":"strong",
+                      "suggestedAnswer":"…","followUpTopics":["Queue vs Semaphore","优先级反转"]} ],
+    "followUpTopics": ["FreeRTOS 内存管理 heap_4","中断延迟测量方法"],
+    "durationSeconds": 942 } }
+```
+
+### 2.9 投递看板 `/applications`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/applications` | 列表（`?status=&includeArchived=`），按 `status` 分组返回 |
+| POST | `/applications` | 新建（`{ jobId \| manual fields, status }`） |
+| GET | `/applications/{id}` | 详情（含事件历史） |
+| PATCH | `/applications/{id}` | 更新字段/状态（状态变更自动写 `application_events`） |
+| PATCH | `/applications/reorder` | 拖拽排序 `{ items:[{id,status,position}] }` |
+| GET | `/applications/{id}/events` | 状态变更历史 |
+| DELETE | `/applications/{id}` | 删除 |
+
+### 2.10 分析 `/dashboard` `/analytics`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/dashboard` | 聚合首页数据（一次请求，含缓存） |
+| GET | `/analytics/funnel` | 漏斗 `?range=30d\|90d\|all` |
+| GET | `/analytics/rates` | Interview/Offer/Response Rate |
+| GET | `/analytics/skill-correlation` | 技能 ↔ 面试成功率（含样本量） |
+| GET | `/analytics/categories` | 岗位类别表现排行 |
+| GET | `/analytics/timeline` | Career Timeline 事件流 |
+
+```jsonc
+// GET /dashboard → 200
+{ "success": true, "data": {
+    "profileStrength": {"score": 82, "delta7d": 3},
+    "stats": {"evidenceCoverage":0.72,"skillCoverage":0.68,"resumeMatch":0.84,
+              "applications":23,"interviews":5,"offers":1},
+    "skillsRadar": [ {"skill":"C/C++","user":0.92,"market":0.71},
+                     {"skill":"Python","user":0.80,"market":0.88},
+                     {"skill":"Embedded","user":0.95,"market":0.62},
+                     {"skill":"Backend","user":0.58,"market":0.74},
+                     {"skill":"AI","user":0.62,"market":0.80},
+                     {"skill":"System Design","user":0.55,"market":0.76},
+                     {"skill":"DevOps","user":0.60,"market":0.58} ],
+    "recentJobs": [ {"jobId":"uuid-j1","company":"某科技","role":"Embedded Engineer",
+                     "matchScore":87,"status":"interview"},
+                    {"jobId":"uuid-j2","company":"某 AI 公司","role":"AI Application Engineer",
+                     "matchScore":81,"status":"applied"} ],
+    "nextActions": [ {"type":"interview","title":"某科技 二面","at":"2026-02-14T09:00:00Z"} ],
+    "meta": {"cacheHit":false,"tookMs":146} } }
+```
+
+### 2.11 AI 可观测性与成本 `/ai-runs` `/ai-costs`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/ai-runs` | 列表（`?agent=&workflow=&status=&since=`） |
+| GET | `/ai-runs/{id}` | 详情（步骤链、输入输出摘要、token、成本） |
+| GET | `/ai-costs/summary` | 日 token 用量 / 成本（`?range=7d\|30d`） |
+| GET | `/ai-costs/by-agent` | 每 Agent 成本与调用次数 |
+| GET | `/ai-costs/by-feature` | 每功能（JD 分析/简历优化/面试…）成本 |
+| GET | `/cache/stats` | 三类缓存命中率 |
+| GET | `/prompts` | Prompt Registry 列表（name/version/sha/isActive） |
+
+### 2.12 公开候选人页与分享 `/public`
+
+| 方法 | 路径 | 认证 | 说明 |
+|---|---|---|---|
+| GET | `/public/candidate/{slug}` | — | 公开画像（受 `sections` 控制，自动 PII 脱敏） |
+| POST | `/public/publish` | ✅ | 发布/取消发布 |
+| PATCH | `/public/settings` | ✅ | 逐项可见性设置 |
+| GET | `/public/candidate/{slug}/evidence/{skillId}` | — | 某技能的公开证据（Recruiter View 点击展开） |
+
+### 2.13 系统与搜索 `/system` `/search` `/tasks`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/system/health` | API / DB / Redis / Vector / LLM provider 状态 |
+| GET | `/system/info` | 版本、构建时间、commit hash、Python/Node 版本、provider 配置（脱敏） |
+| GET | `/search?q=FreeRTOS` | 全局搜索：分组返回 skills / projects / evidence / jobs / interviews |
+| GET | `/tasks/{id}` | 异步任务状态 |
+| GET | `/tasks/{id}/stream` | 任务进度 SSE |
+| POST | `/tasks/{id}/cancel` | 取消任务 |
+
+```jsonc
+// GET /search?q=FreeRTOS → 200
+{ "success": true, "data": {
+    "query": "FreeRTOS",
+    "groups": [
+      {"type":"skill","items":[{"id":"uuid-s","label":"FreeRTOS","evidenceCount":9,"confidence":0.94}]},
+      {"type":"project","items":[{"id":"uuid-p","label":"Balance Robot","matchScore":0.91}]},
+      {"type":"evidence","items":[{"id":"uuid-e","label":"freertos.c","kind":"repo_file","relevance":0.94}]},
+      {"type":"job","items":[{"id":"uuid-j","label":"Embedded Engineer @ 某科技","mentions":2}]}
+    ],
+    "total": 14, "meta": {"tookMs":38} } }
+```
+
+---
+
+## 3. 契约与代码生成
+
+| 项 | 做法 |
+|---|---|
+| 单一事实来源 | Pydantic Schema → OpenAPI 3.1 → 前端类型自动生成 |
+| 生成命令 | `pnpm gen:api`（`openapi-typescript` + 轻量 fetch 客户端封装） |
+| CI 校验 | `pnpm gen:api && git diff --exit-code` —— 契约漂移即失败 |
+| 版本兼容 | `/api/v1` 路径版本；破坏性变更升 `/v2`；`meta.algorithmVersion` 标记评分算法版本 |
+| 前端校验 | 关键响应用 zod 二次校验（防后端异常返回导致 UI 崩溃） |
+
+---
+
+## 4. 示例：完整调用链（面试演示）
+
+```bash
+# 1) Demo 登录
+curl -s -X POST localhost:8000/api/v1/auth/demo | jq -r .data.accessToken
+
+# 2) 分析 JD
+curl -s -X POST localhost:8000/api/v1/jobs/analyze \
+  -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"text":"Embedded Software Engineer ... 熟悉 STM32/FreeRTOS/CAN ..."}' | jq .data.id
+
+# 3) 匹配
+curl -s -X POST localhost:8000/api/v1/jobs/$JOB/match -H "Authorization: Bearer $T" | jq .data.score
+
+# 4) 验证一句可能有问题的简历描述
+curl -s -X POST localhost:8000/api/v1/evidence/validate \
+  -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"text":"优化系统性能，提升 70%"}' | jq '.data.status, .data.safeRewrite'
+
+# 5) 打开证据图谱（stm32 子图）
+curl -s "localhost:8000/api/v1/evidence-graph?focus=skill:stm32&depth=2" \
+  -H "Authorization: Bearer $T" | jq '.data.meta'
+```
+
+---
+
+**下一篇**：[UI.md](./UI.md)

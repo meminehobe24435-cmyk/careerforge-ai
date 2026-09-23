@@ -1,0 +1,97 @@
+name: Bug report
+description: Report something that is broken
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please include the `requestId` from the API response
+        if you have one — it links directly to the agent run trace in the AI Runs page.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Evidence Graph
+        - JD analysis / job matching
+        - Resume Copilot / claim validation
+        - Interview Simulator
+        - Application tracker / analytics
+        - Recruiter view
+        - AI observability / costs
+        - Auth / API platform
+        - Docker / deployment
+        - Frontend UI / accessibility
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runmode
+    attributes:
+      label: How are you running it?
+      options:
+        - Docker Compose (PostgreSQL + Redis)
+        - Local, without Docker (SQLite + in-process queue)
+        - Deployed instance
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider in use
+      options:
+        - heuristic (no API key)
+        - deepseek
+        - openai
+        - ollama
+        - not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / error output
+      description: Redact secrets and personal data before pasting.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: request-id
+    attributes:
+      label: requestId (optional)
+      placeholder: req_01HQ8Z...
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v1.0.0 or git sha
+    validations:
+      required: false

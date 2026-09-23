@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a capability or an improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check `docs/PRD.md` § Non-Goals — some things are
+        deliberately out of scope (e.g. auto-applying to jobs, fully automated
+        resume writing, payment systems).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Evidence Graph
+        - JD analysis / job matching
+        - Resume Copilot / claim validation
+        - Interview Simulator
+        - Application tracker / analytics
+        - Recruiter view
+        - AI observability / costs
+        - Retrieval / RAG quality
+        - Platform / developer experience
+        - Integrations (browser extension, VS Code, GitHub App)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user need, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      description: This project has strong design constraints. Please confirm your proposal is compatible.
+      options:
+        - label: It does not require a paid API key to function (heuristic provider must still work)
+        - label: It does not rely on the LLM to produce numeric scores
+        - label: It does not introduce an unverifiable claim into generated resume content
+        - label: It can run in the zero-Docker local mode (or degrades gracefully)

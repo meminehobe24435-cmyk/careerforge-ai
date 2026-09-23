@@ -1,0 +1,74 @@
+# ── Environment & secrets ────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Node / pnpm ──────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.eslintcache
+coverage/
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ── Local runtime data ───────────────────────────────────────
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+uploads/
+
+# ── Generated artifacts ──────────────────────────────────────
+reports/*.json
+reports/*.md
+
+# ── Playwright ───────────────────────────────────────────────
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# ── OS / editors ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+
+# ── Logs / temp ──────────────────────────────────────────────
+*.log
+logs/
+tmp/
+temp/
