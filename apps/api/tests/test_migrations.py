@@ -135,13 +135,14 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
     """The head is a deliberate list, not a wildcard: a migration that appears without
     its phase being finished should fail this test, not silently become the head."""
     script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
-    assert script.get_heads() == ["0005"]
+    assert script.get_heads() == ["0006"]
     for revision in (
         "0001_initial",
         "0002_documents",
         "0003_evidence",
         "0004_jobs",
         "0005_profile_entities",
+        "0006_resume",
     ):
         assert (APPS_API / "alembic" / "versions" / f"{revision}.py").exists()
 
@@ -163,6 +164,10 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
         "jobs",
         "job_skills",
         "job_matches",
+        # PHASE 6
+        "resume_versions",
+        "resume_claims",
+        "claim_evidence",
         # PHASE 2b
         "educations",
         "experiences",

@@ -58,6 +58,7 @@ from careerforge_api.routers import (
     evidence,
     jobs,
     profile,
+    resume,
     system,
     tasks,
 )
@@ -209,6 +210,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(jobs.router, prefix=resolved.api_prefix)
     application.include_router(dashboard.router, prefix=resolved.api_prefix)
     application.include_router(profile.router, prefix=resolved.api_prefix)
+    application.include_router(resume.router, prefix=resolved.api_prefix)
+    application.include_router(resume.validator_router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)

@@ -9,6 +9,7 @@ PHASE 2 — documents and their chunks (§2.3).
 PHASE 3 — evidence and the graph edges over it (§2.5).
 PHASE 4 — job postings, their skill requirements and computed matches (§2.6).
 PHASE 2b — the structured career entities: education, experience, projects, achievements (§2.2).
+PHASE 6 — résumé versions, their claims, and the claim→evidence links (§2.9).
 """
 
 from __future__ import annotations
@@ -62,6 +63,15 @@ from careerforge_api.models.profile_entity import (
     Project,
 )
 from careerforge_api.models.prompt import PromptVersion
+from careerforge_api.models.resume import (
+    CLAIM_SECTIONS,
+    CLAIM_STATUSES,
+    RESUME_SOURCES,
+    RETRIEVAL_CHANNELS,
+    ClaimEvidence,
+    ResumeClaim,
+    ResumeVersion,
+)
 from careerforge_api.models.skill import SKILL_CATEGORIES, Skill
 from careerforge_api.models.user import (
     ROLE_VALUES,
@@ -72,6 +82,13 @@ from careerforge_api.models.user import (
 )
 
 __all__ = [
+    "ResumeVersion",
+    "ResumeClaim",
+    "ClaimEvidence",
+    "RETRIEVAL_CHANNELS",
+    "RESUME_SOURCES",
+    "CLAIM_STATUSES",
+    "CLAIM_SECTIONS",
     "Project",
     "ProfileSkillRow",
     "Experience",

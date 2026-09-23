@@ -238,6 +238,15 @@ class AIService:
     def provider_name(self) -> str:
         return self._provider.name
 
+    def embedder(self) -> Any:
+        """The provider, for callers that need embeddings rather than completions.
+
+        The retriever's vector arm takes anything with an ``embed`` method, and the provider
+        already satisfies that port. Handing it over explicitly keeps the choice visible: a
+        caller that wants lexical-only retrieval simply passes nothing.
+        """
+        return self._provider
+
     def executor(self) -> WorkflowExecutor:
         """An executor whose traces are persisted through this request's session.
 
