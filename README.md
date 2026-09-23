@@ -8,6 +8,7 @@
 </p>
 
 <!-- Badges: activated in PHASE 15 once the remote repository exists -->
+
 ![Status](https://img.shields.io/badge/status-in%20development-orange)
 ![Phase](https://img.shields.io/badge/phase-7%20%2F%2015-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -56,27 +57,27 @@ Every claim that lands on your resume must be traceable to something real — a 
 
 ## Core capabilities
 
-| # | Capability | What it actually does |
-|---|---|---|
-| 01 | **Career Evidence Graph** | Interactive heterogeneous graph linking claims → skills → projects → repositories → files → commits, with a **deterministic confidence score** per evidence node |
-| 02 | **JD Intelligence** | Structured JD parsing into a required / preferred / bonus skill tree, with the original JD sentence attached to every extracted skill |
-| 03 | **Explainable Job Match** | 5-dimension weighted score (Skill 40 / Experience 25 / Project 20 / Education 5 / Evidence 10) with a `Why 86?` breakdown of formulas and contributing evidence — reproducible, not vibes |
-| 04 | **AI Resume Copilot + Hallucination Gate** | Bullet-level resume diff where **every generated sentence passes a claim validator**; unsupported claims are rejected, weak ones get a safer rewrite |
-| 05 | **Adaptive Interview Simulator** | Six interview modes; questions generated from *your* JD, resume and evidence graph; difficulty escalates L1 concept → L2 engineering → L3 debugging |
-| 06 | **Career Analytics & Pipeline** | Application kanban, funnel/response/offer rates, and skill ↔ interview-success correlation with honest sample-size labelling |
-| 07 | **Recruiter View** | A public, login-free candidate page where a recruiter can click any skill and see the underlying evidence — an interactive resume instead of a PDF |
-| 08 | **AI Observability** | Every agent run, token, latency, cost and prompt version recorded; three-level caching with visible hit rates and budget guardrails |
+| #   | Capability                                 | What it actually does                                                                                                                                                                     |
+| --- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01  | **Career Evidence Graph**                  | Interactive heterogeneous graph linking claims → skills → projects → repositories → files → commits, with a **deterministic confidence score** per evidence node                          |
+| 02  | **JD Intelligence**                        | Structured JD parsing into a required / preferred / bonus skill tree, with the original JD sentence attached to every extracted skill                                                     |
+| 03  | **Explainable Job Match**                  | 5-dimension weighted score (Skill 40 / Experience 25 / Project 20 / Education 5 / Evidence 10) with a `Why 86?` breakdown of formulas and contributing evidence — reproducible, not vibes |
+| 04  | **AI Resume Copilot + Hallucination Gate** | Bullet-level resume diff where **every generated sentence passes a claim validator**; unsupported claims are rejected, weak ones get a safer rewrite                                      |
+| 05  | **Adaptive Interview Simulator**           | Six interview modes; questions generated from _your_ JD, resume and evidence graph; difficulty escalates L1 concept → L2 engineering → L3 debugging                                       |
+| 06  | **Career Analytics & Pipeline**            | Application kanban, funnel/response/offer rates, and skill ↔ interview-success correlation with honest sample-size labelling                                                              |
+| 07  | **Recruiter View**                         | A public, login-free candidate page where a recruiter can click any skill and see the underlying evidence — an interactive resume instead of a PDF                                        |
+| 08  | **AI Observability**                       | Every agent run, token, latency, cost and prompt version recorded; three-level caching with visible hit rates and budget guardrails                                                       |
 
 ### What makes it different
 
-| | Typical AI resume tool | Generic LLM chat | **CareerForge AI** |
-|---|---|---|---|
-| Generated content is traceable to sources | ❌ | ❌ | ✅ **claim → evidence provenance** |
-| Defends against fabricated claims | ❌ | ❌ | ✅ **validator + confidence gate** |
-| Match score is explainable | ❌ single % | ⚠️ prose | ✅ **5-dim weighted + `Why?`** |
-| Reads real code evidence | ❌ | ⚠️ manual paste | ✅ **file- and commit-level** |
-| Interview prep uses your own data | ❌ generic bank | ⚠️ stateless | ✅ **JD + evidence graph driven** |
-| Works with **zero** API keys | ❌ | ❌ | ✅ **deterministic heuristic provider** |
+|                                           | Typical AI resume tool | Generic LLM chat | **CareerForge AI**                      |
+| ----------------------------------------- | ---------------------- | ---------------- | --------------------------------------- |
+| Generated content is traceable to sources | ❌                     | ❌               | ✅ **claim → evidence provenance**      |
+| Defends against fabricated claims         | ❌                     | ❌               | ✅ **validator + confidence gate**      |
+| Match score is explainable                | ❌ single %            | ⚠️ prose         | ✅ **5-dim weighted + `Why?`**          |
+| Reads real code evidence                  | ❌                     | ⚠️ manual paste  | ✅ **file- and commit-level**           |
+| Interview prep uses your own data         | ❌ generic bank        | ⚠️ stateless     | ✅ **JD + evidence graph driven**       |
+| Works with **zero** API keys              | ❌                     | ❌               | ✅ **deterministic heuristic provider** |
 
 ---
 
@@ -94,15 +95,15 @@ Ports               LLMProvider · VectorStore · Queue · GitHub · Storage
 Infrastructure      PostgreSQL + pgvector · Redis · Worker · Object storage
 ```
 
-| Component | Choice | Why |
-|---|---|---|
-| Frontend | Next.js 15 + RSC | SSR performance, no theme flash, data-dense dashboards |
-| Backend | FastAPI + Pydantic v2 | One schema definition constrains both the HTTP contract **and** LLM structured output |
-| Database | PostgreSQL 16 + pgvector | Relational + vector + full-text in a single transaction |
-| Retrieval | Hybrid (dense + FTS) with **RRF** | Technical nouns (`STM32F407`, `heap_4`) need lexical recall; intent needs semantics |
-| Agents | **Custom orchestrator** | Explicit, testable, observable DAG — no framework magic |
-| Scoring | **Deterministic** | Reproducible, explainable, regression-testable; LLM never produces numbers |
-| Local mode | SQLite + in-process queue + heuristic provider | The whole product runs and demos with **no Docker, no Redis, no API key** |
+| Component  | Choice                                         | Why                                                                                   |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Frontend   | Next.js 15 + RSC                               | SSR performance, no theme flash, data-dense dashboards                                |
+| Backend    | FastAPI + Pydantic v2                          | One schema definition constrains both the HTTP contract **and** LLM structured output |
+| Database   | PostgreSQL 16 + pgvector                       | Relational + vector + full-text in a single transaction                               |
+| Retrieval  | Hybrid (dense + FTS) with **RRF**              | Technical nouns (`STM32F407`, `heap_4`) need lexical recall; intent needs semantics   |
+| Agents     | **Custom orchestrator**                        | Explicit, testable, observable DAG — no framework magic                               |
+| Scoring    | **Deterministic**                              | Reproducible, explainable, regression-testable; LLM never produces numbers            |
+| Local mode | SQLite + in-process queue + heuristic provider | The whole product runs and demos with **no Docker, no Redis, no API key**             |
 
 Full design: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · Decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md)
 
@@ -110,16 +111,16 @@ Full design: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · Decisions: [`do
 
 ## Documentation
 
-| Document | Contents |
-|---|---|
-| [PRD.md](./docs/PRD.md) | Product definition, personas, requirements, non-goals, risks |
-| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System design, agent orchestration, RAG pipeline, security |
-| [DATABASE.md](./docs/DATABASE.md) | 32-table schema, indexes, pgvector config, local parity layer |
-| [API.md](./docs/API.md) | REST surface, error codes, SSE contracts, rate limits |
-| [UI.md](./docs/UI.md) | Design system, tokens, sitemap, page specs, a11y, responsiveness |
-| [ROADMAP.md](./docs/ROADMAP.md) | 16 phases with exit criteria and progress tracker |
-| [DECISIONS.md](./docs/DECISIONS.md) | 22 ADRs with rejected alternatives |
-| INTERVIEW.md | How to present this project (60s / 3min / 5min deep dive) — PHASE 14 |
+| Document                                  | Contents                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| [PRD.md](./docs/PRD.md)                   | Product definition, personas, requirements, non-goals, risks         |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System design, agent orchestration, RAG pipeline, security           |
+| [DATABASE.md](./docs/DATABASE.md)         | 32-table schema, indexes, pgvector config, local parity layer        |
+| [API.md](./docs/API.md)                   | REST surface, error codes, SSE contracts, rate limits                |
+| [UI.md](./docs/UI.md)                     | Design system, tokens, sitemap, page specs, a11y, responsiveness     |
+| [ROADMAP.md](./docs/ROADMAP.md)           | 16 phases with exit criteria and progress tracker                    |
+| [DECISIONS.md](./docs/DECISIONS.md)       | 22 ADRs with rejected alternatives                                   |
+| INTERVIEW.md                              | How to present this project (60s / 3min / 5min deep dive) — PHASE 14 |
 
 ---
 
@@ -200,7 +201,13 @@ email:    demo@careerforge.ai
 password: (demo login button — no password required)
 ```
 
-The demo account is seeded with a complete candidate (Alex Chen): 3 projects, 9 skills, ~180 evidence records, 12 analyzed jobs, 16 applications, 5 interviews. **No page is ever empty.**
+The demo account exists so the login flow is one click. On a **fresh database it is empty**:
+the seed creates the account, the prompt registry mirror and the skill taxonomy, and nothing
+else. The rich dataset (projects, evidence, jobs, applications, interviews) is a separate,
+self-consistent seed script that asserts its own consistency — each `resume_claim`'s evidence
+must really exist, and each `evidence.confidence` must satisfy the database's CHECK formula —
+and it lands with the phase that completes the surfaces it fills. Until then every page has an
+honest empty state rather than placeholder rows.
 
 ---
 
@@ -221,21 +228,21 @@ Produced by `python evals/run.py` on the current commit and committed to
 [`reports/eval-report.json`](reports/eval-report.json), so these numbers can be
 checked rather than trusted. Provider: **heuristic** (the zero-API-key path).
 
-| Suite | Metric | Result | Target |
-|---|---|---|---|
-| JD extraction | required-skill F1 | **0.883** | ≥ 0.85 |
-| JD extraction | required-skill precision / recall | 0.791 / **1.000** | — |
-| JD extraction | company-blurb distractor leakage | **0.000** | ≤ 0.05 |
-| JD extraction | quoted-evidence grounding | **1.000** | = 1.00 |
-| JD extraction | role / location / education / years accuracy | **1.000** / **1.000** / **1.000** / 0.950 | ≥ 0.90 |
-| JD extraction | requirement-level accuracy | 0.946 | — |
-| Claim validation | fabricated-metric rejection | **1.000** | = 1.00 |
-| Claim validation | false "supported" rate | **0.000** | ≤ 0.05 |
-| Claim validation | supported-claim recall | **1.000** | ≥ 0.85 |
-| Claim validation | safer-rewrite offered | 0.489 | — |
-| Retrieval | Recall@5 | **0.966** (57/59) | ≥ 0.95 |
-| Retrieval | Recall@1 | 0.847 | — |
-| Retrieval | MRR | 0.901 | ≥ 0.85 |
+| Suite            | Metric                                       | Result                                    | Target |
+| ---------------- | -------------------------------------------- | ----------------------------------------- | ------ |
+| JD extraction    | required-skill F1                            | **0.883**                                 | ≥ 0.85 |
+| JD extraction    | required-skill precision / recall            | 0.791 / **1.000**                         | —      |
+| JD extraction    | company-blurb distractor leakage             | **0.000**                                 | ≤ 0.05 |
+| JD extraction    | quoted-evidence grounding                    | **1.000**                                 | = 1.00 |
+| JD extraction    | role / location / education / years accuracy | **1.000** / **1.000** / **1.000** / 0.950 | ≥ 0.90 |
+| JD extraction    | requirement-level accuracy                   | 0.946                                     | —      |
+| Claim validation | fabricated-metric rejection                  | **1.000**                                 | = 1.00 |
+| Claim validation | false "supported" rate                       | **0.000**                                 | ≤ 0.05 |
+| Claim validation | supported-claim recall                       | **1.000**                                 | ≥ 0.85 |
+| Claim validation | safer-rewrite offered                        | 0.489                                     | —      |
+| Retrieval        | Recall@5                                     | **0.966** (57/59)                         | ≥ 0.95 |
+| Retrieval        | Recall@1                                     | 0.847                                     | —      |
+| Retrieval        | MRR                                          | 0.901                                     | ≥ 0.85 |
 
 **The datasets are generated with exact ground truth, not scraped** — real job ads
 carry no labels, so precision and recall would be unmeasurable. They should be
@@ -243,13 +250,13 @@ read as indicators on a controlled corpus, not as market-representative accuracy
 
 ### Known weaknesses, measured rather than omitted
 
-| Weakness | Value | Cause |
-|---|---|---|
-| Bonus-skill F1 | 0.776 | Bonus skills are sparse and their phrasing is the most varied of the three levels |
-| Required-skill precision | 0.791 | Residual over-extraction when a technology appears outside any recognised section |
-| Safer-rewrite rate | 0.489 | A rewrite is only offered when a clause can actually be dropped; many claims are single-clause |
-| Claim threshold margin | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
-| Retrieval paraphrase misses | 2 / 59 | The zero-key character-n-gram embedding misses two intent-style queries; both are recorded in the report with the ids returned instead |
+| Weakness                    | Value         | Cause                                                                                                                                                                                                                                                         |
+| --------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bonus-skill F1              | 0.776         | Bonus skills are sparse and their phrasing is the most varied of the three levels                                                                                                                                                                             |
+| Required-skill precision    | 0.791         | Residual over-extraction when a technology appears outside any recognised section                                                                                                                                                                             |
+| Safer-rewrite rate          | 0.489         | A rewrite is only offered when a clause can actually be dropped; many claims are single-clause                                                                                                                                                                |
+| Claim threshold margin      | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
+| Retrieval paraphrase misses | 2 / 59        | The zero-key character-n-gram embedding misses two intent-style queries; both are recorded in the report with the ids returned instead                                                                                                                        |
 
 The measurement loop is the point. The first run of these suites reported
 **100% distractor leakage**, a **13.3% false-support rate**, and a **0.675
@@ -273,7 +280,7 @@ built is the failure mode this project is about.
 
 ## Security & privacy
 
-- **Prompt injection:** untrusted documents are wrapped as declared *data*, never spliced into instruction positions; all LLM output is schema-validated
+- **Prompt injection:** untrusted documents are wrapped as declared _data_, never spliced into instruction positions; all LLM output is schema-validated
 - **File uploads:** MIME + magic-number validation, size caps, parser timeouts, sandboxed execution
 - **Auth:** JWT with resource-level authorization; cross-tenant access returns `404`, not `403`
 - **Secrets:** environment-only, validated at startup, redacted in logs
@@ -299,8 +306,8 @@ CareerForge AI is a portfolio-grade system, not a production SaaS. Known boundar
 ## Roadmap
 
 See [ROADMAP.md](./docs/ROADMAP.md). Current: **PHASE 0 ✅ → PHASE 1 ✅ → PHASE 2 ✅ (incl. 2b) → PHASE 3 ✅ → PHASE 4 ✅ →
-PHASE 5 ✅ → PHASE 6 ✅ (the claim gate)
-→ PHASE 7 (application tracker and analytics)**.
+PHASE 5 ✅ → PHASE 6 ✅ (the claim gate) → PHASE 7 ✅ (interview simulator) → PHASE 8 ✅ (application tracker)
+→ PHASE 9 (career analytics)**.
 
 ---
 

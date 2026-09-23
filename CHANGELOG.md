@@ -6,6 +6,61 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 8c · The board, and the frontend's first tests
+
+- `/app/applications`: seven columns in the documented order, cards carrying the FR-13.3 fields
+  (company, role, location, salary, status, match score, date, notes), a create dialog for the
+  referral that has no posting yet, and a grouped list view on narrow screens where seven
+  columns and page-scrolling fight each other.
+- **A keyboard path that can actually change columns.** dnd-kit's stock
+  `sortableKeyboardCoordinates` only walks the sortable items of the column the drag started in,
+  so with it a card picked up by keyboard can be reordered within its column and never moved to
+  another one — the single thing the board is for. `lib/keyboard-coordinates.ts` is ours: the
+  drag's current rectangle is the origin, the nearest droppable in the pressed direction is the
+  target, and because columns are droppables too an _empty_ column is reachable. `→` moves one
+  column, `→→` moves two (the position accumulates), `↓` reorders within the column.
+- A card menu (move / archive / delete) that calls exactly the same mutation as a drag. It is the
+  primary path on touch, the discoverable path for anyone who does not know a board is draggable,
+  and the only place archive and delete live.
+- **Vitest + Testing Library**, the frontend's first test runner: 32 tests covering the board's
+  arithmetic, its rendering, its keyboard drag, and its rollback. The runner exists because the
+  phase's exit criterion is an accessibility assertion, and an a11y claim that nothing executes is
+  a claim, not a guarantee.
+- `smoke:api` grew from 7 checks to 11: it now creates a card through the real client, runs the
+  new `isApplicationBoard` guard against the real response, asserts the seven columns arrive in
+  the documented order, reorders, and deletes — cleaning up after itself, because a smoke test
+  that leaves cards behind changes the numbers the next run measures.
+
+### Fixed — PHASE 8c
+
+- **`pnpm-workspace.yaml` carried pnpm's own error text as a value.** `allowBuilds.esbuild` was
+  literally `set this to true or false`, copied from the message it was meant to silence, so every
+  install failed with that same message. It is `true` now, with both dependencies that need to
+  compile named and explained.
+- **Value imports inside a workspace package broke one of the three runtimes that load it.**
+  `packages/shared` is consumed as source by Next's bundler, by Vitest, and by Node's
+  `--experimental-strip-types` loader (the smoke script). Node resolves specifiers literally, so
+  turning `guards.ts`'s `./types` import from a type-only import into a value import (for
+  `APPLICATION_STATUSES`) made the smoke test fail with `ERR_MODULE_NOT_FOUND` while the app and
+  the tests stayed green. Package-internal imports now carry explicit `.ts` extensions, permitted
+  by `allowImportingTsExtensions` (ADR-023).
+- **The README claimed the demo account was seeded with a complete candidate** — "3 projects, 9
+  skills, ~180 evidence records, 12 analyzed jobs, 16 applications, 5 interviews. No page is ever
+  empty." A fresh database has an empty demo account; the numbers described a seed script that
+  does not exist yet. The section now says what the seed actually creates and why the rest is
+  deliberately absent until the surfaces it fills exist.
+- The dashboard's local fallback definitions for `applications` / `interviews` / `offers` had
+  drifted from the API's own wording (the `interviews` fallback described the funnel meaning while
+  the API ships the snapshot meaning).
+
+### Notes — PHASE 8c
+
+Pointer dragging is exercised by the component tests only in its _decision_ logic: jsdom has no
+layout and no `PointerEvent`, so the gesture itself — and the visual result of 280px columns on a
+real screen — is verified in a real browser in PHASE 13. What is verified now: the keyboard drag
+end to end, the menu path, the optimistic render before the server answers, the rollback and its
+toast, and the board arithmetic against the server's rule.
+
 ### Added — PHASE 8b · The application tracker, and a dashboard that stops guessing
 
 - `applications`, `application_events` and `career_events` (§2.7, §2.11) with migration
@@ -17,7 +72,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   included, with `counts` and `total`. A missing key would force the client to guess, and
   a guessed board draws the wrong columns the day a stage is added.
 - **Every status change writes an `application_events` row**, which is what PHASE 9's
-  funnel will read. A move to the *same* status writes nothing: a within-column drag is a
+  funnel will read. A move to the _same_ status writes nothing: a within-column drag is a
   reorder, and an event log full of `applied → applied` makes one application look like
   several.
 - `career_events` finally has a writer: the milestones a candidate would put on a CV
@@ -80,7 +135,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   candidate's own wording is kept beside the rewrite so a reviewer can judge whether the
   optimised version invented something.
 - A claim can exist without a résumé version, which is what makes the Validator page possible:
-  a sentence someone is *considering*, checked before it reaches a document.
+  a sentence someone is _considering_, checked before it reaches a document.
 
 ### Fixed — PHASE 6b
 
@@ -105,7 +160,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A safer rewrite is no longer offered when it would still assert something unsupported.** If
   stripping the numbers leaves a technology name the evidence cannot carry, keeping the name and
   deleting the digits states the same unsupportable thing while hiding that something was removed.
-  Rule blockers now decline to rewrite in that case; a blocker that is *only* a number still gets a
+  Rule blockers now decline to rewrite in that case; a blocker that is _only_ a number still gets a
   rewrite, because removing the number is exactly the correct repair.
 - **The blocking rules no longer soften under retrieval.** A rule blocker with hits used to fall
   through to `partially_supported`, which relabelled a fabricated number with a gentler verdict.
@@ -123,7 +178,7 @@ Verified against a running API on a fresh database: the fabricated sentence retu
 with all three reasons; the supported one gains the `single_source_only` note; neither gets a
 rewrite. Every eval metric is unchanged — `numeric_rejection_rate 1.0000`,
 `over_support_rate 0.0000`, `safer_rewrite_rate 0.6222`, `support_recall 1.0000` — so the three
-fixes changed what the gate *says*, not how strict it is.
+fixes changed what the gate _says_, not how strict it is.
 
 ### Known limitations — PHASE 6c
 
@@ -138,7 +193,7 @@ marked `origin=heuristic` and correctable, but imperfect.
 - `educations`, `experiences`, `projects`, `achievements` and `profile_skills` (§2.2) with
   migration `0005`, verified column-for-column against the ORM models.
 - `POST /profile/import` extracts entities from text or from a stored document and persists
-  them; `GET /profile` returns what is stored. Both are the *assembled* profile every other
+  them; `GET /profile` returns what is stored. Both are the _assembled_ profile every other
   feature reads, so what a client shows and what the system scores cannot diverge.
 - `origin` is returned on every entity and every declared skill: a row a model extracted and
   nobody has checked stays visibly different from one a candidate corrected.
@@ -211,7 +266,7 @@ marked `origin=heuristic` and correctable, but imperfect.
 
 ### Fixed — PHASE 4
 
-- **The evidence dimension measured the wrong list.** It was computed over the *highlighted*
+- **The evidence dimension measured the wrong list.** It was computed over the _highlighted_
   skills — those whose effective level clears 0.5 — so a candidate satisfying five
   requirements, each with evidence behind it, scored **0.00** on the dimension whose entire
   purpose is to measure that evidence. Measured live: evidence 0.0 → 87.0, total score
