@@ -133,7 +133,15 @@ def _skill_dimension(
     skill_evidence: Mapping[str, Sequence[UUID]],
     skill_confidence: Mapping[str, float],
     skill_categories: Mapping[str, SkillCategory],
-) -> tuple[MatchDimension, list[MatchedSkill], list[MissedSkill], list[UnknownSkill]]:
+) -> tuple[
+    MatchDimension, list[MatchedSkill], list[MissedSkill], list[UnknownSkill], list[MatchedSkill]
+]:
+    """Score the skill dimension.
+
+    Returns ``(dimension, advertised, gaps, unknowns, met)``. ``advertised`` holds the
+    requirements strong enough to lead with (effective level ≥ 0.5); ``met`` holds every
+    requirement the candidate satisfies, which is what the evidence dimension measures.
+    """
     skills_by_id = {item.skill.canonical_id.lower(): item for item in profile.skills}
     evidenced_categories = {
         item.skill.category for item in profile.skills if item.evidence_count > 0
@@ -142,6 +150,7 @@ def _skill_dimension(
     weighted_total = 0.0
     weight_sum = 0.0
     matched: list[MatchedSkill] = []
+    met: list[MatchedSkill] = []
     gaps: list[MissedSkill] = []
     unknowns: list[UnknownSkill] = []
     evidence_ids: list[UUID] = []
@@ -177,6 +186,21 @@ def _skill_dimension(
         if verdict == "met":
             weighted_total += weight * effective
             evidence_ids.extend(evidence)
+            # Every met requirement is recorded, with its evidence — the evidence dimension
+            # measures the requirements the candidate actually satisfies.
+            met.append(
+                MatchedSkill(
+                    canonical_id=canonical,
+                    display_name=profile_skill.skill.display_name if profile_skill else canonical,
+                    requirement=requirement,
+                    user_level=profile_skill.level if profile_skill else SkillLevel.NONE,
+                    evidence_count=profile_skill.evidence_count if profile_skill else 0,
+                    confidence=confidence,
+                    reason=(f"{profile_skill.evidence_count} 条证据，置信度 {confidence:.2f}")
+                    if profile_skill
+                    else "",
+                )
+            )
             if effective >= 0.5:
                 assert profile_skill is not None  # "met" implies the candidate has it
                 matched.append(
@@ -231,7 +255,7 @@ def _skill_dimension(
         ],
         evidence_ids=evidence_ids[:200],
     )
-    return dimension, matched, gaps, unknowns
+    return dimension, matched, gaps, unknowns, met
 
 
 def _experience_dimension(job: JDAnalysis, profile: CandidateProfile) -> MatchDimension:
@@ -358,13 +382,17 @@ def compute_job_match(
     confidence_map = {k.lower(): v for k, v in (skill_confidence or {}).items()}
     category_map = {k.lower(): v for k, v in (skill_categories or {}).items()}
 
-    skill_dim, matched, gaps, unknowns = _skill_dimension(
+    skill_dim, matched, gaps, unknowns, met = _skill_dimension(
         job, profile, evidence_map, confidence_map, category_map
     )
     experience_dim = _experience_dimension(job, profile)
     project_dim = _project_dimension(job, profile)
     education_dim = education_dimension(job, profile)
-    evidence_dim, evidence_coverage = _evidence_dimension(matched, confidence_map)
+    # Measured over *met* requirements, not over the highlighted ones. ``matched`` is
+    # filtered to the skills strong enough to advertise (effective level ≥ 0.5), and using
+    # that list here made the dimension read 0.00 for a candidate who satisfies five
+    # requirements with real evidence behind them.
+    evidence_dim, evidence_coverage = _evidence_dimension(met, confidence_map)
 
     dimensions = {
         MatchDimensionKey.SKILL: skill_dim,

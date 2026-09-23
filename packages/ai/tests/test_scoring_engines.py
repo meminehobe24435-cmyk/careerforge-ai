@@ -16,10 +16,15 @@ from uuid import uuid4
 
 import pytest
 
-from careerforge_ai.schemas.common import GapLevel, RequirementLevel, SkillCategory
-from careerforge_ai.schemas.job import JDAnalysis
+from careerforge_ai.schemas.common import (
+    GapLevel,
+    RequirementLevel,
+    SkillCategory,
+    SkillLevel,
+)
+from careerforge_ai.schemas.job import JDAnalysis, JDSkill
 from careerforge_ai.schemas.match import MatchDimensionKey
-from careerforge_ai.schemas.profile import CandidateProfile
+from careerforge_ai.schemas.profile import CandidateProfile, ProfileSkill, SkillRef
 from careerforge_ai.scoring.match import DEFAULT_MATCH_WEIGHTS, compute_job_match
 from careerforge_ai.scoring.profile_strength import EvidenceStats, compute_profile_strength
 from careerforge_ai.scoring.skill_gap import compute_skill_gap_matrix
@@ -86,6 +91,49 @@ class TestJobMatch:
     def test_evidenced_required_skills_become_strengths(self, result) -> None:
         strengths = {item.canonical_id for item in result.strengths}
         assert {"stm32", "free_rtos", "c"} <= strengths
+
+    def test_the_evidence_dimension_measures_met_requirements_not_highlights(self) -> None:
+        """A met requirement with evidence must score above zero.
+
+        The dimension used the *advertised* skill list — those whose effective level clears
+        0.5 — so a candidate satisfying five requirements at MODERATE level with real
+        evidence behind them scored 0.00 on the dimension whose entire purpose is to measure
+        that evidence. Built here with one piece of evidence per skill, which is exactly the
+        shape a single uploaded résumé produces.
+        """
+        profile = CandidateProfile(
+            slug="evidence-probe",
+            skills=[
+                ProfileSkill(
+                    skill=SkillRef(
+                        canonical_id="stm32", display_name="STM32", category=SkillCategory.EMBEDDED
+                    ),
+                    level=SkillLevel.MODERATE,
+                    evidence_count=1,
+                )
+            ],
+        )
+        job = JDAnalysis(
+            role="Embedded Engineer",
+            required_skills=[
+                JDSkill(
+                    canonical_id="stm32",
+                    raw_text="STM32",
+                    requirement=RequirementLevel.REQUIRED,
+                    jd_evidence="熟悉 STM32",
+                )
+            ],
+        )
+        result = compute_job_match(
+            job=job,
+            profile=profile,
+            skill_confidence={"stm32": 0.8},
+            skill_categories={"stm32": SkillCategory.EMBEDDED},
+        )
+        assert result.dimensions["evidence"].score > 0.0, result.dimensions["evidence"].notes
+        # ... and the skill is met even though it is not strong enough to advertise.
+        assert result.strengths == []
+        assert {item.canonical_id for item in result.gaps} == set()
 
     def test_absent_required_skill_in_an_active_domain_is_a_gap(self, result) -> None:
         # CAN is embedded; the candidate demonstrably has embedded evidence, so
