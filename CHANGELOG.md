@@ -6,6 +6,60 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 9 · Career analytics, and the discipline of a small sample
+
+- `careerforge_ai/analytics/` — the funnel, the rates, the correlation, the categories and the
+  trend, as **pure functions in the framework-free core** (ADR-022). No model produces a number
+  here: every figure is arithmetic over rows the candidate's own activity created, so one
+  implementation serves the API, the tests and the eval harness. 28 unit tests pin the
+  boundaries — an empty cohort, one application, every card rejected, a skill that splits the
+  cohort into one group, a month with no activity.
+- `GET /analytics/funnel`, `/rates`, `/skill-correlation`, `/categories`, `/timeline`
+  (FR-14.1–14.5), each carrying `meta` with its window, its sample policy and the **basis of
+  every stage**. Five endpoints share one cohort read, so the panels of one page cannot describe
+  two different sets of applications.
+- `/app/analytics`: a hand-drawn SVG funnel, the rate cards, the correlation table, the category
+  table and the monthly trend, behind a 7d/30d/90d/all switcher. 21 frontend tests, including the
+  two the exit criteria name — an insufficient sample says 样本不足 next to the number, and the
+  switcher refetches every panel.
+
+Three decisions the numbers forced:
+
+- **The funnel counts what was reached, not what is current.** A card applied → interviewed →
+  rejected is `rejected` on the board and _was interviewed_ in the funnel. PHASE 8b documented the
+  same distinction when it defined the dashboard's `interviews` as a snapshot; this is the other
+  half of it, and the live check prints both numbers beside each other.
+- **A rate never travels alone.** Each card carries its numerator, denominator, a Wilson 95%
+  interval and a `sufficient` flag; the minimum sample is 5 and the response says so. A rate of
+  100% from one interview ships with the interval that admits how little is known, and `0/0` is
+  `null` rather than 0%.
+- **A step rate can be undefined.** Zero offers out of zero final rounds is `null`, not 100% — the
+  first version of this engine called it a perfect conversion. The test that catches it now states
+  the distinction between "a real zero" (no replies from one application) and "no denominator".
+
+### Fixed — PHASE 9
+
+- **The trend chart's month-prefix loop never terminated.** Extending the axis backwards from the
+  earliest activity walked _further_ back each iteration, because every earlier month is also less
+  than the window's first key: 36 seconds of CPU with no output, and the test that reaches that
+  branch hung instead of failing. It walks forwards now, and is bounded.
+- **`?range=` was silently ignored.** The handler's parameter was named `range_key`, and FastAPI
+  takes the query-parameter name from the parameter — so `?range=7d` fell back to the default 30d
+  and `?range=1y` answered 200 with a 30-day result. Now aliased. A defect that raises no error and
+  returns the same answer for every window is the kind that survives a demo.
+- **Every application appeared twice on the timeline.** The board wrote a `career_events` milestone
+  when a card was created _and_ when it was actually applied to, so the trend counted each
+  application twice. `wishlist` is no longer a milestone: adding a bookmark is not an act. The
+  audit trail still records the creation, which is where that belongs.
+- **`Counter` cannot hold fractional weights.** The category weighting multiplies by skill weight,
+  and `Counter[str]` is typed over `int` — mypy flagged the assignment that would otherwise have
+  silently truncated every preferred-skill weight to zero.
+- **A schema comment claimed the wrong denominator.** `cohortSize` was documented as "the
+  denominator of the funnel and of every rate below it"; it is really the pool (cards created in
+  the window, wishlist included) while the funnel's denominator is its first stage. Found by
+  comparing the docstring against live output. A wrong note about what a number means is worse than
+  no note, because it reads as verified.
+
 ### Added — PHASE 8c · The board, and the frontend's first tests
 
 - `/app/applications`: seven columns in the documented order, cards carrying the FR-13.3 fields

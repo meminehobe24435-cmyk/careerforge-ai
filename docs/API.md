@@ -753,10 +753,28 @@ AI 相关响应统一携带：
 
 ### 2.11 分析 `/dashboard` `/analytics`
 
-> **状态：`/dashboard` 已实现（PHASE 5，PHASE 8b 补齐投递指标），`/analytics/*` 未实现（PHASE 9）。**
+> **状态：`/dashboard` 已实现（PHASE 5，PHASE 8b 补齐投递指标），`/analytics/*` 已实现（PHASE 9）。**
 > 有意**不缓存**（与本文档的「含缓存」不同）：这里的每个数字都由用户几秒前才可能改动的行
 > 推导而来（上传简历、跑一次匹配），一个和上一页互相矛盾的缓存首页比多花 30ms 更糟。
-> 缓存属于昂贵的聚合端点 `/analytics/*`，这也是路线图安排的位置。
+> **分析页的每个数字都由事件流确定性算出，没有任何模型参与**（ADR-022 的同一原则：
+> 模型可以叙述一个给定的数字，不能发明一个数字）。
+>
+> **两种时间窗口，各自写在响应里**：漏斗 / 比率 / 相关性 / 类别按**投递的创建时间**过滤
+> （同期群：分母与分子来自同一批投递），`/analytics/timeline` 按**事件发生时间**过滤
+> （「这段时间发生了什么」）。`meta.windowBasis` 明确写出用的是哪一种——否则同一个「30d」
+> 会被读成两件事。`meta.fromAt/toAt/cohortSize/minimumSample` 随数字一起下发。
+>
+> **一个比率永远不单独出现**：每张比率卡都带 `numerator` / `denominator` / Wilson 95% 区间 /
+> `sufficient`；分母小于 `minimumSample`（5）时界面显示「样本不足，仅供参考」。
+> 分母为 0 时 `rate` 是 `null`（不是 0）——「没有投递」不等于「投递成功率为 0%」。
+> 漏斗的 `stepRate` 在上一阶段为 0 时是 `null`：0 个终面里出 0 个 Offer 不是 100% 转化率。
+>
+> **漏斗数的是「到达过」，不是「现在在哪」**：投递→面试→被拒的卡片在看板上是 `rejected`，
+> 在漏斗里**算作进过面试**（这也是 §2.11 中 `interviews` 快照口径与漏斗口径本就不同的原因）。
+> 每个阶段都带 `basis` 字段说明自己的计数规则；`wishlist` 卡片不算投递。
+> 技能的相关系数同时给出「要求它的岗位」与「未要求的岗位」两组，差异只有在两组都达到样本下限
+> **且** 95% 区间不重叠时才标记 `notable`——小样本下任何两个比例都能排出高低。
+> 岗位类别由岗位要求技能的词典分类加权得出，不是人工标签；无法归类记为 `unknown` 而不丢弃。
 > `applications` / `interviews` / `offers` 自 PHASE 8b 起是**真实计数**（`meta.unavailable` 因此为空，
 > 但机制保留：下一个「先上数字、后接数据源」的功能还要用它）。`interviews` 是**看板快照**——
 > 当前处于 `interview`/`final`/`offer` 的卡片数；曾进面试但已结束的不计入，漏斗口径按事件流统计，
@@ -768,11 +786,41 @@ AI 相关响应统一携带：
 | 方法 | 路径                           | 说明                                               |
 | ---- | ------------------------------ | -------------------------------------------------- |
 | GET  | `/dashboard`                   | 聚合首页数据（一次请求；每个指标附带口径与可用性） |
-| GET  | `/analytics/funnel`            | 漏斗 `?range=30d\|90d\|all` — PHASE 9              |
-| GET  | `/analytics/rates`             | Interview/Offer/Response Rate — PHASE 9            |
-| GET  | `/analytics/skill-correlation` | 技能 ↔ 面试成功率（含样本量）— PHASE 9             |
-| GET  | `/analytics/categories`        | 岗位类别表现排行 — PHASE 9                         |
-| GET  | `/analytics/timeline`          | Career Timeline 事件流 — PHASE 9                   |
+| GET  | `/analytics/funnel`            | 漏斗 `?range=7d\|30d\|90d\|all`（默认 30d）✅      |
+| GET  | `/analytics/rates`             | Interview/Offer/Response Rate + 均分 ✅            |
+| GET  | `/analytics/skill-correlation` | 技能 ↔ 面试成功率（两组样本量 + 显著性说明）✅     |
+| GET  | `/analytics/categories`        | 岗位类别表现排行 ✅                                |
+| GET  | `/analytics/timeline`          | Career Timeline 事件流 + 月度趋势 ✅               |
+
+```jsonc
+// GET /analytics/funnel?range=all → 200（真机实测：6 张卡片，其中 1 张仍是 wishlist）
+{ "success": true, "data": {
+    "meta": { "range": "all", "fromAt": null, "toAt": "2026-03-01T00:00:00Z",
+              "cohortSize": 6, "minimumSample": 5, "windowBasis": "applications",
+              "notes": ["range 过滤的是**投递的创建时间**（同期群）…"] },
+    "stages": [
+      {"key":"applications","label":"投递","count":5,"shareOfFirst":1.0,"stepRate":1.0,
+       "basis":"曾离开 wishlist 的卡片（来自事件流，不是当前状态）"},
+      {"key":"replies","label":"有回复","count":3,"shareOfFirst":0.6,"stepRate":0.6,
+       "basis":"曾进入 oa/interview/final/offer，或投递后被拒（被拒也是回复）"},
+      {"key":"interviews","label":"面试","count":2,"shareOfFirst":0.4,"stepRate":0.6667,
+       "basis":"曾进入 interview/final/offer"},
+      {"key":"finals","label":"终面","count":1,"shareOfFirst":0.2,"stepRate":0.5,
+       "basis":"曾进入 final/offer"},
+      {"key":"offers","label":"Offer","count":1,"shareOfFirst":0.2,"stepRate":1.0,
+       "basis":"曾进入 offer"} ] } }
+
+// GET /analytics/rates?range=all → 200（同上场景，注意 1/5 恰好达到样本下限）
+{ "success": true, "data": { "meta": { "...": "同上" }, "cards": [
+    {"key":"responseRate","label":"Response Rate","rate":0.6,"numerator":3,"denominator":5,
+     "sufficient":true,"intervalLow":0.23,"intervalHigh":0.88,
+     "definition":"有回复的投递 ÷ 全部投递（分母：本区间内投出 5 次）"},
+    {"key":"interviewRate","label":"Interview Rate","rate":0.4,"numerator":2,"denominator":5,
+     "sufficient":true,"intervalLow":0.12,"intervalHigh":0.77,"definition":"…"},
+    {"key":"averageMatchScore","label":"Avg Match Score","rate":null,"numerator":0,"denominator":0,
+     "sufficient":false,"intervalLow":0.0,"intervalHigh":0.0,
+     "definition":"本区间内已评分卡片的平均匹配分 ÷ 100（分母：0 张有分数的卡片；未评分的卡片不计入，也不按 0 计）"} ] } }
+```
 
 ```jsonc
 // GET /dashboard → 200
