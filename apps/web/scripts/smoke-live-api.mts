@@ -24,7 +24,17 @@ import {
   DEFAULT_API_BASE_URL,
   createApiClient,
 } from '../../../packages/shared/src/api/client.ts';
-import { isDashboardResponse, isRecord, toServiceHealthStatus } from '../../../packages/shared/src/api/guards.ts';
+import {
+  isApplicationBoard,
+  isDashboardResponse,
+  isRecord,
+  toServiceHealthStatus,
+} from '../../../packages/shared/src/api/guards.ts';
+import {
+  APPLICATION_STATUSES,
+  type ApplicationBoardResponse,
+  type ApplicationStatus,
+} from '../../../packages/shared/src/api/types.ts';
 
 const baseUrl = process.env['API_BASE_URL']?.trim() || DEFAULT_API_BASE_URL;
 
@@ -143,7 +153,64 @@ async function main(): Promise<void> {
     fail('GET /jobs', error);
   }
 
-  /* 6. An error path: the envelope must still be an envelope. */
+  /* 6. The application board: create → guard → move → reorder → delete.
+   *
+   * This is the only check that writes. It cleans up after itself, because a smoke test that
+   * leaves cards behind changes the dashboard numbers of the next run — and a test that
+   * alters the thing it measures eventually fails for the wrong reason. */
+  try {
+    const created = await client.post<Record<string, unknown>>('/applications', {
+      company: 'Smoke 测试公司',
+      role: '契约测试岗',
+      status: 'wishlist',
+      notes: 'smoke-live-api.mts 创建，运行结束时删除',
+    });
+    const cardId = created['id'];
+    if (typeof cardId !== 'string') throw new Error('POST /applications returned no id');
+    pass('POST /applications', `id=${cardId.slice(0, 8)} status=${String(created['status'])}`);
+
+    const raw = await client.get<unknown>('/applications/board');
+    if (!isApplicationBoard(raw)) {
+      throw new Error(
+        `GET /applications/board is not the documented shape (七列不全或卡片缺少 id/status/company)`,
+      );
+    }
+    const board: ApplicationBoardResponse = raw;
+    pass(
+      'GET /applications/board',
+      `columns=${board.columns.length} total=${board.total} archived=${board.archived}`,
+    );
+
+    const statuses = board.columns.map((column) => column.status);
+    if (statuses.join(',') !== APPLICATION_STATUSES.join(',')) {
+      throw new Error(`board column order drifted: got ${statuses.join(',')}`);
+    }
+    pass('board column order', statuses.join(' · '));
+
+    await client.patch(`/applications/reorder`, {
+      items: [{ id: cardId, status: 'interview' satisfies ApplicationStatus, position: 0 }],
+    });
+    const moved = await client.get<Record<string, unknown>>(`/applications/${cardId}`);
+    if (moved['status'] !== 'interview') {
+      throw new Error(`expected the card in interview, got ${String(moved['status'])}`);
+    }
+    const events = Array.isArray(moved['events']) ? moved['events'] : [];
+    pass(
+      'PATCH /applications/reorder',
+      `status=interview events=${events.length} (每次变更都留痕)`,
+    );
+
+    await client.delete(`/applications/${cardId}`);
+    const gone = await client.get<unknown>(`/applications/${cardId}`).then(
+      () => 'still there',
+      (error: unknown) => (error instanceof ApiError ? error.code : String(error)),
+    );
+    pass('DELETE /applications/:id', `deleted, then GET → ${gone}`);
+  } catch (error) {
+    fail('applications board', error);
+  }
+
+  /* 7. An error path: the envelope must still be an envelope. */
   try {
     await client.get('/definitely-not-a-route');
     fail('GET unknown route', new Error('expected a 404, got a success'));

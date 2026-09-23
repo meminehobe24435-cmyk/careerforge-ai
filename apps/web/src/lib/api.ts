@@ -2,7 +2,14 @@ import {
   ApiError,
   DEFAULT_API_BASE_URL,
   createApiClient,
+  isApplicationBoard,
+  isApplicationDetail,
   isDashboardResponse,
+  type ApplicationBoardResponse,
+  type ApplicationCreateRequest,
+  type ApplicationDetail,
+  type ApplicationReorderItem,
+  type ApplicationUpdateRequest,
   type DashboardResponse,
   type DemoLoginResponse,
   type LoginRequest,
@@ -55,6 +62,49 @@ async function fetchSystemHealth(): Promise<SystemHealthResponse> {
   return client.get<SystemHealthResponse>('/system/health', { auth: false });
 }
 
+/**
+ * `GET /applications/board` (API.md §2.9) — validated before the board can render it.
+ *
+ * The guard requires all seven columns, so a backend that dropped one fails loudly here
+ * instead of producing a board that silently shows six stages.
+ */
+async function fetchApplicationBoard(
+  options: { includeArchived?: boolean } = {},
+): Promise<ApplicationBoardResponse> {
+  const data = await client.get<unknown>('/applications/board', {
+    query: options.includeArchived ? { includeArchived: true } : undefined,
+  });
+  if (!isApplicationBoard(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message:
+        'GET /applications/board 返回的结构与 docs/API.md §2.9 不一致（七列不全或卡片缺少 id/status/company）',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
+async function reorderApplications(items: ApplicationReorderItem[]): Promise<unknown> {
+  return client.patch<unknown>('/applications/reorder', { items });
+}
+
+async function fetchApplication(id: string): Promise<ApplicationDetail> {
+  const data = await client.get<unknown>(`/applications/${id}`);
+  if (!isApplicationDetail(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /applications/{id} 返回的结构与 docs/API.md §2.9 不一致',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
 
@@ -67,6 +117,16 @@ export const api = {
   /* dashboards */
   dashboard: fetchDashboard,
   systemHealth: fetchSystemHealth,
+
+  /* application tracker (API.md §2.9) */
+  applicationBoard: fetchApplicationBoard,
+  application: fetchApplication,
+  createApplication: (payload: ApplicationCreateRequest) =>
+    client.post<unknown>('/applications', payload),
+  updateApplication: (id: string, payload: ApplicationUpdateRequest) =>
+    client.patch<unknown>(`/applications/${id}`, payload),
+  reorderApplications,
+  deleteApplication: (id: string) => client.delete<void>(`/applications/${id}`),
 
   /* escape hatch for phases that have not landed yet */
   request: client.request,

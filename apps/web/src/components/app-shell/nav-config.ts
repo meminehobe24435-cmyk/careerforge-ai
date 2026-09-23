@@ -159,8 +159,8 @@ export const navGroups: NavGroup[] = [
         label: '投递看板',
         en: 'Applications',
         icon: Target,
-        phase: 'PHASE 9',
-        live: false,
+        shortcut: 'g a',
+        live: true,
       },
       {
         href: '/app/ai-runs',

@@ -57,19 +57,22 @@ const STAT_DEFINITIONS: StatDefinition[] = [
     key: 'applications',
     label: 'Applications',
     kind: 'count',
-    definition: '投递看板中的岗位总数，含所有阶段（Wishlist → Offer）。',
+    definition: '投递看板中未归档的卡片总数（含 wishlist：想看但还没投的也算在跟）。',
   },
   {
     key: 'interviews',
     label: 'Interviews',
     kind: 'count',
-    definition: '已进入面试阶段的投递数量。',
+    // The API ships this definition with the number; this copy is the fallback for a backend
+    // that omits `meta.definitions`, and it says "snapshot" because a reader who assumed the
+    // funnel meaning would read the number as wrong the first time a rejection appeared.
+    definition: '当前处于面试阶段的卡片数（interview + final + offer）——看板快照，不是漏斗口径。',
   },
   {
     key: 'offers',
     label: 'Offers',
     kind: 'count',
-    definition: '已获得 Offer 的数量。',
+    definition: '当前状态为 offer 的卡片数。',
   },
 ];
 

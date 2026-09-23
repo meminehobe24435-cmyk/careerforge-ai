@@ -12,4 +12,10 @@ export const queryKeys = {
   system: {
     health: () => ['system', 'health'] as const,
   },
+  applications: {
+    /** Everything under this prefix is invalidated when a card changes. */
+    all: () => ['applications'] as const,
+    board: (includeArchived = false) => ['applications', 'board', { includeArchived }] as const,
+    detail: (id: string) => ['applications', 'detail', id] as const,
+  },
 } as const;

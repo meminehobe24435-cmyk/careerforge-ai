@@ -27,6 +27,8 @@
     "noEmit": true,
     "incremental": false,
 
+    "allowImportingTsExtensions": true,
+
     "paths": {
       "@careerforge/shared": ["../../shared/src/index.ts"],
       "@careerforge/ui": ["../../ui/src/index.ts"],
