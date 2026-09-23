@@ -45,10 +45,10 @@ NEXT    — 下一阶段目标
 | 4 | JD Analyzer | JD 结构化解析、技能树、解析基准 | ⬜ |
 | 5 | Job Matching | 五维可解释评分 + Why 展开 + Gaps/Unknowns（引擎与 Agent 已完成） | 🔄 进行中 |
 | 6 | Resume Copilot | 生成 + 验证门禁 + Diff + 版本管理（Agent 已完成） | 🔄 进行中 |
-| 7 | Interview Simulator | 六模式、自适应难度、Scorecard、证据一致性 | ⬜ |
+| 7 | Interview Simulator | 六模式、自适应难度、Scorecard、证据一致性（Agent 已完成） | 🔄 进行中 |
 | 8 | Application Tracker | 看板、拖拽、事件历史、Timeline | ⬜ |
 | 9 | Career Analytics | 漏斗、比率、技能相关性、类别表现 | ⬜ |
-| 10 | Recruiter View | 公开页、证据交互、隐私控制、PII 脱敏 | ⬜ |
+| 10 | Recruiter View | 公开页、证据交互、隐私控制、PII 脱敏（RecruiterAgent 待实现） | ⬜ |
 | 11 | AI Observability | AI Runs、成本看板、缓存、Prompt Registry | ⬜ |
 | 12 | Tests & Evals | 单测/集成/E2E + 评测框架与真实报告 | ⬜ |
 | 13 | UI Polish | 四档响应式、A11y、动效、三态、Command Palette | ⬜ |
@@ -256,7 +256,9 @@ graph LR
 | 2026-02-11 | PHASE 5a | eat(agents): MatchAgent | WF-04 可解释匹配；叙述 schema 无任何数值字段，结构上无法改动分数 |
 | 2026-02-11 | PHASE 2b | 
 | 2026-02-11 | PHASE 6a | eat(agents): ResumeAgent | WF-05 简历 Copilot：每条 bullet 过门禁；被拦截的断言附具体补证建议；修复「无检索器时全部判为无证据」与「verdict 忽略直接传入的证据文本」两个真实缺陷 |
-| 2026-02-11 | PHASE 8a | eat(agents): CoachAgent | WF-08 技能缺口 → 30 天计划；每个缺口必须产出 mini project；修复 horizon 未通过结构化通道传递的缺陷 |
+| 2026-02-11 | PHASE 8a | 
+| 2026-02-11 | PHASE 7a | `feat(agents): InterviewAgent` | WF-07 自适应面试：三条工作流（start/turn/finish）；难度阶梯为纯函数可边界测试；证据一致性由集合比较得出；修复 7 处真实缺陷（起始问题读取未赋值计划、评估器把答案当问题、三个维度是推导而非测量等） |
+| 2026-02-11 | PHASE 7b | `refactor(agents): split interview into a package` | interview.py 854 行超限 → 拆为 plan/turns/scorecard/agent；并用行为断言替换了一个读取源码文本的假测试 |eat(agents): CoachAgent | WF-08 技能缺口 → 30 天计划；每个缺口必须产出 mini project；修复 horizon 未通过结构化通道传递的缺陷 |
 | 2026-02-11 | PHASE 1d | 待提交（API 层） | 独立验证：apps/api 142 测试通过；实际启动服务并 curl 验证信封 / 404 / 401 / Demo 登录 / refresh / system.info 全部符合契约 |eat(agents): ProfileAgent and EvidenceAgent | WF-01 简历导入、WF-02 材料转证据图谱；修复标题行残余被当作正文的真实缺陷；reinstall 可编辑安装以消除陈旧副本 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
