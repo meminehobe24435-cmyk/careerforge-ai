@@ -28,7 +28,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CHAR, DateTime, JSON, Numeric
+from sqlalchemy import CHAR, JSON, DateTime, Numeric
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import TypeDecorator, TypeEngine
 

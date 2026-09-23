@@ -24,6 +24,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from careerforge_api.core.errors import ApiError, error_from_status
 from careerforge_api.core.ids import new_request_id
+from careerforge_api.middleware.headers import (
+    ENVELOPE_COMPLETE_HEADER,
+    has_envelope_marker,
+    strip_internal_headers,
+)
 from careerforge_api.middleware.request_id import request_id_of
 
 __all__ = [
@@ -31,12 +36,21 @@ __all__ = [
     "EnvelopeMiddleware",
     "envelope",
     "error_envelope",
+    "has_envelope_marker",
+    "is_passthrough_path",
+    "strip_internal_headers",
 ]
 
-#: Internal handshake header between the error handlers and this middleware.
-ENVELOPE_COMPLETE_HEADER = "X-Envelope-Complete"
-_ENVELOPE_HEADER_BYTES = ENVELOPE_COMPLETE_HEADER.lower().encode("latin-1")
-_ENVELOPE_DONE = "1"
+#: JSON endpoints that must **not** be enveloped: the OpenAPI document and the
+#: interactive docs are consumed by tooling (`pnpm gen:api` in ``docs/API.md`` §3,
+#: Swagger UI, IDE clients) that expects a plain OpenAPI 3.1 document. Wrapping them
+#: would break frontend type generation while looking harmless in a browser.
+_PASSTHROUGH_SUFFIXES = ("/openapi.json",)
+_PASSTHROUGH_PATHS = frozenset({"/docs", "/redoc", "/docs/oauth2-redirect"})
+
+
+def is_passthrough_path(path: str) -> bool:
+    return path in _PASSTHROUGH_PATHS or path.endswith(_PASSTHROUGH_SUFFIXES)
 
 
 def envelope(data: Any, *, request_id: str) -> dict[str, Any]:
@@ -78,6 +92,10 @@ class EnvelopeMiddleware:
             return
 
         request_id = request_id_of(scope) or new_request_id()
+        if is_passthrough_path(str(scope.get("path", ""))):
+            await self.app(scope, receive, send)
+            return
+
         buffer: list[bytes] = []
         wrap = False
         start_message: Message = {"type": "http.response.start", "status": 200, "headers": []}
@@ -86,22 +104,15 @@ class EnvelopeMiddleware:
             nonlocal wrap, start_message
 
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers") or [])
-                already_enveloped = any(key.lower() == _ENVELOPE_HEADER_BYTES for key, _ in headers)
-                stripped = {
-                    **message,
-                    "headers": [
-                        (key, value)
-                        for key, value in headers
-                        if key.lower() != _ENVELOPE_HEADER_BYTES
-                    ],
-                }
-                start_message = stripped
+                raw_headers = list(message.get("headers") or [])
+                already_enveloped = has_envelope_marker(raw_headers)
+                headers = strip_internal_headers(raw_headers)
+                start_message = {**message, "headers": headers}
                 wrap = not already_enveloped and _content_type(headers).startswith(
                     "application/json"
                 )
                 if not wrap:
-                    await send(stripped)
+                    await send(start_message)
                 return
 
             if message["type"] == "http.response.body" and wrap:

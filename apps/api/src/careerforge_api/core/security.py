@@ -24,8 +24,8 @@ from uuid import UUID
 
 import bcrypt
 import jwt
-from careerforge_ai.errors import ConfigurationError
 
+from careerforge_ai.errors import ConfigurationError
 from careerforge_api.core.config import APISettings
 from careerforge_api.core.errors import TokenExpiredError, UnauthorizedError
 from careerforge_api.core.ids import new_ulid

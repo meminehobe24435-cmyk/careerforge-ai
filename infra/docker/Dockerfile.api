@@ -1,0 +1,97 @@
+# CareerForge AI - API image (PHASE 1).
+#
+#   docker build -f infra/docker/Dockerfile.api -t careerforge-api .
+#   docker compose up --build          # api + worker + postgres + redis (+ migrate)
+#
+# The compose file builds this image three times over: as `api` (uvicorn), as `worker`
+# (`python -m careerforge_api.workers.main`) and as the one-shot `migrate` service
+# (`alembic upgrade head`). That is why the image keeps apps/api as its working
+# directory -- alembic.ini and alembic/ have to be resolvable by a bare `alembic`
+# command -- and why nothing here depends on the build context's absolute path.
+#
+# NOT built or tested on the development machine this was written on (no Docker
+# available): the Dockerfile is correct by inspection, and everything it does is
+# exercised by the SQLite path in CI (`apps/api`, `tests/`).
+#
+# No secrets are baked in: JWT_SECRET, DATABASE_URL, API keys and the like are supplied
+# at run time (docker compose passes them through `x-api-env`).
+
+# syntax=docker/dockerfile:1
+
+# ── build stage ──────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# bcrypt and asyncpg ship wheels for cp312-slim, so no compiler is needed; build-essential
+# is deliberately omitted to keep the image small. If a dependency ever needs to compile,
+# add it here, not to the runtime stage.
+WORKDIR /build
+
+# The monorepo layout is preserved because `apps/api` depends on `careerforge-ai` through
+# a path resolved relative to its own pyproject.toml (`../../packages/ai`).
+COPY packages/ai/pyproject.toml packages/ai/README.md ./packages/ai/
+COPY packages/ai/careerforge_ai ./packages/ai/careerforge_ai
+COPY apps/api/pyproject.toml apps/api/README.md apps/api/hatch_build.py ./apps/api/
+COPY apps/api/src ./apps/api/src
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip \
+ && pip install ./packages/ai \
+ && pip install ./apps/api
+
+# ── runtime stage ────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    # Non-secret runtime configuration. Everything else comes from the environment.
+    REPO_ROOT=/app \
+    DATA_DIR=/data \
+    REPORTS_DIR=/app/reports \
+    PROMPTS_DIR=/app/prompts \
+    SQLITE_PATH=/data/careerforge.db \
+    STORAGE_LOCAL_PATH=/data/uploads \
+    API_HOST=0.0.0.0 \
+    API_PORT=8000
+
+# Commit hash for GET /system/info (docs/ARCHITECTURE.md §9 tracing).
+ARG GIT_SHA=""
+ENV GIT_SHA=${GIT_SHA} \
+    BUILD_TIME=""
+
+RUN groupadd --system --gid 1001 careerforge \
+ && useradd --system --uid 1001 --gid careerforge --create-home --home-dir /home/careerforge careerforge \
+ && mkdir -p /app /data /app/reports \
+ && chown -R careerforge:careerforge /app /data
+
+COPY --from=builder /opt/venv /opt/venv
+
+# Copied rather than installed so `alembic upgrade head` works with no arguments, exactly
+# as the compose `migrate` service invokes it.
+WORKDIR /app/apps/api
+COPY --chown=careerforge:careerforge apps/api/alembic.ini ./alembic.ini
+COPY --chown=careerforge:careerforge apps/api/alembic ./alembic
+# Prompt templates are content, versioned with the code (ADR-012); the registry loads
+# them from $PROMPTS_DIR at startup.
+COPY --chown=careerforge:careerforge prompts /app/prompts
+# Repository-root marker: careerforge_ai.config resolves relative paths against it.
+COPY --chown=careerforge:careerforge pnpm-workspace.yaml /app/pnpm-workspace.yaml
+
+USER careerforge
+EXPOSE 8000
+
+# No curl in the slim image: the probe uses the standard library, like docker-compose's.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD python -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/system/health', timeout=4).status == 200 else 1)"
+
+# Single worker is deliberate. docs/ARCHITECTURE.md §1.3 sketches two uvicorn workers for
+# the api service, but every shared-state port this build has is per-process: the rate
+# limiter buckets and the in-process queue would be duplicated per worker, and the Redis
+# implementations that fix that arrive with the Docker topology in PHASE 15. Scale with
+# `--workers N` (or compose `command:`) once QUEUE_BACKEND=redis is real.
+CMD ["uvicorn", "careerforge_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

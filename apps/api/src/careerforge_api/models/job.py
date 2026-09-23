@@ -41,9 +41,7 @@ BACKGROUND_JOB_STATUSES: tuple[str, ...] = (
 )
 
 #: Statuses after which no further transition is allowed.
-BACKGROUND_JOB_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"succeeded", "failed", "cancelled"}
-)
+BACKGROUND_JOB_TERMINAL_STATUSES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
 
 _STATUS_LIST = ", ".join(f"'{status}'" for status in BACKGROUND_JOB_STATUSES)
 

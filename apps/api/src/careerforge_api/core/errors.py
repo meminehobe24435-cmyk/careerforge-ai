@@ -15,7 +15,7 @@ Two properties matter for the contract:
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 __all__ = [
     "ERROR_CODE_STATUS",
@@ -84,8 +84,10 @@ class ApiError(Exception):
     ) -> None:
         self.code = code or self.code
         self.status_code = status_code or self.status_code
-        self.message = message or self.default_message or _DEFAULT_MESSAGES.get(
-            self.code, "Unexpected server error"
+        self.message = (
+            message
+            or self.default_message
+            or _DEFAULT_MESSAGES.get(self.code, "Unexpected server error")
         )
         self.details: list[dict[str, Any]] = list(details or [])
         #: Extra response headers (``Retry-After``, ``WWW-Authenticate``, …).

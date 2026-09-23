@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import base64
 import binascii
-import json
 from datetime import datetime
-from typing import Annotated, Any, Generic, TypeVar
+import json
+from typing import Annotated, Any
 
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,8 +30,6 @@ __all__ = [
     "decode_cursor",
     "encode_cursor",
 ]
-
-ItemT = TypeVar("ItemT")
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
@@ -103,7 +101,7 @@ class PageParams:
         return self.sort
 
 
-class CursorPage(BaseModel, Generic[ItemT]):
+class CursorPage[ItemT](BaseModel):
     """``{ items, nextCursor, total }`` (``docs/API.md`` §1.3)."""
 
     model_config = ConfigDict(populate_by_name=True)

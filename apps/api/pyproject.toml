@@ -61,7 +61,9 @@ include = ["src/careerforge_api", "alembic", "alembic.ini", "README.md"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-q --strict-markers"
+# No `-q` here: CI and the README both run `pytest -q`, and a second `-q` would hide the
+# "N passed" line that makes the result verifiable.
+addopts = "--strict-markers"
 markers = [
   "postgres: exercises behaviour that only holds on PostgreSQL (skipped on SQLite)",
   "sqlite: exercises behaviour that only holds on SQLite",
@@ -81,7 +83,3 @@ disallow_untyped_defs = true
 no_implicit_optional = true
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
-
-[[tool.mypy.overrides]]
-module = ["aiosqlite.*", "asyncpg.*", "jwt.*", "bcrypt.*"]
-ignore_missing_imports = true

@@ -5,9 +5,13 @@ layer — the access log, the error handlers, the response envelope, and later
 ``agent_runs.request_id`` / ``llm_calls.request_id`` — reads the id from
 ``request.state``.
 
+Being the outermost layer, it also performs the final response hygiene: internal
+handshake headers are stripped here so they can never reach a client, including on
+responses produced by middleware that sits outside the envelope writer.
+
 The inbound value is only echoed when it matches
-:data:`careerforge_api.core.ids.REQUEST_ID_PATTERN`; an arbitrary header value
-would otherwise reach the logs and the response as a header-injection vector.
+:data:`careerforge_api.core.ids.REQUEST_ID_PATTERN`; an arbitrary header value would
+otherwise reach the logs and the response as a header-injection vector.
 """
 
 from __future__ import annotations
@@ -15,13 +19,15 @@ from __future__ import annotations
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from careerforge_api.core.ids import is_valid_request_id, new_request_id
+from careerforge_api.middleware.headers import (
+    REQUEST_ID_HEADER,
+    request_id_header_bytes,
+    strip_internal_headers,
+)
 
 __all__ = ["REQUEST_ID_HEADER", "RequestIDMiddleware", "request_id_of"]
 
-#: Response/request header used by ``docs/API.md`` §1.1.
-REQUEST_ID_HEADER = "X-Request-Id"
-
-_HEADER_BYTES = REQUEST_ID_HEADER.lower().encode("latin-1")
+_HEADER_BYTES = request_id_header_bytes()
 
 
 def request_id_of(scope: Scope) -> str:
@@ -61,7 +67,7 @@ class RequestIDMiddleware:
             if message["type"] == "http.response.start":
                 headers = [
                     (key, value)
-                    for key, value in message.get("headers", [])
+                    for key, value in strip_internal_headers(list(message.get("headers", [])))
                     if key.lower() != _HEADER_BYTES
                 ]
                 headers.append((_HEADER_BYTES, request_id.encode("latin-1")))

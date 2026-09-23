@@ -55,9 +55,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     storage_scope: Mapped[str] = mapped_column(Text, nullable=False, default="cloud")
     #: Public-page visibility, raw-text retention, … (``docs/API.md`` §2.1 ``/me/settings``).
-    privacy_settings: Mapped[dict[str, Any]] = mapped_column(
-        JSONType, nullable=False, default=dict
-    )
+    privacy_settings: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     locale: Mapped[str] = mapped_column(Text, nullable=False, default="zh-CN")
     last_login_at: Mapped[datetime | None] = mapped_column(TimestampType, nullable=True)
 

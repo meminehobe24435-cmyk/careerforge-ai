@@ -34,6 +34,7 @@ from careerforge_api.core.config import APISettings
 __all__ = [
     "create_all",
     "create_engine",
+    "create_engine_for_url",
     "create_session_factory",
     "ensure_sqlite_directory",
     "is_sqlite_url",
@@ -83,10 +84,14 @@ def _install_sqlite_pragmas(engine: AsyncEngine) -> None:
             cursor.close()
 
 
-def create_engine(settings: APISettings) -> AsyncEngine:
-    """Build the async engine for ``settings.resolved_database_url``."""
-    url = settings.resolved_database_url
-    options: dict[str, Any] = {"echo": settings.sql_echo, "future": True}
+def create_engine_for_url(url: str, *, echo: bool = False) -> AsyncEngine:
+    """Build an async engine for an explicit URL, applying the SQLite pragmas.
+
+    Split out from :func:`create_engine` so the Alembic environment can reuse the
+    identical connection setup (pragmas, directory creation, pooling) instead of
+    duplicating it in ``alembic/env.py``.
+    """
+    options: dict[str, Any] = {"echo": echo, "future": True}
 
     if is_sqlite_url(url):
         ensure_sqlite_directory(url)
@@ -101,6 +106,11 @@ def create_engine(settings: APISettings) -> AsyncEngine:
     if is_sqlite_url(url):
         _install_sqlite_pragmas(engine)
     return engine
+
+
+def create_engine(settings: APISettings) -> AsyncEngine:
+    """Build the async engine for ``settings.resolved_database_url``."""
+    return create_engine_for_url(settings.resolved_database_url, echo=settings.sql_echo)
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -136,7 +146,7 @@ async def ping(engine: AsyncEngine) -> None:
 def _metadata() -> Any:
     # Imported lazily so ``careerforge_api.db.session`` can be imported by models
     # without a cycle, while still seeing every table at ``create_all`` time.
-    from careerforge_api.models import Base  # noqa: PLC0415
+    from careerforge_api.models import Base
 
     return Base.metadata
 

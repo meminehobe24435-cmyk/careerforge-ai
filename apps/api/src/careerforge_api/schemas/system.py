@@ -90,5 +90,5 @@ class SystemInfoResponse(_CamelModel):
     queue: dict[str, Any] = Field(default_factory=dict)
     vector: dict[str, Any] = Field(default_factory=dict)
     providers: dict[str, Any] = Field(default_factory=dict)
-    rate_limits: dict[str, Any] = Field(default_factory=dict)
+    rate_limits: dict[str, Any] = Field(default_factory=dict, alias="rateLimits")
     prompts: dict[str, Any] = Field(default_factory=dict)

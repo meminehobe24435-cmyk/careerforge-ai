@@ -18,11 +18,11 @@ Two rules are enforced here rather than left to discipline at the call site
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 import logging
 import re
 import sys
-from datetime import UTC, datetime
 from typing import Any, Final
 
 from careerforge_api.core.config import APISettings
@@ -116,7 +116,9 @@ def configure_logging(settings: APISettings, *, force: bool = False) -> logging.
     root = logging.getLogger()
     root.setLevel(settings.log_level)
     handler_name = "careerforge-json"
-    existing = [h for h in root.handlers if getattr(h, "_careerforge_handler", None) == handler_name]
+    existing = [
+        h for h in root.handlers if getattr(h, "_careerforge_handler", None) == handler_name
+    ]
     if existing and not force:
         return logging.getLogger("careerforge_api")
     for handler in existing:
@@ -125,9 +127,12 @@ def configure_logging(settings: APISettings, *, force: bool = False) -> logging.
     handler.setFormatter(JsonFormatter())
     handler._careerforge_handler = handler_name  # type: ignore[attr-defined]
     root.addHandler(handler)
+    # Third-party loggers would emit their own multi-line records next to ours; the
+    # access line from RequestLoggingMiddleware already carries everything useful.
+    for noisy in ("httpx", "httpcore", "uvicorn.access", "aiosqlite", "asyncio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     if settings.debug:
-        # uvicorn's own access log would be unstructured noise next to ours.
-        logging.getLogger("uvicorn.access").disabled = True
+        logging.getLogger("uvicorn.error").setLevel(logging.INFO)
     return logging.getLogger("careerforge_api")
 
 

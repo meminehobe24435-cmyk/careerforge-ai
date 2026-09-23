@@ -8,13 +8,11 @@ be validated — in the OpenAPI document and in the test suite — rather than a
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = ["ApiEnvelope", "ApiErrorDetail", "ApiErrorPayload", "ApiMeta"]
-
-DataT = TypeVar("DataT")
 
 
 class ApiErrorDetail(BaseModel):
@@ -56,8 +54,12 @@ class ApiMeta(BaseModel):
     took_ms: int | None = Field(default=None, alias="tookMs")
 
 
-class ApiEnvelope(BaseModel, Generic[DataT]):
-    """``{ success, data, error, requestId }`` — the only response shape the API has."""
+class ApiEnvelope[DataT](BaseModel):
+    """``{ success, data, error, requestId }`` — the only response shape the API has.
+
+    Constructed with field names (``request_id``); the wire format is camelCase because
+    FastAPI serialises response models ``by_alias=True`` (``response_model_by_alias``).
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -68,7 +70,7 @@ class ApiEnvelope(BaseModel, Generic[DataT]):
 
     @classmethod
     def ok(cls, data: DataT, *, request_id: str) -> ApiEnvelope[DataT]:
-        return cls(success=True, data=data, error=None, requestId=request_id)
+        return cls(success=True, data=data, error=None, request_id=request_id)
 
     @classmethod
     def failed(
@@ -77,4 +79,4 @@ class ApiEnvelope(BaseModel, Generic[DataT]):
         payload = (
             error if isinstance(error, ApiErrorPayload) else ApiErrorPayload.model_validate(error)
         )
-        return cls(success=False, data=None, error=payload, requestId=request_id)
+        return cls(success=False, data=None, error=payload, request_id=request_id)

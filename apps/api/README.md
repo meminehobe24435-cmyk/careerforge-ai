@@ -40,6 +40,11 @@ cd apps\api
 ..\..\.venv\Scripts\python.exe -m pytest -q
 ```
 
+Run the suite **from this directory**: `apps/api/pyproject.toml` holds the pytest
+configuration (`asyncio_mode = "auto"`, `testpaths = ["tests"]`), which a repository-root
+invocation would not pick up. That is also exactly how CI invokes it
+(`working-directory: apps/api` in `.github/workflows/ci.yml`).
+
 The suite runs against SQLite by default and needs no external service. If
 `USE_SQLITE=false` and `DATABASE_URL` point at PostgreSQL (the CI matrix in
 `.github/workflows/ci.yml`), the same suite runs against that database instead:

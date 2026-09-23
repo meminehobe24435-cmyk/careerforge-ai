@@ -26,9 +26,9 @@ request still leaves the API as a documented envelope with ``Retry-After``.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import math
 import time
-from dataclasses import dataclass
 
 import jwt
 from starlette.responses import JSONResponse
@@ -166,9 +166,7 @@ def classify_request(method: str, path: str, settings: APISettings) -> RateLimit
     if upper in _WRITE_METHODS and any(
         normalized.startswith(candidate) for candidate in AUTH_PATHS
     ):
-        return RateLimitRule(
-            "auth", settings.rate_limit_auth_per_min, 60.0, "ip"
-        )
+        return RateLimitRule("auth", settings.rate_limit_auth_per_min, 60.0, "ip")
     if any(marker in normalized for marker in _UPLOAD_MARKERS) and upper in _WRITE_METHODS:
         return RateLimitRule("upload", 20, 3600.0, "user")
     if any(marker in normalized for marker in _AI_MARKERS):
@@ -254,11 +252,9 @@ class RateLimitMiddleware:
             response = JSONResponse(
                 status_code=error.status_code,
                 content=error_envelope(error, request_id=request_id),
-                headers={
-                    **error.headers,
-                    "X-Envelope-Complete": "1",
-                    "X-Request-Id": request_id,
-                },
+                # No envelope marker needed: this middleware sits *outside* the envelope
+                # writer, so this body already is the finished, documented envelope.
+                headers={**error.headers, "X-Request-Id": request_id},
             )
             await response(scope, receive, send)
             return

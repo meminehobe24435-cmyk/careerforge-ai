@@ -33,7 +33,8 @@ from careerforge_api.core.errors import ApiError, InternalError, ValidationError
 from careerforge_api.core.ids import new_request_id
 from careerforge_api.core.logging import get_logger, redact
 from careerforge_api.middleware.envelope import ENVELOPE_COMPLETE_HEADER, error_envelope
-from careerforge_api.middleware.request_id import REQUEST_ID_HEADER, request_id_of
+from careerforge_api.middleware.headers import ENVELOPE_DONE, REQUEST_ID_HEADER
+from careerforge_api.middleware.request_id import request_id_of
 
 __all__ = [
     "ErrorHandlingMiddleware",
@@ -55,9 +56,19 @@ def _request_id(request: Any) -> str:
 
 
 def _field(loc: Any) -> str:
+    """Turn a pydantic ``loc`` tuple into the ``field`` of an ``ApiErrorDetail``.
+
+    ``("body", "email")`` → ``"email"``; a nested path keeps its dots. A malformed JSON
+    body has no field at all (pydantic reports the character offset, e.g.
+    ``("body", 1)``), so the location *kind* is reported instead of a bare number that
+    would mean nothing to a client.
+    """
     parts = [str(part) for part in (loc or [])]
     if parts and parts[0] in _LOCATION_PREFIXES:
-        parts = parts[1:]
+        kind, rest = parts[0], parts[1:]
+        if not rest or all(part.isdigit() for part in rest):
+            return kind
+        return ".".join(rest)
     return ".".join(parts) or "request"
 
 
@@ -81,7 +92,7 @@ def json_error_response(error: ApiError, request_id: str) -> JSONResponse:
     """Enveloped error response, marked complete for the envelope middleware."""
     headers = {
         **error.headers,
-        ENVELOPE_COMPLETE_HEADER: "1",
+        ENVELOPE_COMPLETE_HEADER: ENVELOPE_DONE,
         REQUEST_ID_HEADER: request_id,
     }
     return JSONResponse(
@@ -110,7 +121,8 @@ async def http_exception_handler(request: Any, exc: StarletteHTTPException) -> J
     message = exc.detail if isinstance(exc.detail, str) else None
     error = error_from_status(exc.status_code, message)
     if exc.headers:
-        error.headers.update({key: value for key, value in exc.headers.items()})
+        # Preserve headers the framework attached (e.g. WWW-Authenticate on 401).
+        error.headers.update(dict(exc.headers))
     return json_error_response(error, _request_id(request))
 
 
@@ -157,7 +169,7 @@ class ErrorHandlingMiddleware:
             await self.app(scope, receive, track)
         except ApiError as exc:
             await self._respond(scope, receive, send, exc, request_id, response_started)
-        except Exception as exc:  # noqa: BLE001 - catching everything is the job here
+        except Exception as exc:
             self.logger.error(
                 "unhandled_exception",
                 exc_info=exc,

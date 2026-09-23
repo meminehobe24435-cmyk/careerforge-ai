@@ -75,8 +75,12 @@ class AgentRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cost_usd: Mapped[Decimal] = mapped_column(NumericType(10, 6), nullable=False, default=Decimal(0))
-    cost_cny: Mapped[Decimal] = mapped_column(NumericType(10, 6), nullable=False, default=Decimal(0))
+    cost_usd: Mapped[Decimal] = mapped_column(
+        NumericType(10, 6), nullable=False, default=Decimal(0)
+    )
+    cost_cny: Mapped[Decimal] = mapped_column(
+        NumericType(10, 6), nullable=False, default=Decimal(0)
+    )
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: Sub-workflow linkage (nullable self-reference).
@@ -126,8 +130,12 @@ class LlmCall(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cost_usd: Mapped[Decimal] = mapped_column(NumericType(10, 6), nullable=False, default=Decimal(0))
-    cost_cny: Mapped[Decimal] = mapped_column(NumericType(10, 6), nullable=False, default=Decimal(0))
+    cost_usd: Mapped[Decimal] = mapped_column(
+        NumericType(10, 6), nullable=False, default=Decimal(0)
+    )
+    cost_cny: Mapped[Decimal] = mapped_column(
+        NumericType(10, 6), nullable=False, default=Decimal(0)
+    )
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="ok")
     cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
