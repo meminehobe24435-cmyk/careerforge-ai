@@ -40,10 +40,10 @@ NEXT    — 下一阶段目标
 |---|---|---|---|
 | 0 | 产品设计 | 7 篇设计文档 + 目录树 + Git 仓库 | ✅ 完成 |
 | 1 | 项目初始化 | Monorepo、FastAPI/Next 骨架、DB、迁移、Docker、Auth | 🔄 进行中 |
-| 2 | Candidate Profile | 文件解析、结构化抽取、技能归一化、种子数据 | ⬜ |
+| 2 | Candidate Profile | 文件解析、结构化抽取、技能归一化、种子数据（Agent 层已完成） | 🔄 进行中 |
 | 3 | **Evidence Graph** | 证据模型、置信度引擎、图谱 API 与可视化（RAG 核心已完成） | 🔄 进行中 |
 | 4 | JD Analyzer | JD 结构化解析、技能树、解析基准 | ⬜ |
-| 5 | Job Matching | 五维可解释评分 + Why 展开 + Gaps/Unknowns | ⬜ |
+| 5 | Job Matching | 五维可解释评分 + Why 展开 + Gaps/Unknowns（引擎与 Agent 已完成） | 🔄 进行中 |
 | 6 | Resume Copilot | 生成 + 验证门禁 + Diff + 版本管理 | ⬜ |
 | 7 | Interview Simulator | 六模式、自适应难度、Scorecard、证据一致性 | ⬜ |
 | 8 | Application Tracker | 看板、拖拽、事件历史、Timeline | ⬜ |
@@ -252,6 +252,9 @@ graph LR
 | 2026-02-11 | PHASE 1c | `feat(web): scaffold Next.js app; feat(evals): labeled benchmark` | 前端 83 文件全部 typecheck/lint/build 通过；评测框架实测出 100% distractor 泄漏与 13.3% 误判并修复为 0 |
 | 2026-02-11 | PHASE 3a | `feat(rag): hybrid retrieval with RRF fusion` | `rag/` 分块 + BM25 + RRF + 精确向量检索 + 混合检索器（40 测试）；Recall@5 评测 0.966；共享分词层抽取；评测工具链拆分至全部 < 500 行 |
 | 2026-02-11 | PHASE 3b | `feat(graph): evidence graph builder, subgraph queries and provenance tracing` | 证据图谱引擎（两遍置信度 + 独立来源corroboration + 子图查询 + 断言溯源）；修复文件扩展名被当作技能的真实缺陷；279 测试通过 |
+| 2026-02-11 | PHASE 2a | eat(agents): JobAgent and ValidatorAgent | Agent 层建立：WF-03 JD 解析、WF-06 断言门禁；抽出共享 claim 规则层；修复空输入时「从 prompt 模板里提取技能」的静默错误 |
+| 2026-02-11 | PHASE 5a | eat(agents): MatchAgent | WF-04 可解释匹配；叙述 schema 无任何数值字段，结构上无法改动分数 |
+| 2026-02-11 | PHASE 2b | eat(agents): ProfileAgent and EvidenceAgent | WF-01 简历导入、WF-02 材料转证据图谱；修复标题行残余被当作正文的真实缺陷；reinstall 可编辑安装以消除陈旧副本 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
