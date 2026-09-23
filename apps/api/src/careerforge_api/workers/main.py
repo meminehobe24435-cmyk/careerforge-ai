@@ -33,6 +33,7 @@ from careerforge_api.core.errors import DependencyUnavailableError
 from careerforge_api.core.logging import configure_logging, get_logger
 from careerforge_api.db.session import create_all, create_engine, create_session_factory
 from careerforge_api.repositories.task_repository import TaskRepository
+from careerforge_api.workers.handlers import register_default_handlers
 from careerforge_api.workers.queue import (
     InProcessQueue,
     QueuePort,
@@ -67,6 +68,10 @@ class WorkerRuntime:
         self._engine = engine
         self._session_factory = create_session_factory(engine)
         self.queue = build_queue(self.settings, self._session_factory)
+        # Without this the worker would claim jobs it has no handler for and fail them
+        # with "no handler is registered for kind …" — the API process registers the same
+        # set, so the two entrypoints cannot disagree about what this build can run.
+        register_default_handlers(self.queue, self._session_factory)
         _logger.info(
             "worker_started",
             extra={

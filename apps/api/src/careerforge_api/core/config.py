@@ -14,9 +14,11 @@ configuration, which is precisely the failure mode ADR-004 avoids.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from careerforge_ai.config import Settings
 from careerforge_ai.errors import ConfigurationError
+from careerforge_ai.parsing.documents import MAX_DOCUMENT_BYTES
 
 __all__ = [
     "DEV_JWT_SECRET",
@@ -59,6 +61,25 @@ class APISettings(Settings):
     allow_queue_fallback: bool = True
     rate_limit_enabled: bool = True
 
+    # ── Uploads ──────────────────────────────────────────────────────────────
+    # Names match ``.env.example`` §"File storage", which is the operator-facing
+    # contract; inventing different ones here would make the documented configuration
+    # silently ineffective.
+    #: ``local`` is the only implemented backend; ``s3`` arrives with PHASE 15 and is
+    #: refused loudly by ``assert_runtime_configuration`` rather than ignored.
+    storage_backend: str = "local"
+    #: Directory where an upload is spooled between the request that accepted it and the
+    #: worker that parses it. Bytes cannot travel in the job payload (that column is
+    #: JSON), and a spool file works for both queue backends — a per-process dict would
+    #: lose the upload the moment the API and the worker are separate processes, which is
+    #: exactly the deployment this has to work in.
+    storage_local_path: str = "./data/uploads"
+    #: Deployment-level upload limit in MiB. The AI core keeps its own hard ceiling
+    #: (``MAX_DOCUMENT_BYTES``); the effective limit is the lower of the two.
+    max_upload_mb: int = 10
+    #: How long a spooled file may sit unclaimed before it is considered abandoned.
+    upload_ttl_seconds: int = 3600
+
     @property
     def trusted_host_list(self) -> list[str]:
         return [host.strip() for host in self.trusted_hosts.split(",") if host.strip()]
@@ -71,6 +92,25 @@ class APISettings(Settings):
     @property
     def api_docs_url(self) -> str | None:
         return "/docs" if self.docs_enabled else None
+
+    @property
+    def upload_path(self) -> Path:
+        """Absolute spool directory, created on first use."""
+        return Path(self.storage_local_path).expanduser().resolve()
+
+    @property
+    def max_upload_bytes(self) -> int:
+        """``MAX_UPLOAD_MB`` in bytes, never above the AI core's own ceiling.
+
+        Taking the minimum means raising the environment value cannot smuggle a file past
+        the limit the ingestion layer enforces on its own.
+        """
+        return min(self.max_upload_mb * 1024 * 1024, MAX_DOCUMENT_BYTES)
+
+    @property
+    def storage_backend_supported(self) -> bool:
+        """``s3`` is documented in ``.env.example`` but lands in PHASE 15."""
+        return self.storage_backend == "local"
 
     @property
     def openapi_url(self) -> str | None:
@@ -127,6 +167,14 @@ def assert_runtime_configuration(settings: APISettings) -> list[str]:
     if not settings.is_production:
         return warnings
 
+    if not settings.storage_backend_supported:
+        # Accepting the value and quietly writing to local disk would look like it worked
+        # right up to the point where an operator finds résumés on a container filesystem.
+        raise ConfigurationError(
+            f"STORAGE_BACKEND='{settings.storage_backend}' is not implemented in this build; "
+            "it arrives with the deployment phase. Use STORAGE_BACKEND=local.",
+            details={"field": "STORAGE_BACKEND", "value": settings.storage_backend},
+        )
     if settings.jwt_secret == DEV_JWT_SECRET:
         raise ConfigurationError(
             "JWT_SECRET is still the development default and ENVIRONMENT=production; "

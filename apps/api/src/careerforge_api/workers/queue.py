@@ -101,6 +101,15 @@ class QueuePort(Protocol):
 
     def register_handler(self, kind: str, handler: JobHandler) -> None: ...
 
+    def registered_kinds(self) -> list[str]:
+        """Which job kinds this process can actually run.
+
+        Part of the port rather than an implementation detail: startup logs it, and it is
+        how a misconfigured deployment (an API image with no handlers) is visible instead
+        of failing every job at claim time.
+        """
+        ...
+
     async def shutdown(self) -> None: ...
 
 

@@ -50,11 +50,12 @@ from careerforge_api.middleware.logging import RequestLoggingMiddleware
 from careerforge_api.middleware.ratelimit import RateLimitMiddleware, TokenBucketLimiter
 from careerforge_api.middleware.request_id import RequestIDMiddleware
 from careerforge_api.repositories.prompt_repository import PromptRepository
-from careerforge_api.routers import ai, auth, system, tasks
+from careerforge_api.routers import ai, auth, documents, system, tasks
 from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
 from careerforge_api.services.seed_service import ensure_demo_user
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
+from careerforge_api.workers.handlers import register_default_handlers
 from careerforge_api.workers.queue import build_queue_selection
 
 __all__ = ["app", "create_app", "lifespan"]
@@ -98,6 +99,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.queue = selection.queue
     app.state.queue_backend = selection.backend
     app.state.queue_degradation_reason = selection.degradation_reason
+    # The same registration the standalone worker performs, so a job kind cannot work in
+    # the API process and be "no handler registered" in the worker (or the reverse).
+    register_default_handlers(selection.queue, session_factory)
 
     async with session_scope(session_factory) as session:
         await PromptRepository(session).sync_registry(registry)
@@ -190,6 +194,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(auth.router, prefix=resolved.api_prefix)
     application.include_router(system.router, prefix=resolved.api_prefix)
     application.include_router(tasks.router, prefix=resolved.api_prefix)
+    application.include_router(documents.router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)

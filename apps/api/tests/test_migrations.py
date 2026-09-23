@@ -131,12 +131,26 @@ def test_alembic_downgrade_removes_everything(tmp_path: Path) -> None:
     assert _describe(target) == {}
 
 
-def test_alembic_revision_id_is_the_documented_baseline() -> None:
+def test_alembic_revision_id_is_the_documented_head() -> None:
+    """The head is a deliberate list, not a wildcard: a migration that appears without
+    its phase being finished should fail this test, not silently become the head."""
     script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
-    assert script.get_heads() == ["0001"]
+    assert script.get_heads() == ["0002"]
     assert (APPS_API / "alembic" / "versions" / "0001_initial.py").exists()
+    assert (APPS_API / "alembic" / "versions" / "0002_documents.py").exists()
 
 
-@pytest.mark.parametrize("table", ["users", "background_jobs", "skills", "prompt_versions"])
-def test_phase_1_tables_exist_after_migration(tmp_path: Path, table: str) -> None:
+@pytest.mark.parametrize(
+    "table",
+    [
+        "users",
+        "background_jobs",
+        "skills",
+        "prompt_versions",
+        # PHASE 2
+        "documents",
+        "document_chunks",
+    ],
+)
+def test_tables_exist_after_migration(tmp_path: Path, table: str) -> None:
     assert table in _describe(_migrated_database(tmp_path))

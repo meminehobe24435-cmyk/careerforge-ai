@@ -38,9 +38,17 @@ PHASE_1_TABLES = {
     "skills",
 }
 
+#: ``docs/DATABASE.md`` §2.3 — the tables that turn an upload into citable material.
+PHASE_2_TABLES = {
+    "documents",
+    "document_chunks",
+}
 
-def test_metadata_contains_exactly_the_phase_1_tables() -> None:
-    assert set(Base.metadata.tables) == PHASE_1_TABLES
+
+def test_metadata_contains_exactly_the_migrated_tables() -> None:
+    """Exact, not a superset assertion: a table added without its phase being finished
+    should fail here rather than pass unnoticed."""
+    assert set(Base.metadata.tables) == PHASE_1_TABLES | PHASE_2_TABLES
 
 
 def test_every_documented_table_has_its_check_constraints() -> None:
@@ -58,13 +66,18 @@ def test_every_documented_table_has_its_check_constraints() -> None:
             "ck_background_jobs_progress_range",
         },
         "ai_caches": {"ck_ai_caches_kind_valid"},
+        "documents": {"ck_documents_kind_valid", "ck_documents_parse_status_valid"},
+        "document_chunks": {
+            "ck_document_chunks_chunk_index_non_negative",
+            "ck_document_chunks_char_range_valid",
+        },
     }
     for table, names in expected.items():
         found = {c.name for c in Base.metadata.tables[table].constraints if c.name}
         assert names <= found, f"{table} is missing {names - found}"
 
 
-def test_evidence_confidence_formula_constraint_is_not_part_of_phase_1() -> None:
+def test_evidence_confidence_formula_constraint_arrives_with_phase_3() -> None:
     """The formula CHECK from docs/DATABASE.md §3 arrives with the `evidence` table.
 
     Noted explicitly so its absence is a known boundary rather than an oversight: the
