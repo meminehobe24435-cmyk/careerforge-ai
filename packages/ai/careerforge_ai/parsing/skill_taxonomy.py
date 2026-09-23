@@ -300,13 +300,20 @@ def normalize_skill(text: str) -> Skill | None:
     return None
 
 
-def extract_skill_mentions(text: str) -> list[tuple[Skill, str, int]]:
+def extract_skill_mentions(text: str, *, dedupe: bool = True) -> list[tuple[Skill, str, int]]:
     """Find every taxonomy skill mentioned in ``text``.
 
-    Returns ``(skill, matched_alias, char_offset)`` triples, de-duplicated per
-    skill with the earliest occurrence kept. Overlapping matches resolve to the
-    longest alias, so "UART DMA" reports both UART and DMA while "C++" never
-    reports C.
+    Returns ``(skill, matched_alias, char_offset)`` triples. Overlapping matches
+    resolve to the longest alias, so "UART DMA" reports both UART and DMA while
+    "C++" never reports C.
+
+    Args:
+        text: the material to scan.
+        dedupe: when true (the default) only the earliest mention of each skill is
+            returned. Callers that filter mentions by *position* must pass
+            ``False``: a JD that names Kubernetes in its company blurb and again
+            in its requirements section would otherwise lose the second, valid
+            mention because the first one was discarded downstream.
     """
     if not text:
         return []
@@ -325,7 +332,7 @@ def extract_skill_mentions(text: str) -> list[tuple[Skill, str, int]]:
     seen_skills: set[str] = set()
 
     for start, end, skill, alias in claimed:
-        if skill.canonical_id in seen_skills:
+        if dedupe and skill.canonical_id in seen_skills:
             continue
         if any(not (end <= s or start >= e) for s, e in taken):
             continue

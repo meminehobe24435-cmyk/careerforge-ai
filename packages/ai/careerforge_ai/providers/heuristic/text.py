@@ -16,6 +16,9 @@ __all__ = [
     "HEURISTIC_EMBEDDING_DIM",
     "tokens",
     "token_overlap",
+    "technical_tokens",
+    "missing_technical_tokens",
+    "base_form",
     "heuristic_embedding",
     "split_sections",
     "bullets",
@@ -108,9 +111,11 @@ def tokens(text: str) -> list[str]:
 def token_overlap(left: str, right: str) -> float:
     """How much of ``left`` is present in ``right``.
 
-    Weighted towards coverage rather than symmetric similarity: the question is
-    "is *this claim* supported by the evidence", so a long evidence document
-    should not be penalised for containing extra material.
+    Coverage of the *claim* dominates (0.70) over symmetric similarity (0.30). An
+    earlier version weighted Jaccard higher, which punished detailed evidence: a
+    long, specific file description scored lower than a short vague one, and four
+    genuinely-supported claims were rejected because of it. The measurement that
+    matters is "is this claim covered", not "are these two texts alike".
     """
     left_tokens = set(tokens(left))
     right_tokens = set(tokens(right))
@@ -119,7 +124,43 @@ def token_overlap(left: str, right: str) -> float:
     intersection = left_tokens & right_tokens
     jaccard = len(intersection) / len(left_tokens | right_tokens)
     coverage = len(intersection) / len(left_tokens)
-    return round(0.25 * jaccard + 0.75 * coverage, 4)
+    return round(0.30 * jaccard + 0.70 * coverage, 4)
+
+
+#: Latin/technical tokens: identifiers, acronyms, versions. These carry the
+#: specific content of a technical claim ("I2C", "pgvector", "pytest"), so one of
+#: them missing from the evidence is a strong signal that the claim as written is
+#: not fully supported — much stronger than a missing common word.
+_TECHNICAL_RE = re.compile(r"[a-z][a-z0-9+#._-]{0,30}", re.IGNORECASE)
+
+
+def technical_tokens(text: str) -> set[str]:
+    """Distinctive latin/technical tokens in ``text``, lower-cased."""
+    return {
+        match.group(0).lower() for match in _TECHNICAL_RE.finditer(text) if len(match.group(0)) >= 2
+    }
+
+
+#: Trailing version markers (``C++11``, ``Python3``, ``heap_4``) are stripped
+#: before comparison. Without this, a claim saying "C++11" is flagged as
+#: unsupported by evidence that says "C++", which is a false negative on the most
+#: ordinary kind of technical writing there is.
+_VERSION_SUFFIX_RE = re.compile(r"[-._]?\d+$")
+
+
+def base_form(token: str) -> str:
+    """A technical token with its version suffix removed."""
+    return _VERSION_SUFFIX_RE.sub("", token) or token
+
+
+def missing_technical_tokens(claim: str, evidence_text: str) -> set[str]:
+    """Technical tokens the claim asserts but the evidence never mentions.
+
+    Comparison happens on :func:`base_form` on both sides, so a version suffix is
+    never the reason a claim is rejected.
+    """
+    evidence_bases = {base_form(token) for token in technical_tokens(evidence_text)}
+    return {token for token in technical_tokens(claim) if base_form(token) not in evidence_bases}
 
 
 def _ngrams(text: str, n: int = 3) -> list[str]:

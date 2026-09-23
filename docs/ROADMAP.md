@@ -39,7 +39,7 @@ NEXT    — 下一阶段目标
 | Phase | 名称 | 核心产出 | 状态 |
 |---|---|---|---|
 | 0 | 产品设计 | 7 篇设计文档 + 目录树 + Git 仓库 | ✅ 完成 |
-| 1 | 项目初始化 | Monorepo、FastAPI/Next 骨架、DB、迁移、Docker、Auth | ⬜ 待开始 |
+| 1 | 项目初始化 | Monorepo、FastAPI/Next 骨架、DB、迁移、Docker、Auth | 🔄 进行中 |
 | 2 | Candidate Profile | 文件解析、结构化抽取、技能归一化、种子数据 | ⬜ |
 | 3 | **Evidence Graph** | 证据模型、置信度引擎、图谱 API 与可视化 | ⬜ |
 | 4 | JD Analyzer | JD 结构化解析、技能树、解析基准 | ⬜ |
@@ -246,6 +246,26 @@ graph LR
 
 | 日期 | 阶段 | 提交 | 关键结果 |
 |---|---|---|---|
-| 2026-02-11 | PHASE 0 | `docs: add phase 0 design documents` | 7 篇设计文档 + 目录树 + 仓库初始化 |
+| 2026-02-11 | PHASE 0 | `docs: add phase 0 product and architecture design` | 7 篇设计文档 + 目录树 + 仓库初始化（47 文件） |
+| 2026-02-11 | PHASE 1a | `feat(ai): add deterministic AI core` | `packages/ai` 9,165 行 / 62 文件；10 个版本化 Prompt；173 → 201 测试通过 |
+| 2026-02-11 | PHASE 1b | `refactor(ai): split oversized modules; add architecture guard scripts` | 三个守卫脚本（分层 / 500 行 / 设计令牌）；CI 双路径（SQLite + PostgreSQL）；docker-compose 全栈 |
+| 2026-02-11 | PHASE 1c | `feat(web): scaffold Next.js app; feat(evals): labeled benchmark` | 前端 83 文件全部 typecheck/lint/build 通过；评测框架实测出 100% distractor 泄漏与 13.3% 误判并修复为 0 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
+
+### PHASE 1 实测问题记录（发现 → 修复）
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | 中文断言验证完全失效（分词被长度过滤清空） | 单元测试 | 修复 |
+| 2 | 复合别名吞掉相邻技能（`UART DMA` 丢 UART） | 单元测试 | 修复 |
+| 3 | 单字母技能 `c` 在 `balance`/`docker` 内误命中 | 单元测试 | 修复（词边界） |
+| 4 | `Achievement.date` 字段名遮蔽 `date` 类型 | 导入即崩 | 修复 |
+| 5 | `PromptRegistry.render(name=...)` 与变量 `name` 冲突 | 单元测试 | 修复（positional-only） |
+| 6 | `compute_job_match` 重复累加权重 | 代码审查 | 修复 |
+| 7 | 公司简介里的技术词被当作岗位要求 | **评测实测：泄漏率 100%** | 修复 → 0% |
+| 8 | 一句话中缺失的技术名词未被当作硬约束 | **评测实测：误判率 13.3%** | 修复 → 0% |
+| 9 | `C++11` 被判为"证据中不存在 C++" | 新回归测试 | 修复（版本后缀归一化） |
+| 10 | 公司简介里的早期提及吞掉任职要求里的合法提及 | 新回归测试 | 修复（`dedupe=False`） |
+| 11 | fresh clone 的首次 `pnpm install` 失败 | 前端构建者报告 | 修复（显式批准 1 个依赖构建脚本） |
+| 12 | 我自己写的三个文件超过 500 行 | 自建守卫脚本 | 拆分而非豁免 |

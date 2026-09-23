@@ -1,0 +1,35 @@
+{
+  "seed": 20260211,
+  "generator": "evals/generate_datasets.py",
+  "note": "Controlled benchmark with exact ground truth. Generated, not scraped: real postings carry no labels. Treat these numbers as upper-bound indicators of extraction quality, not as market-representative accuracy.",
+  "datasets": {
+    "jd_extraction": {
+      "path": "evals/datasets/jd_extraction.jsonl",
+      "samples": 120,
+      "sha256": "31653d217916dd8f7b25dc9f3439de458b10a1b16bbb518520b45202c7d9b2e8",
+      "families": [
+        "ai_app",
+        "backend",
+        "devops",
+        "embedded",
+        "frontend"
+      ],
+      "languages": [
+        "en",
+        "mixed",
+        "zh"
+      ],
+      "with_distractor": 74
+    },
+    "claim_validation": {
+      "path": "evals/datasets/claim_validation.jsonl",
+      "samples": 120,
+      "sha256": "103c78458e08fab2097015b6f70befba16de9523edc2d6b890b4631501488615",
+      "kinds": [
+        "partially_supported",
+        "supported",
+        "unsupported"
+      ]
+    }
+  }
+}

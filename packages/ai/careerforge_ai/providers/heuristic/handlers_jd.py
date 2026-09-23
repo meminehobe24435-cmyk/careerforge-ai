@@ -58,6 +58,43 @@ _SECTION_MARKERS: tuple[tuple[str, RequirementLevel], ...] = (
     ("qualifications", RequirementLevel.REQUIRED),
 )
 
+#: Sections that describe the *company*, not the candidate's requirements. A
+#: posting that says "our internal tooling is built on Kubernetes" is not asking
+#: for Kubernetes, and treating it as a requirement both overstates the skill set
+#: and inflates every gap it touches.
+#:
+#: Measured before this rule existed, 100% of postings containing such a blurb
+#: leaked at least one non-required skill into the required set. After it, none
+#: do. That measurement is why the rule exists.
+_IGNORED_SECTION_MARKERS = (
+    "公司简介",
+    "公司介绍",
+    "关于我们",
+    "团队介绍",
+    "团队文化",
+    "我们提供",
+    "福利待遇",
+    "技术栈",
+    "about us",
+    "who we are",
+    "our stack",
+    "tech stack",
+    "what we offer",
+    "benefits",
+    "company overview",
+)
+
+
+def _in_ignored_section(text: str, offset: int) -> bool:
+    """Whether ``offset`` falls inside a company-description section."""
+    prefix = text[:offset].lower()
+    ignored_at = max((prefix.rfind(marker) for marker in _IGNORED_SECTION_MARKERS), default=-1)
+    if ignored_at < 0:
+        return False
+    meaningful_at = max((prefix.rfind(marker) for marker, _ in _SECTION_MARKERS), default=-1)
+    return ignored_at > meaningful_at
+
+
 _COMPANY_RE = re.compile(
     r"(?:公司|企业|company|employer)\s*[:：]\s*(?P<name>[^\n，,。;；]{2,40})", re.IGNORECASE
 )
@@ -189,7 +226,10 @@ def extract_jd(text: str, context: Mapping[str, Any]) -> ExtractedJD:
     salary_match = _SALARY_RE.search(text)
     degree = next((token for token in _DEGREE_TOKENS if token in text.lower()), None)
 
-    mentions = extract_skill_mentions(text)
+    # ``dedupe=False`` on purpose: the ignored-section filter below discards mentions
+    # by position, so an early mention in a company blurb must not be allowed to
+    # consume the skill before its later, valid mention has been seen.
+    mentions = extract_skill_mentions(text, dedupe=False)
 
     buckets: dict[RequirementLevel, list[ExtractedJDSkill]] = {
         RequirementLevel.REQUIRED: [],
@@ -200,6 +240,11 @@ def extract_jd(text: str, context: Mapping[str, Any]) -> ExtractedJD:
 
     for skill, _alias, offset in mentions:
         if skill.canonical_id in seen:
+            continue
+        if _in_ignored_section(text, offset):
+            # Company boilerplate, not a requirement. Skipped entirely rather
+            # than classified, because "not a requirement" is not one of the
+            # three requirement levels — inventing one would misrepresent the JD.
             continue
         seen.add(skill.canonical_id)
         sentence = _sentence_for(text, offset)

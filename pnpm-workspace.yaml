@@ -3,5 +3,14 @@ packages:
   - "packages/shared"
   - "packages/ui"
   - "packages/config"
+
+# pnpm 11 refuses to run dependency build scripts it has not been told about, and
+# treats an unapproved one as a fatal install error (`ERR_PNPM_IGNORED_BUILDS`).
+# That turned a fresh clone's very first `pnpm install` into a failure, so the one
+# dependency that legitimately needs to compile is approved explicitly here.
+#
+# `unrs-resolver` ships a native binary and arrives transitively via
+# `eslint-config-next`. Everything else stays unapproved by default — naming the
+# exception is safer than disabling the protection wholesale.
 allowBuilds:
-  unrs-resolver: set this to true or false
+  unrs-resolver: true

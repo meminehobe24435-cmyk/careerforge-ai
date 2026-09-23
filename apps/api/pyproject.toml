@@ -1,0 +1,87 @@
+# CareerForge AI · API package (PHASE 1)
+#
+# The dependencies are declared as `dynamic` on purpose: `hatch_build.py` resolves
+# the sibling AI core (`../../packages/ai`) relative to *this file*, so an
+# editable install works from any working directory — including the repository
+# root (`pip install -e ".\apps\api[dev]"`) and from inside this directory
+# (`cd apps/api; pip install -e ".[dev]"`).
+#
+# A plain `"careerforge-ai @ file:../../packages/ai"` string would not survive
+# both: pip resolves relative `file:` URLs against the *current* directory.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "careerforge-api"
+version = "0.1.0"
+description = "CareerForge AI HTTP API: FastAPI wrapper around the careerforge-ai core."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "CareerForge AI contributors" }]
+keywords = ["fastapi", "careerforge", "career", "api", "evidence-graph"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+]
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "mypy>=1.13",
+  "ruff>=0.8",
+  "anyio>=4.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/OWNER/careerforge-ai"
+Documentation = "https://github.com/OWNER/careerforge-ai/tree/main/docs"
+
+[tool.hatch.metadata]
+# `careerforge-ai` is a direct reference to the sibling package in this monorepo.
+allow-direct-references = true
+
+[tool.hatch.metadata.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/careerforge_api"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/careerforge_api", "alembic", "alembic.ini", "README.md"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "postgres: exercises behaviour that only holds on PostgreSQL (skipped on SQLite)",
+  "sqlite: exercises behaviour that only holds on SQLite",
+]
+filterwarnings = [
+  # SQLAlchemy warns for every `Numeric` column on a dialect without native
+  # Decimal support. DATABASE.md §5 explicitly chooses `NUMERIC` for SQLite, so
+  # the warning is expected; the values that matter here are rounded to 3–6 dp
+  # by the producers themselves.
+  "ignore:Dialect sqlite.*does \\*not\\* support Decimal objects natively:sqlalchemy.exc.SAWarning",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["aiosqlite.*", "asyncpg.*", "jwt.*", "bcrypt.*"]
+ignore_missing_imports = true

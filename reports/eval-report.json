@@ -1,0 +1,169 @@
+{
+  "generatedAt": "2026-09-23T20:04:59.197613+00:00",
+  "gitSha": "e150759",
+  "provider": "heuristic",
+  "providerChain": [
+    "heuristic"
+  ],
+  "model": null,
+  "pricingTableVersion": "pricing@1.0.0",
+  "confidenceFormula": "confidence@1.0.0",
+  "matchAlgorithm": "match@1.0.0",
+  "datasets": {
+    "jd_extraction": {
+      "path": "evals/datasets/jd_extraction.jsonl",
+      "samples": 120,
+      "sha256": "31653d217916dd8f7b25dc9f3439de458b10a1b16bbb518520b45202c7d9b2e8",
+      "families": [
+        "ai_app",
+        "backend",
+        "devops",
+        "embedded",
+        "frontend"
+      ],
+      "languages": [
+        "en",
+        "mixed",
+        "zh"
+      ],
+      "with_distractor": 74
+    },
+    "claim_validation": {
+      "path": "evals/datasets/claim_validation.jsonl",
+      "samples": 120,
+      "sha256": "103c78458e08fab2097015b6f70befba16de9523edc2d6b890b4631501488615",
+      "kinds": [
+        "partially_supported",
+        "supported",
+        "unsupported"
+      ]
+    }
+  },
+  "datasetCaveat": "Controlled benchmark with exact ground truth. Generated, not scraped: real postings carry no labels. Treat these numbers as upper-bound indicators of extraction quality, not as market-representative accuracy.",
+  "targets": {
+    "jd.required_skill_f1": 0.85,
+    "jd.distractor_leakage_rate": 0.05,
+    "jd.evidence_grounding_rate": 1.0,
+    "jd.role_accuracy": 0.9,
+    "jd.years_accuracy": 0.9,
+    "claim.numeric_rejection_rate": 1.0,
+    "claim.over_support_rate": 0.05,
+    "claim.support_recall": 0.85
+  },
+  "suites": {
+    "jd_extraction": {
+      "samples": 120,
+      "metrics": {
+        "jd.bonus_skill_f1": 0.775758,
+        "jd.distractor_leakage_rate": 0.0,
+        "jd.education_accuracy": 1.0,
+        "jd.evidence_grounding_rate": 1.0,
+        "jd.location_accuracy": 1.0,
+        "jd.preferred_skill_f1": 0.98801,
+        "jd.required_skill_f1": 0.883191,
+        "jd.required_skill_precision": 0.790816,
+        "jd.required_skill_recall": 1.0,
+        "jd.requirement_level_accuracy": 0.945946,
+        "jd.role_accuracy": 1.0,
+        "jd.years_accuracy": 0.95
+      },
+      "counters": {
+        "distractor_cases": 72,
+        "distractor_leaks": 0,
+        "education_hits": 120,
+        "location_hits": 120,
+        "required_false_negative": 0,
+        "required_false_positive": 123,
+        "required_true_positive": 465,
+        "role_hits": 120,
+        "skills_grounded_in_source": 900,
+        "skills_with_evidence": 900,
+        "unmapped_skill_names": 0,
+        "years_hits": 114
+      },
+      "breakdown": {
+        "by_family": {
+          "embedded": {
+            "samples": 24.0,
+            "required_f1": 0.7647
+          },
+          "backend": {
+            "samples": 24.0,
+            "required_f1": 0.9143
+          },
+          "ai_app": {
+            "samples": 24.0,
+            "required_f1": 0.9406
+          },
+          "frontend": {
+            "samples": 24.0,
+            "required_f1": 0.9231
+          },
+          "devops": {
+            "samples": 24.0,
+            "required_f1": 0.8942
+          }
+        },
+        "by_language": {
+          "zh": {
+            "samples": 53.0,
+            "required_f1": 0.8875
+          },
+          "mixed": {
+            "samples": 25.0,
+            "required_f1": 0.7764
+          },
+          "en": {
+            "samples": 42.0,
+            "required_f1": 0.9524
+          }
+        }
+      },
+      "failures": [],
+      "skipped": null,
+      "duration_ms": 464
+    },
+    "claim_validation": {
+      "samples": 120,
+      "metrics": {
+        "claim.numeric_rejection_rate": 1.0,
+        "claim.over_support_rate": 0.0,
+        "claim.safer_rewrite_rate": 0.488889,
+        "claim.support_recall": 1.0
+      },
+      "counters": {
+        "gold_supported": 30,
+        "gold_supported_detected": 30,
+        "gold_unsupported": 90,
+        "numeric_claims": 30,
+        "numeric_rejected": 30,
+        "numeric_rejection_failures": 0,
+        "over_supported": 0,
+        "safer_rewrite_expected": 90,
+        "safer_rewrite_offered": 44
+      },
+      "breakdown": {
+        "by_gold_kind": {
+          "supported": {
+            "samples": 30.0,
+            "correct": 30.0,
+            "rate": 1.0
+          },
+          "partially_supported": {
+            "samples": 30.0,
+            "correct": 0.0,
+            "rate": 0.0
+          },
+          "unsupported": {
+            "samples": 60.0,
+            "correct": 0.0,
+            "rate": 0.0
+          }
+        }
+      },
+      "failures": [],
+      "skipped": null,
+      "duration_ms": 34
+    }
+  }
+}

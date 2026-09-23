@@ -48,8 +48,11 @@ data/
 uploads/
 
 # ── Generated artifacts ──────────────────────────────────────
-reports/*.json
-reports/*.md
+# Generated reports are ignored, except the evaluation report: the README quotes
+# its numbers, and a quoted number must be checkable in the repository.
+reports/*
+!reports/eval-report.json
+!reports/.gitkeep
 
 # ── Playwright ───────────────────────────────────────────────
 test-results/

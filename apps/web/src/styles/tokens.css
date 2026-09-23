@@ -1,0 +1,138 @@
+/* ============================================================================
+ * CareerForge AI — design tokens
+ * Source of truth: docs/UI.md §2.1 (colour), §2.3 (scale/motion). FROZEN SPEC.
+ *
+ * Rules:
+ *  - dark is the first-class theme: the dark values live on `:root`;
+ *  - light overrides live on `[data-theme="light"]` (next-themes writes the
+ *    attribute on <html>, which is also `:root`, so the override always wins);
+ *  - components must never hard-code a colour — they consume these variables
+ *    through the Tailwind utilities mapped in `globals.css`.
+ * ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- 2.1 Colour — neutral ramp (Dark, default) ------------------------- */
+  --bg-base: #08090a; /* page background */
+  --bg-surface: #0d0e10; /* cards */
+  --bg-elevated: #141518; /* popovers / drawers */
+  --bg-hover: #1a1c1f;
+  --bg-active: #212429;
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text-primary: #edeef0;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-inverse: #08090a;
+
+  /* ---- Brand + semantics (Forge amber, deliberately not purple/blue) ----- */
+  --brand: #f59e0b;
+  --brand-strong: #fb923c;
+  --brand-fg: #0a0a0a; /* text on a brand-coloured surface */
+  --evidence: #34d399; /* supported / confidence >= 0.75 */
+  --weak: #fbbf24; /* partially supported */
+  --danger: #f87171; /* rejected / contradicted */
+  --signal: #60a5fa; /* links, selected state, second chart series */
+
+  /* ---- Chart series (colour-blind safe, validated on dark) --------------- */
+  --chart-1: #f59e0b;
+  --chart-2: #60a5fa;
+  --chart-3: #34d399;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+  --chart-6: #38bdf8;
+
+  /* ---- Extras required by the design (documented extensions) ------------- */
+  --overlay: rgba(0, 0, 0, 0.62); /* modal/drawer scrim */
+  --brand-glow: rgba(245, 158, 11, 0.2); /* hero radial light (UI.md §5.1) */
+  --grid-line: rgba(255, 255, 255, 0.035); /* technical grid background */
+  --grid-size: 32px;
+
+  /* ---- 2.3 Scale -------------------------------------------------------- */
+  --radius-sm: 6px; /* badges / inputs */
+  --radius-md: 10px; /* buttons / cards */
+  --radius-lg: 14px; /* panels / modals */
+  --radius-full: 9999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+
+  /* Tailwind theme aliases: `@theme inline` cannot reference a same-named
+     variable, so shadows are aliased here and stay theme-aware. */
+  --elevation-sm: var(--shadow-sm);
+  --elevation-md: var(--shadow-md);
+  --elevation-lg: var(--shadow-lg);
+
+  --z-drawer: 50;
+  --z-modal: 60;
+  --z-palette: 70;
+  --z-toast: 80;
+
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- Layout constants (UI.md §10 responsive matrix) -------------------- */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --topbar-height: 56px;
+}
+
+/* ============================================================================
+ * Light theme (docs/UI.md §2.1, `[data-theme="light"]`)
+ * ========================================================================== */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-base: #ffffff;
+  --bg-surface: #fafafa;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f4f4f5;
+  --bg-active: #e4e4e7;
+
+  --border-subtle: rgba(9, 9, 11, 0.06);
+  --border-default: rgba(9, 9, 11, 0.1);
+  --border-strong: rgba(9, 9, 11, 0.18);
+
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-tertiary: #a1a1aa;
+  /* On light surfaces "inverse" text is white (used on dark overlays only;
+     text on a brand surface uses --brand-fg, which stays dark). */
+  --text-inverse: #fafafa;
+
+  --brand: #d97706;
+  --brand-strong: #ea580c;
+  --brand-fg: #0a0a0a;
+  --evidence: #059669;
+  --weak: #b45309;
+  --danger: #dc2626;
+  --signal: #2563eb;
+
+  --overlay: rgba(9, 9, 11, 0.42);
+  --brand-glow: rgba(217, 119, 6, 0.14);
+  --grid-line: rgba(9, 9, 11, 0.04);
+
+  /* UI.md §2.1 only freezes the colour block for light mode; the dark-tuned
+     shadows read as heavy on white, so lighter elevations are provided here.
+     (Light-theme chart series remain the dark set until charts land in a
+     later phase and get their own validated palette.) */
+  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.06);
+  --shadow-md: 0 4px 16px rgba(9, 9, 11, 0.08);
+  --shadow-lg: 0 12px 40px rgba(9, 9, 11, 0.12);
+}
