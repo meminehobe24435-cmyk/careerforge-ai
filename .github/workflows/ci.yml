@@ -48,9 +48,13 @@ jobs:
           ruff check packages/ai apps/api tests
           ruff format --check packages/ai apps/api tests
 
-      - name: Type check (mypy)
-        run: mypy packages/ai/careerforge_ai
-        continue-on-error: true # tightened once the annotation pass is complete
+      - name: Type check (mypy) — AI core [strict]
+        working-directory: packages/ai
+        run: mypy careerforge_ai
+
+      - name: Type check (mypy) — API
+        working-directory: apps/api
+        run: mypy src
 
       - name: Tests — AI core
         run: pytest packages/ai/tests -q
