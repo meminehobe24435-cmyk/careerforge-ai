@@ -12,7 +12,7 @@ Agent                                Status
 ===================================  ==========================================
 ``JobAgent``                         ✅ WF-03 · JD → structured, normalised analysis
 ``ValidatorAgent``                   ✅ WF-06 · claim verification and the gate
-``MatchAgent``                       ⬜ WF-04 · deterministic scoring exists in ``scoring/``
+``MatchAgent``                       ✅ WF-04 · explainable match scoring
 ``ProfileAgent``                     ⬜ WF-01 · extraction handler exists in the heuristic provider
 ``EvidenceAgent``                    ⬜ WF-02 · graph construction exists in ``graph/``
 ``ResumeAgent``                      ⬜ WF-05
@@ -43,6 +43,12 @@ from careerforge_ai.agents.job import (
     build_jd_analysis,
     build_workflow as build_job_workflow,
 )
+from careerforge_ai.agents.match import (
+    MATCH_AGENT,
+    MatchAgent,
+    build_workflow as build_match_workflow,
+    compute_match,
+)
 from careerforge_ai.agents.validator import (
     VALIDATOR_AGENT,
     ValidatorAgent,
@@ -52,18 +58,22 @@ from careerforge_ai.agents.validator import (
 
 __all__ = [
     "JOB_AGENT",
+    "MATCH_AGENT",
     "PROMPT_CHAR_BUDGET",
     "VALIDATOR_AGENT",
     "Agent",
     "AgentOutcome",
     "JobAgent",
+    "MatchAgent",
     "ValidatorAgent",
     "build_jd_analysis",
     "build_job_workflow",
+    "build_match_workflow",
     "build_validator_workflow",
     "merge_workflow_warnings",
     "normalise_whitespace",
     "render_bullets",
+    "compute_match",
     "strip_markup",
     "truncate_for_prompt",
     "validate_claim_text",

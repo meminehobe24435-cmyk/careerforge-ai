@@ -19,6 +19,7 @@ from careerforge_ai.schemas.common import (
     RequirementLevel,
     Score0to100,
     SkillLevel,
+    StrictModel,
     Unit,
     utcnow,
 )
@@ -153,3 +154,28 @@ class JobMatchResult(CFBaseModel):
     def top_gaps(self) -> list[MissedSkill]:
         order = {GapLevel.HIGH: 0, GapLevel.MEDIUM: 1, GapLevel.LOW: 2, GapLevel.NONE: 3}
         return sorted(self.gaps, key=lambda gap: order.get(gap.severity, 9))
+
+
+class ExtractedMatchNarrative(StrictModel):
+    """LLM-facing narrative about a score that has **already been computed**.
+
+    There is deliberately no numeric field. The score and every dimension score come
+    from a deterministic engine, and a real model asked to "summarise 86" will round
+    it, restate it wrongly, or invent a nearby number. Removing the possibility from
+    the schema is more reliable than instructing the model not to do it.
+    """
+
+    summary: str = Field(
+        default="",
+        description=(
+            "Two to four sentences on where the candidate stands and the single most "
+            "valuable next action. Do not state, restate or recompute any number."
+        ),
+    )
+    caveats: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Interpretation caveats worth showing, e.g. a required skill that carries "
+            "no supporting evidence"
+        ),
+    )
