@@ -52,16 +52,16 @@ table creation and migrations are idempotent and every test uses unique rows.
 
 ## Layout
 
-| Path | Responsibility |
-|---|---|
-| `src/careerforge_api/main.py` | `create_app()` factory, lifespan, middleware wiring |
-| `src/careerforge_api/core/` | settings extension, security (bcrypt/JWT), error model, JSON logging |
-| `src/careerforge_api/middleware/` | request id → logging → CORS → rate limit → error handling → envelope |
-| `src/careerforge_api/db/` | engine/session, naming conventions, SQLite⇄PostgreSQL type compatibility |
-| `src/careerforge_api/models/` | PHASE 1 ORM tables with the documented `CHECK` constraints |
-| `src/careerforge_api/schemas/` | Pydantic request/response models (envelope, pagination, auth, system, tasks) |
-| `src/careerforge_api/repositories/` | user-scoped data access (every query filters `user_id`) |
-| `src/careerforge_api/services/` | auth, demo seed, skill taxonomy sync, system probes |
-| `src/careerforge_api/routers/` | `/auth`, `/system`, `/tasks` |
-| `src/careerforge_api/workers/` | queue port (`InProcessQueue`, `RedisQueue` stub) and the worker entrypoint |
-| `alembic/` | async-aware migration environment and the `0001_initial` baseline |
+| Path                                | Responsibility                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------- |
+| `src/careerforge_api/main.py`       | `create_app()` factory, lifespan, middleware wiring                          |
+| `src/careerforge_api/core/`         | settings extension, security (bcrypt/JWT), error model, JSON logging         |
+| `src/careerforge_api/middleware/`   | request id → logging → CORS → rate limit → error handling → envelope         |
+| `src/careerforge_api/db/`           | engine/session, naming conventions, SQLite⇄PostgreSQL type compatibility     |
+| `src/careerforge_api/models/`       | PHASE 1 ORM tables with the documented `CHECK` constraints                   |
+| `src/careerforge_api/schemas/`      | Pydantic request/response models (envelope, pagination, auth, system, tasks) |
+| `src/careerforge_api/repositories/` | user-scoped data access (every query filters `user_id`)                      |
+| `src/careerforge_api/services/`     | auth, demo seed, skill taxonomy sync, system probes                          |
+| `src/careerforge_api/routers/`      | `/auth`, `/system`, `/tasks`                                                 |
+| `src/careerforge_api/workers/`      | queue port (`InProcessQueue`, `RedisQueue` stub) and the worker entrypoint   |
+| `alembic/`                          | async-aware migration environment and the `0001_initial` baseline            |

@@ -59,9 +59,7 @@ export function StatCard({ label, value, kind, definition, delta, unavailable }:
           </>
         ) : (
           <>
-            <p className="text-primary font-mono text-2xl tabular-nums leading-none">
-              {display}
-            </p>
+            <p className="text-primary font-mono text-2xl tabular-nums leading-none">{display}</p>
 
             <div className="flex items-center gap-2">
               {typeof delta === 'number' ? (

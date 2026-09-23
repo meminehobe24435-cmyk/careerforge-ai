@@ -23,18 +23,18 @@ pip install -e "packages/ai[parsing]"    # adds PDF/DOCX/HTML parsers
 
 ## Layout
 
-| Module | Contents |
-|---|---|
-| `orchestrator/` | `Step`, `Workflow`, `RunContext`, `WorkflowExecutor` |
-| `agents/` | the nine domain agents (populated per phase) |
-| `providers/` | `LLMProvider` port + DeepSeek / OpenAI / Ollama / **heuristic** |
-| `rag/` | chunking, hybrid retrieval, RRF fusion |
-| `graph/` | evidence graph construction and traversal |
-| `scoring/` | **all numeric output** — confidence, match, gaps, profile strength |
-| `parsing/` | skill taxonomy and deterministic text parsing |
-| `prompting/` | versioned prompt registry |
-| `observability/` | token accounting, price table, run tracking |
-| `schemas/` | every structured-output contract |
+| Module           | Contents                                                           |
+| ---------------- | ------------------------------------------------------------------ |
+| `orchestrator/`  | `Step`, `Workflow`, `RunContext`, `WorkflowExecutor`               |
+| `agents/`        | the nine domain agents (populated per phase)                       |
+| `providers/`     | `LLMProvider` port + DeepSeek / OpenAI / Ollama / **heuristic**    |
+| `rag/`           | chunking, hybrid retrieval, RRF fusion                             |
+| `graph/`         | evidence graph construction and traversal                          |
+| `scoring/`       | **all numeric output** — confidence, match, gaps, profile strength |
+| `parsing/`       | skill taxonomy and deterministic text parsing                      |
+| `prompting/`     | versioned prompt registry                                          |
+| `observability/` | token accounting, price table, run tracking                        |
+| `schemas/`       | every structured-output contract                                   |
 
 ## Design rules
 

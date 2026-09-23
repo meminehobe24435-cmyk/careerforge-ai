@@ -11,14 +11,14 @@ python evals/run.py --suite retrieval_recall
 python evals/run.py --provider deepseek       # same suites against a real model
 ```
 
-| Module | Role |
-|---|---|
-| `corpus_data.py` | JD families and claim templates — pure data |
-| `corpus_retrieval.py` | retrieval fragments and per-query gold — pure data |
-| `corpus_builders.py` | corpus assembly (deterministic, no I/O) |
-| `generate_datasets.py` | writes the JSONL files and the manifest hash |
-| `suites.py` | the measurements |
-| `run.py` | CLI, report artefact, safety gate |
+| Module                 | Role                                               |
+| ---------------------- | -------------------------------------------------- |
+| `corpus_data.py`       | JD families and claim templates — pure data        |
+| `corpus_retrieval.py`  | retrieval fragments and per-query gold — pure data |
+| `corpus_builders.py`   | corpus assembly (deterministic, no I/O)            |
+| `generate_datasets.py` | writes the JSONL files and the manifest hash       |
+| `suites.py`            | the measurements                                   |
+| `run.py`               | CLI, report artefact, safety gate                  |
 
 ## Why this exists
 
@@ -32,11 +32,11 @@ alongside the code so the numbers can be checked rather than trusted.
 
 ## Datasets
 
-| Dataset | Samples | Contents |
-|---|---|---|
-| `jd_extraction.jsonl` | 120 | Job descriptions across 5 role families, 3 language styles, with exact ground-truth skill sets. 65% deliberately contain a company blurb naming technologies the role does **not** require. |
-| `claim_validation.jsonl` | 120 | Claims paired with an evidence pool, labelled `supported` / `partially_supported` / `unsupported`, including 30 claims carrying a fabricated metric. |
-| `retrieval.jsonl` | 59 queries / 20 fragments | A retrieval corpus with **per-query** gold relevance, split between exact-term queries (`STM32F407`, `CANopen`) and intent paraphrases. |
+| Dataset                  | Samples                   | Contents                                                                                                                                                                                    |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jd_extraction.jsonl`    | 120                       | Job descriptions across 5 role families, 3 language styles, with exact ground-truth skill sets. 65% deliberately contain a company blurb naming technologies the role does **not** require. |
+| `claim_validation.jsonl` | 120                       | Claims paired with an evidence pool, labelled `supported` / `partially_supported` / `unsupported`, including 30 claims carrying a fabricated metric.                                        |
+| `retrieval.jsonl`        | 59 queries / 20 fragments | A retrieval corpus with **per-query** gold relevance, split between exact-term queries (`STM32F407`, `CANopen`) and intent paraphrases.                                                     |
 
 Both are **generated, not scraped**, from a seeded generator
 (`evals/generate_datasets.py`, seed `20260211`) with a content hash recorded in
@@ -60,13 +60,13 @@ omitted.
 Runs `JobAgent`'s extraction path (`ExtractedJD` → taxonomy normalisation) and
 compares against gold labels.
 
-| Metric | Meaning |
-|---|---|
-| `required_skill_precision` / `recall` / `f1` | Canonical-id set comparison on required skills |
-| `distractor_leakage_rate` | Share of postings whose *company blurb* technology was wrongly promoted to a requirement |
-| `evidence_grounding_rate` | Share of extracted skills whose quoted evidence is a verbatim substring of the source — **a safety target, enforced in CI** |
-| `requirement_level_accuracy` | Of skills found in both sets, the share assigned the right required/preferred/bonus level |
-| `role_accuracy` / `location_accuracy` / `years_accuracy` / `education_accuracy` | Field-level extraction accuracy |
+| Metric                                                                          | Meaning                                                                                                                     |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `required_skill_precision` / `recall` / `f1`                                    | Canonical-id set comparison on required skills                                                                              |
+| `distractor_leakage_rate`                                                       | Share of postings whose _company blurb_ technology was wrongly promoted to a requirement                                    |
+| `evidence_grounding_rate`                                                       | Share of extracted skills whose quoted evidence is a verbatim substring of the source — **a safety target, enforced in CI** |
+| `requirement_level_accuracy`                                                    | Of skills found in both sets, the share assigned the right required/preferred/bonus level                                   |
+| `role_accuracy` / `location_accuracy` / `years_accuracy` / `education_accuracy` | Field-level extraction accuracy                                                                                             |
 
 ### `retrieval_recall`
 
@@ -75,11 +75,11 @@ Runs the real hybrid retriever (`HybridRetriever` + `InMemoryVectorStore` +
 blended number would hide the fact that the lexical arm carries exact identifiers
 while the dense arm carries phrasing.
 
-| Metric | Result | Meaning |
-|---|---|---|
+| Metric                  | Result            | Meaning                                              |
+| ----------------------- | ----------------- | ---------------------------------------------------- |
 | `retrieval.recall_at_5` | **0.966** (57/59) | Share of queries whose gold fragment is in the top 5 |
-| `retrieval.recall_at_1` | 0.847 | Same, restricted to rank 1 |
-| `retrieval.mrr` | 0.901 | Mean reciprocal rank of the first relevant hit |
+| `retrieval.recall_at_1` | 0.847             | Same, restricted to rank 1                           |
+| `retrieval.mrr`         | 0.901             | Mean reciprocal rank of the first relevant hit       |
 
 Per query style: exact-term 0.952 recall@5 / 0.905 MRR, intent 0.947 / 0.873
 before the dataset fix described below; the current run is reported in
@@ -90,12 +90,12 @@ before the dataset fix described below; the current run is reported in
 Runs the deterministic adjudicator and measures the property the product exists
 for.
 
-| Metric | Meaning |
-|---|---|
+| Metric                   | Meaning                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
 | `numeric_rejection_rate` | Share of claims carrying an unsupported metric that were rejected. **Safety target: must be 1.00.** |
-| `over_support_rate` | Share of unsupported claims accepted as fully supported. The dangerous error. |
-| `support_recall` | Share of genuinely supported claims recognised |
-| `safer_rewrite_rate` | Share of rejected claims offered a compliant rewrite |
+| `over_support_rate`      | Share of unsupported claims accepted as fully supported. The dangerous error.                       |
+| `support_recall`         | Share of genuinely supported claims recognised                                                      |
+| `safer_rewrite_rate`     | Share of rejected claims offered a compliant rewrite                                                |
 
 ## Known weaknesses (measured, not hidden)
 
@@ -103,14 +103,14 @@ These are the current results on the heuristic provider — the zero-API-key pat
 They are reported here because an evaluation framework that only shows favourable
 numbers is decoration.
 
-| Weakness | Value | Cause |
-|---|---|---|
-| `bonus_skill_f1` | 0.776 | Bonus skills are sparse and their phrasing ("了解 …") is the most varied of the three levels |
-| `required_skill_precision` | 0.791 | Residual over-extraction when a technology is mentioned outside any recognisable section |
-| `requirement_level_accuracy` | 0.946 | A skill mentioned in two sections is classified by its first non-ignored mention |
-| `safer_rewrite_rate` | 0.622 | A rewrite is only offered when a clause can actually be dropped; many single-clause claims have no partial version. This stood at 0.489 until the rewrite started removing a measure verb together with its unsupported number — `优化算法性能，提升 70%` had been "rewritten" to `优化算法性能，提升`, which is broken text rather than a safer claim |
-| Threshold margin | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation for `claim_validation` is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
-| Retrieval paraphrase misses | 2 / 59 | `多个节点同时发送会不会冲突` does not reach the fragment describing non-destructive bitwise arbitration, and `怎么保证服务按顺序启动` misses the `healthcheck` fragment. Both are genuine limits of the character-n-gram embedding on the zero-key path, and both are recorded in the report with the ids that were returned instead. |
+| Weakness                     | Value         | Cause                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bonus_skill_f1`             | 0.776         | Bonus skills are sparse and their phrasing ("了解 …") is the most varied of the three levels                                                                                                                                                                                                                                                           |
+| `required_skill_precision`   | 0.791         | Residual over-extraction when a technology is mentioned outside any recognisable section                                                                                                                                                                                                                                                               |
+| `requirement_level_accuracy` | 0.946         | A skill mentioned in two sections is classified by its first non-ignored mention                                                                                                                                                                                                                                                                       |
+| `safer_rewrite_rate`         | 0.622         | A rewrite is only offered when a clause can actually be dropped; many single-clause claims have no partial version. This stood at 0.489 until the rewrite started removing a measure verb together with its unsupported number — `优化算法性能，提升 70%` had been "rewritten" to `优化算法性能，提升`, which is broken text rather than a safer claim |
+| Threshold margin             | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation for `claim_validation` is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures.                                                                   |
+| Retrieval paraphrase misses  | 2 / 59        | `多个节点同时发送会不会冲突` does not reach the fragment describing non-destructive bitwise arbitration, and `怎么保证服务按顺序启动` misses the `healthcheck` fragment. Both are genuine limits of the character-n-gram embedding on the zero-key path, and both are recorded in the report with the ids that were returned instead.                  |
 
 ## Dataset bugs found by using the dataset
 
@@ -129,10 +129,10 @@ reason this framework exists rather than a paragraph claiming retrieval works.
 
 ## Planned suites
 
-| Suite | Blocked on |
-|---|---|
-| `interview_relevance` (question/evidence alignment) | PHASE 7 — the interview agent does not exist yet |
-| `end_to_end` (full JD → match → résumé → gate pipeline) | PHASE 6 |
+| Suite                                                                       | Blocked on                                                       |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `interview_relevance` (question/evidence alignment)                         | PHASE 7 — the interview agent does not exist yet                 |
+| `end_to_end` (full JD → match → résumé → gate pipeline)                     | PHASE 6                                                          |
 | `confidence_calibration` (does the confidence score track human judgement?) | PHASE 3 — needs hand-labelled evidence, which does not exist yet |
 
 A suite is added when the component it measures exists. Shipping a metric for a

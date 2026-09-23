@@ -37,17 +37,17 @@ pnpm --filter web dev                                 # :3000
 
 These are enforced in CI, not suggestions.
 
-| Rule | Enforcement |
-|---|---|
-| TypeScript `strict` — no `any` without a documented reason | `tsc --noEmit` |
-| Python: full type hints, `mypy` clean | `mypy packages/ai apps/api` |
-| Lint + format | `eslint`, `prettier`, `ruff check`, `ruff format --check` |
-| **No file over 500 lines** | review + a repo script |
-| **No hardcoded color values** in components | lint rule (use design tokens) |
-| Structured LLM output only — never string parsing | Pydantic schemas in `packages/ai/careerforge_ai/schemas` |
-| Numbers must be deterministic — LLMs never produce scores | `scoring/` module owns all numeric output |
-| Tests required for new behaviour | `pytest` / `vitest` |
-| Pre-commit hooks installed | `pre-commit install` |
+| Rule                                                       | Enforcement                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| TypeScript `strict` — no `any` without a documented reason | `tsc --noEmit`                                            |
+| Python: full type hints, `mypy` clean                      | `mypy packages/ai apps/api`                               |
+| Lint + format                                              | `eslint`, `prettier`, `ruff check`, `ruff format --check` |
+| **No file over 500 lines**                                 | review + a repo script                                    |
+| **No hardcoded color values** in components                | lint rule (use design tokens)                             |
+| Structured LLM output only — never string parsing          | Pydantic schemas in `packages/ai/careerforge_ai/schemas`  |
+| Numbers must be deterministic — LLMs never produce scores  | `scoring/` module owns all numeric output                 |
+| Tests required for new behaviour                           | `pytest` / `vitest`                                       |
+| Pre-commit hooks installed                                 | `pre-commit install`                                      |
 
 ### Layering rule (important)
 

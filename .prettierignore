@@ -1,0 +1,12 @@
+# Prettier ignores generated artefacts and build output.
+#
+# `pnpm-lock.yaml` is written by pnpm: reformatting it creates a diff on every install and
+# gains nothing. `reports/` and `evals/datasets/` are produced by `evals/run.py` and
+# `evals/generate_datasets.py`, so formatting them would be undone by the next run — and the
+# check that matters for those files is the eval suite itself, not their line breaks.
+pnpm-lock.yaml
+reports/
+evals/datasets/
+.next/
+node_modules/
+coverage/

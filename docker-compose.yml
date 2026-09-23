@@ -20,7 +20,10 @@ x-api-env: &api-env
   REDIS_URL: redis://redis:6379/0
   QUEUE_BACKEND: redis
   VECTOR_BACKEND: pgvector
-  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
+  # Quoted on purpose: the `:?` message contains a colon followed by a space, which makes the
+  # bare form invalid YAML ("Nested mappings are not allowed in compact mappings") — every
+  # strict parser rejects the file, including `prettier --check` and pre-commit's `check-yaml`.
+  JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}"
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
   LLM_PROVIDER: ${LLM_PROVIDER:-heuristic}
   LLM_FALLBACK_PROVIDER: heuristic
@@ -106,7 +109,13 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/system/health', timeout=5).status == 200 else 1)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/system/health', timeout=5).status == 200 else 1)",
+        ]
       interval: 15s
       timeout: 10s
       retries: 5

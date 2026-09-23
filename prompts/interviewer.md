@@ -2,7 +2,18 @@
 name: interviewer
 version: 1
 description: Generate the next adaptive interview question from the candidate's own material.
-variables: [mode, target_role, current_level, topic, covered_topics, candidate_material, job_requirements, recent_turns, asked_count]
+variables:
+  [
+    mode,
+    target_role,
+    current_level,
+    topic,
+    covered_topics,
+    candidate_material,
+    job_requirements,
+    recent_turns,
+    asked_count,
+  ]
 tags: [interview, adaptive]
 ---
 

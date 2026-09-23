@@ -31,7 +31,7 @@ put on their resume.
 ## Output
 
 Return only the structured object. For `safer_formulation`, produce a version of
-the claim that the evidence *does* support: keep the true substance, drop or
+the claim that the evidence _does_ support: keep the true substance, drop or
 soften what cannot be shown. If nothing can be salvaged, return an empty string.
 
 Do not explain your reasoning outside the `reasoning` field. Do not add fields.
