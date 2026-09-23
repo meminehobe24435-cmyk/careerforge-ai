@@ -37,6 +37,12 @@ from careerforge_ai.agents.base import (
     strip_markup,
     truncate_for_prompt,
 )
+from careerforge_ai.agents.coach import (
+    COACH_AGENT,
+    CoachAgent,
+    build_learning_plan,
+    build_workflow as build_coach_workflow,
+)
 from careerforge_ai.agents.evidence import (
     EVIDENCE_AGENT,
     DocumentChunkInput,
@@ -76,6 +82,7 @@ from careerforge_ai.agents.validator import (
 )
 
 __all__ = [
+    "COACH_AGENT",
     "EVIDENCE_AGENT",
     "RESUME_AGENT",
     "JOB_AGENT",
@@ -85,6 +92,7 @@ __all__ = [
     "VALIDATOR_AGENT",
     "Agent",
     "AgentOutcome",
+    "CoachAgent",
     "DocumentChunkInput",
     "EvidenceAgent",
     "JobAgent",
@@ -92,8 +100,10 @@ __all__ = [
     "ProfileAgent",
     "ResumeAgent",
     "ValidatorAgent",
+    "build_coach_workflow",
     "build_evidence_workflow",
     "build_graph",
+    "build_learning_plan",
     "build_jd_analysis",
     "build_job_workflow",
     "build_profile_workflow",

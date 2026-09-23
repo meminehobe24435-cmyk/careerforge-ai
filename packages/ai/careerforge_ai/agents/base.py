@@ -60,6 +60,9 @@ class AgentOutcome:
     degraded: bool = False
     degradation_reason: DegradationReason = DegradationReason.NONE
     warnings: list[str] = field(default_factory=list)
+    #: Secondary products of the run that a caller may want without unpacking the
+    #: trace — a gap matrix alongside a learning plan, for instance.
+    extras: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
