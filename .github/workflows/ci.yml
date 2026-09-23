@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # The zero-dependency path. This is the job that proves the product works with
+  # no PostgreSQL, no Redis and no API key — the configuration most reviewers
+  # will actually run (ADR-004, ADR-009).
+  # ───────────────────────────────────────────────────────────────────────────
+  api-sqlite:
+    name: API · SQLite · no external services
+    runs-on: ubuntu-latest
+    env:
+      USE_SQLITE: "true"
+      ENVIRONMENT: test
+      LLM_PROVIDER: heuristic
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/ai[dev]"
+          pip install -e "apps/api[dev]"
+
+      - name: Lint (ruff)
+        run: |
+          ruff check packages/ai apps/api tests
+          ruff format --check packages/ai apps/api tests
+
+      - name: Type check (mypy)
+        run: mypy packages/ai/careerforge_ai
+        continue-on-error: true # tightened once the annotation pass is complete
+
+      - name: Tests — AI core
+        run: pytest packages/ai/tests -q
+
+      - name: Tests — API
+        working-directory: apps/api
+        run: pytest -q
+
+      - name: Migrations apply cleanly on SQLite
+        working-directory: apps/api
+        run: alembic upgrade head
+
+      - name: Server boots and honours the response contract
+        working-directory: apps/api
+        run: |
+          uvicorn careerforge_api.main:app --port 8123 --log-level warning &
+          SERVER_PID=$!
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8123/api/v1/system/health >/dev/null && break
+            sleep 1
+          done
+          echo "--- health ---"
+          curl -s http://127.0.0.1:8123/api/v1/system/health | tee /tmp/health.json
+          python -c "import json,sys; d=json.load(open('/tmp/health.json')); assert d['success'] is True; assert d['requestId']; print('envelope ok')"
+          echo "--- demo login ---"
+          curl -s -X POST http://127.0.0.1:8123/api/v1/auth/demo > /tmp/demo.json
+          python -c "import json; d=json.load(open('/tmp/demo.json')); assert d['data']['accessToken']; assert d['data']['user']['isDemo'] is True; print('demo login ok')"
+          echo "--- unknown route must still be enveloped ---"
+          STATUS=$(curl -s -o /tmp/404.json -w '%{http_code}' http://127.0.0.1:8123/api/v1/definitely-not-a-route)
+          test "$STATUS" = "404"
+          python -c "import json; d=json.load(open('/tmp/404.json')); assert d['success'] is False; assert d['error']['code']=='NOT_FOUND'; assert d['requestId']; print('404 envelope ok')"
+          kill $SERVER_PID
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The production path. Same suite, different storage and queue backends, so a
+  # dialect drift between SQLite and PostgreSQL fails the build instead of
+  # surprising someone in production (ADR-004).
+  # ───────────────────────────────────────────────────────────────────────────
+  api-postgres:
+    name: API · PostgreSQL + pgvector
+    runs-on: ubuntu-latest
+    env:
+      USE_SQLITE: "false"
+      DATABASE_URL: postgresql+asyncpg://careerforge:careerforge@localhost:5432/careerforge
+      REDIS_URL: redis://localhost:6379/0
+      ENVIRONMENT: test
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: careerforge
+          POSTGRES_PASSWORD: careerforge
+          POSTGRES_DB: careerforge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U careerforge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/ai[dev]"
+          pip install -e "apps/api[dev]"
+
+      - name: Enable pgvector
+        run: |
+          PGPASSWORD=careerforge psql -h localhost -U careerforge -d careerforge \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Migrations apply cleanly on PostgreSQL
+        working-directory: apps/api
+        run: alembic upgrade head
+
+      - name: Tests against PostgreSQL
+        working-directory: apps/api
+        run: pytest -q
+
+  # ───────────────────────────────────────────────────────────────────────────
+  web:
+    name: Web · typecheck · lint · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1

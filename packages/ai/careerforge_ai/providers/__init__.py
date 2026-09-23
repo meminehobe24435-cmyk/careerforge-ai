@@ -14,15 +14,16 @@ from careerforge_ai.providers.base import (
     EmbeddingResult,
     LLMProvider,
     ProviderCapabilities,
+    ProviderChainInfo,
     StreamChunk,
     StructuredContext,
     messages_to_text,
 )
 from careerforge_ai.providers.decorators import (
+    Budget,
     CachedProvider,
     CacheStore,
     InMemoryCacheStore,
-    ProviderChainInfo,
     ResilientProvider,
     RoutedProvider,
     TaskClass,
@@ -38,6 +39,7 @@ from careerforge_ai.providers.tokens import estimate_messages_tokens, estimate_t
 
 __all__ = [
     "HEURISTIC_HANDLERS",
+    "Budget",
     "CacheStore",
     "CachedProvider",
     "ChatMessage",

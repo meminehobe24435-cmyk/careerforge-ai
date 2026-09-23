@@ -1,0 +1,7 @@
+packages:
+  - "apps/web"
+  - "packages/shared"
+  - "packages/ui"
+  - "packages/config"
+allowBuilds:
+  unrs-resolver: set this to true or false

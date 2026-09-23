@@ -1,0 +1,154 @@
+# CareerForge AI — full stack.
+#
+#   docker compose up --build
+#
+# Services: web (3000) · api (8000) · worker · postgres+pgvector · redis · migrate
+#
+# The project also runs with none of this: see the "without Docker" path in the
+# README. That path is not a degraded mode — it is the same domain code with
+# SQLite, an in-process queue and the heuristic provider swapped in behind the
+# same ports (ADR-004, ADR-009, ADR-010).
+
+name: careerforge
+
+x-api-env: &api-env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  DEBUG: ${DEBUG:-false}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  USE_SQLITE: "false"
+  DATABASE_URL: postgresql+asyncpg://careerforge:${POSTGRES_PASSWORD:-careerforge}@postgres:5432/careerforge
+  REDIS_URL: redis://redis:6379/0
+  QUEUE_BACKEND: redis
+  VECTOR_BACKEND: pgvector
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  LLM_PROVIDER: ${LLM_PROVIDER:-heuristic}
+  LLM_FALLBACK_PROVIDER: heuristic
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-heuristic}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+  STORAGE_BACKEND: local
+  STORAGE_LOCAL_PATH: /data/uploads
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: careerforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-careerforge}
+      POSTGRES_DB: careerforge
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U careerforge -d careerforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Runs once, then exits. api and worker wait for it to finish successfully so
+  # they never start against an unmigrated schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    environment: *api-env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    restart: unless-stopped
+    environment: *api-env
+    command:
+      - uvicorn
+      - careerforge_api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - app-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/system/health', timeout=5).status == 200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    command: ["python", "-m", "careerforge_api.workers.main"]
+    volumes:
+      - app-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_ENABLE_DEMO_LOGIN: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-data:

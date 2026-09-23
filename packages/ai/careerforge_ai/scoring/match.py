@@ -20,7 +20,6 @@ otherwise asks the user — see :func:`_classify_requirement`.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-import re
 from uuid import UUID
 
 from careerforge_ai.schemas.common import (
@@ -40,6 +39,8 @@ from careerforge_ai.schemas.match import (
     UnknownSkill,
 )
 from careerforge_ai.schemas.profile import CandidateProfile, ProfileSkill
+from careerforge_ai.scoring.education import contains_skill, education_dimension
+from careerforge_ai.scoring.weights import MATCH_FORMULA, MATCH_WEIGHTS
 
 __all__ = [
     "DEFAULT_MATCH_WEIGHTS",
@@ -50,60 +51,16 @@ __all__ = [
 ]
 
 MATCH_ALGORITHM_VERSION = "match@1.0.0"
-MATCH_FORMULA = "0.40·skill + 0.25·experience + 0.20·project + 0.05·education + 0.10·evidence"
-
-DEFAULT_MATCH_WEIGHTS: Mapping[str, float] = {
-    MatchDimensionKey.SKILL: 0.40,
-    MatchDimensionKey.EXPERIENCE: 0.25,
-    MatchDimensionKey.PROJECT: 0.20,
-    MatchDimensionKey.EDUCATION: 0.05,
-    MatchDimensionKey.EVIDENCE: 0.10,
-}
+#: Weights and the formula string live in :mod:`careerforge_ai.scoring.weights`,
+#: so the API, the docs and this module cannot drift apart. The alias below is
+#: kept because callers and tests refer to it by this name.
+DEFAULT_MATCH_WEIGHTS: Mapping[str, float] = MATCH_WEIGHTS
 
 #: A claimed-but-unproven skill counts for this share of its nominal level.
 UNPROVEN_SKILL_FACTOR = 0.40
 
 #: Evidence count at which a skill is considered fully evidenced.
 _EVIDENCE_SATURATION = 3
-
-_DEGREE_RANK: Mapping[str, int] = {
-    "associate": 1,
-    "diploma": 1,
-    "high school": 1,
-    "bachelor": 2,
-    "bsc": 2,
-    "ba": 2,
-    "undergraduate": 2,
-    "master": 3,
-    "msc": 3,
-    "ma": 3,
-    "graduate": 3,
-    "phd": 4,
-    "doctorate": 4,
-    # Chinese JDs state the requirement in Chinese, so the mapping must too.
-    "大专": 1,
-    "专科": 1,
-    "中专": 1,
-    "本科": 2,
-    "学士": 2,
-    "硕士": 3,
-    "研究生": 3,
-    "博士": 4,
-}
-
-
-def _contains_skill(blob: str, canonical_id: str) -> bool:
-    """Whether ``blob`` mentions a skill as a whole token.
-
-    Word-boundary matching matters more than it looks: a substring test makes
-    the one-letter skill ``c`` match inside "balance", "docker" and "class",
-    quietly inflating project coverage. Taxonomy ids are ASCII slugs, so a
-    boundary regex is both correct and cheap.
-    """
-    if not canonical_id:
-        return False
-    pattern = rf"(?<![a-z0-9]){re.escape(canonical_id)}(?![a-z0-9])"
-    return re.search(pattern, blob, re.IGNORECASE) is not None
 
 
 def _round2(value: float) -> float:
@@ -290,7 +247,7 @@ def _experience_dimension(job: JDAnalysis, profile: CandidateProfile) -> MatchDi
     relevant = 0
     for experience in profile.experiences:
         blob = " ".join([experience.title, experience.description, *experience.highlights])
-        if any(_contains_skill(blob, cid) for cid in required_ids if cid):
+        if any(contains_skill(blob, cid) for cid in required_ids if cid):
             relevant += 1
     relevance = min(1.0, relevant / 2.0) if profile.experiences else 0.0
 
@@ -322,7 +279,7 @@ def _project_dimension(job: JDAnalysis, profile: CandidateProfile) -> MatchDimen
                 [project.name, project.summary, project.description, *project.tech_stack]
             )
             for cid in required_ids:
-                if _contains_skill(blob, cid):
+                if contains_skill(blob, cid):
                     covered.add(cid)
         coverage = len(covered) / len(required_ids)
 
@@ -340,48 +297,6 @@ def _project_dimension(job: JDAnalysis, profile: CandidateProfile) -> MatchDimen
         weighted=_round2(score * DEFAULT_MATCH_WEIGHTS[MatchDimensionKey.PROJECT]),
         formula="100 × (0.60 × 项目技能覆盖率 + 0.40 × 项目平均证据强度)",
         notes=[f"项目数 {len(profile.projects)}", f"平均证据强度 {strength:.2f}"],
-    )
-
-
-def _education_dimension(job: JDAnalysis, profile: CandidateProfile) -> MatchDimension:
-    requirement_text = (job.education_requirement or "").strip().lower()
-    if not requirement_text:
-        score = 100.0
-        note = "岗位未提出学历要求，不扣分"
-    else:
-        required_rank = 0
-        for token, rank in _DEGREE_RANK.items():
-            if token in requirement_text:
-                required_rank = max(required_rank, rank)
-
-        candidate_rank = 0
-        for education in profile.educations:
-            degree_text = (education.degree or "").lower()
-            for token, rank in _DEGREE_RANK.items():
-                if token in degree_text:
-                    candidate_rank = max(candidate_rank, rank)
-
-        if required_rank == 0:
-            score = 85.0
-            note = "学历要求无法解析，按中性处理"
-        elif candidate_rank >= required_rank:
-            score = 100.0
-            note = "学历达到要求"
-        elif candidate_rank == required_rank - 1:
-            score = 60.0
-            note = "学历略低于要求"
-        else:
-            score = 30.0
-            note = "学历明显低于要求"
-
-    return MatchDimension(
-        key=MatchDimensionKey.EDUCATION,
-        label=MatchDimensionKey.LABELS[MatchDimensionKey.EDUCATION],
-        score=score,
-        weight=DEFAULT_MATCH_WEIGHTS[MatchDimensionKey.EDUCATION],
-        weighted=_round2(score * DEFAULT_MATCH_WEIGHTS[MatchDimensionKey.EDUCATION]),
-        formula="学历等级比对（缺失不加分也不额外惩罚）",
-        notes=[note],
     )
 
 
@@ -448,7 +363,7 @@ def compute_job_match(
     )
     experience_dim = _experience_dimension(job, profile)
     project_dim = _project_dimension(job, profile)
-    education_dim = _education_dimension(job, profile)
+    education_dim = education_dimension(job, profile)
     evidence_dim, evidence_coverage = _evidence_dimension(matched, confidence_map)
 
     dimensions = {
