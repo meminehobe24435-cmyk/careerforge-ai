@@ -133,17 +133,58 @@ class TestJDExtraction:
             assert skill.evidence
             assert skill.evidence in embedded_jd_text
 
-    async def test_does_not_invent_a_company_name(
-        self, provider: HeuristicProvider, embedded_jd_text: str
+    async def test_reads_an_unlabelled_company_from_the_title_block(
+        self, provider: HeuristicProvider, embedded_jd_text: str, hr_jd_text: str
     ) -> None:
-        # No explicit "公司:" label in the source, so the field must stay empty
-        # rather than guess. This is the behaviour the whole schema is built for.
-        result = await provider.structured_output(
+        """A company on line one is the layout, not a guess.
+
+        This began as "no ``公司:`` label, so the field must stay empty", which was
+        over-strict in the way that matters most: the posting literally names its employer
+        on line one, and refusing to read it cost 15% of ``parse_confidence`` and left
+        every downstream card with a blank company. What the rule has to prevent is
+        *manufacturing* a company out of prose, so that is what is asserted below.
+        """
+        titled = await provider.structured_output(
             [ChatMessage(role=ChatRole.USER, content=embedded_jd_text)],
             ExtractedJD,
             context={"source_text": embedded_jd_text},
         )
-        assert result.company is None
+        assert titled.company == "某科技有限公司"
+
+        # This posting names no employer anywhere, so the field stays empty.
+        anonymous = await provider.structured_output(
+            [ChatMessage(role=ChatRole.USER, content=hr_jd_text)],
+            ExtractedJD,
+            context={"source_text": hr_jd_text},
+        )
+        assert anonymous.company is None
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # English title blocks pair company and role on one line.
+            ("Blue Harbor Labs — Frontend Engineer\nLocation: Beijing\n", "Blue Harbor Labs"),
+            # The label wins when it is present.
+            ("公司：智远科技\n岗位：嵌入式软件工程师\n", "智远科技"),
+            # A role line is never the company, whatever else matches.
+            ("岗位：嵌入式软件工程师\n工作地点：上海\n", None),
+            # Nor is a section header, or a labelled field.
+            ("任职要求：\n1. 熟悉 STM32；\n", None),
+            ("工作地点：深圳\n薪资：15k-25k\n", None),
+            # Nor prose that happens to mention a company-shaped phrase.
+            ("我们是一家专注于工业智能化的公司\n", None),
+            ("Join us and build the future of robotics\n", None),
+        ],
+    )
+    async def test_the_title_block_rule_is_precise(
+        self, provider: HeuristicProvider, text: str, expected: str | None
+    ) -> None:
+        result = await provider.structured_output(
+            [ChatMessage(role=ChatRole.USER, content=text)],
+            ExtractedJD,
+            context={"source_text": text},
+        )
+        assert result.company == expected
 
     async def test_english_jd(self, provider: HeuristicProvider, hr_jd_text: str) -> None:
         result = await provider.structured_output(

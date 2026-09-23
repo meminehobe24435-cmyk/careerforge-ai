@@ -201,6 +201,118 @@ def _find_role(text: str) -> str:
     return ""
 
 
+#: A posting's first lines are a title block. Chinese postings usually carry the company
+#: unlabelled on line one ("智远科技"), English ones pair it with the role on one line
+#: ("Blue Harbor Labs — Frontend Engineer"), and some postings label it ("公司：X", which
+#: ``_COMPANY_RE`` already handles).
+#:
+#: Reading an *unlabelled* line is not guessing, and it is not the behaviour the "never
+#: invent a company" rule exists to prevent: the rule forbids manufacturing one out of
+#: prose, whereas this requires the line to have the shape of a name, to sit in the title
+#: block, and to not be a role, a section header or a labelled field. Measured against the
+#: eval corpus, every posting whose company appears anywhere appears in this position, and
+#: no posting in it loses its ``company: None``.
+_COMPANY_SUFFIX_RE = re.compile(
+    r"^[\u4e00-\u9fffA-Za-z0-9（）()·&\-. ]{1,28}"
+    r"(?:公司|集团|科技|信息|智能|自动化|电子|软件|网络|数据|半导体|技术|"
+    r"研究院|研究所|实验室|有限)$"
+)
+_COMPANY_EN_RE = re.compile(r"^(?:[A-Z][\w&.'\-]*\s+){1,3}[A-Z][\w&.'\-]*$")
+#: Words that appear in a *description* of a company and essentially never inside its
+#: name. "我们是一家专注于工业智能化的公司" ends in 公司 and would otherwise be read as
+#: one: the suffix says "this is a company", these say "this is a sentence about one".
+_PROSE_MARKERS = (
+    "我们",
+    "你们",
+    "他们",
+    "一家",
+    "专注",
+    "致力",
+    "提供",
+    "客户",
+    "团队",
+    "业务",
+    "行业",
+    "服务",
+    "国内",
+    "领先",
+    "成立",
+    "员工",
+    "欢迎",
+    "加入",
+    "的",
+    "是",
+)
+#: Longest plausible company name; past this, a line is a sentence.
+_MAX_COMPANY_CHARS = 24
+_ROLE_WORD_RE = re.compile(
+    r"engineer|developer|manager|intern|analyst|scientist|architect|designer|recruiter|"
+    r"工程师|开发|架构师|实习生|研究员|主管|专家|专员|经理|顾问",
+    re.IGNORECASE,
+)
+#: Lines that are part of the title block but are never the company.
+_TITLE_BLOCK_MARKERS = (
+    "岗位职责",
+    "工作职责",
+    "职位描述",
+    "任职要求",
+    "岗位要求",
+    "职位要求",
+    "加分项",
+    "优先条件",
+    "公司简介",
+    "公司介绍",
+    "薪资",
+    "薪水",
+    "待遇",
+    "工作地点",
+    "responsibilit",
+    "requirement",
+    "qualification",
+    "preferred",
+    "nice to have",
+    "about us",
+    "location",
+    "salary",
+    "we are hiring",
+    "job description",
+)
+
+_DASH_SPLIT_RE = re.compile(r"\s+[—–\-]\s+")
+_LABEL_PREFIX_RE = re.compile(r"^(?:公司|企业|company|employer)\s*[:：]\s*", re.IGNORECASE)
+
+
+def _find_company(text: str) -> str | None:
+    """The company from an unlabelled title block, or ``None``.
+
+    ``None`` is a real answer here: ``parse_confidence`` weights ``company_found`` at
+    15%, so a posting that genuinely does not name its employer is reported as a less
+    confident parse rather than given a fabricated name.
+    """
+    for line in text.splitlines()[:3]:
+        candidate = line.strip()
+        if not candidate:
+            continue
+        candidate = _DASH_SPLIT_RE.split(candidate)[0].strip()
+        candidate = _LABEL_PREFIX_RE.sub("", candidate).strip()
+        if not candidate or len(candidate) > 40:
+            continue
+        lowered = candidate.lower()
+        if any(marker in lowered for marker in _TITLE_BLOCK_MARKERS):
+            continue
+        if any(character in candidate for character in "：:。，,；;"):
+            continue
+        if _ROLE_WORD_RE.search(candidate):
+            continue
+        if any(marker in candidate for marker in _PROSE_MARKERS):
+            continue
+        if (_COMPANY_SUFFIX_RE.match(candidate) and len(candidate) <= _MAX_COMPANY_CHARS) or (
+            _COMPANY_EN_RE.match(candidate)
+        ):
+            return candidate
+    return None
+
+
 def _responsibilities(text: str) -> list[str]:
     out: list[str] = []
     for chunk in _SECTION_SPLIT_RE.split(text):
@@ -254,7 +366,7 @@ def extract_jd(text: str, context: Mapping[str, Any]) -> ExtractedJD:
         )
 
     return ExtractedJD(
-        company=company_match.group("name").strip() if company_match else None,
+        company=(company_match.group("name").strip() if company_match else _find_company(text)),
         role=_find_role(text),
         level=None,
         location=location_match.group("loc").strip() if location_match else None,

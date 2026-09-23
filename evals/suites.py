@@ -34,6 +34,7 @@ TARGETS: dict[str, float] = {
     "jd.distractor_leakage_rate": 0.05,
     "jd.evidence_grounding_rate": 1.00,
     "jd.role_accuracy": 0.90,
+    "jd.company_accuracy": 0.90,
     "jd.years_accuracy": 0.90,
     "claim.numeric_rejection_rate": 1.00,
     "claim.over_support_rate": 0.05,
@@ -100,7 +101,7 @@ async def suite_jd_extraction(provider: LLMProvider, rows: list[dict[str, Any]])
     started = time.perf_counter()
     result = SuiteResult(name="jd_extraction", samples=len(rows))
 
-    role_hits = location_hits = years_hits = education_hits = 0
+    role_hits = location_hits = company_hits = years_hits = education_hits = 0
     evidence_grounded = evidence_total = 0
 
     skill_stats: dict[str, dict[str, int]] = {
@@ -131,6 +132,14 @@ async def suite_jd_extraction(provider: LLMProvider, rows: list[dict[str, Any]])
             gold["location"] and parsed.location and gold["location"] in parsed.location
         ):
             location_hits += 1
+
+        # The corpus labels the company for every posting, and until now nothing scored
+        # it: the label was dead data. Both directions are counted, because inventing a
+        # company for a posting that names none is the error the rule exists to prevent.
+        if (gold["company"] is None and parsed.company is None) or (
+            gold["company"] and parsed.company and gold["company"] in parsed.company
+        ):
+            company_hits += 1
 
         if (
             gold["years_experience_min"] is not None
@@ -219,6 +228,7 @@ async def suite_jd_extraction(provider: LLMProvider, rows: list[dict[str, Any]])
     result.metrics = {
         "jd.role_accuracy": role_hits / len(rows),
         "jd.location_accuracy": location_hits / len(rows),
+        "jd.company_accuracy": company_hits / len(rows),
         "jd.years_accuracy": years_hits / len(rows),
         "jd.education_accuracy": education_hits / len(rows),
         "jd.required_skill_precision": precision,
@@ -237,6 +247,7 @@ async def suite_jd_extraction(provider: LLMProvider, rows: list[dict[str, Any]])
     result.counters = {
         "role_hits": role_hits,
         "location_hits": location_hits,
+        "company_hits": company_hits,
         "years_hits": years_hits,
         "education_hits": education_hits,
         "required_true_positive": required["tp"],
