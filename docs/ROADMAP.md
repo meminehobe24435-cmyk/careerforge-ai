@@ -1,4 +1,4 @@
-# CareerForge AI · 开发路线图
+﻿# CareerForge AI · 开发路线图
 
 | 字段 | 值 |
 |---|---|
@@ -41,7 +41,7 @@ NEXT    — 下一阶段目标
 | 0 | 产品设计 | 7 篇设计文档 + 目录树 + Git 仓库 | ✅ 完成 |
 | 1 | 项目初始化 | Monorepo、FastAPI/Next 骨架、DB、迁移、Docker、Auth | 🔄 进行中 |
 | 2 | Candidate Profile | 文件解析、结构化抽取、技能归一化、种子数据 | ⬜ |
-| 3 | **Evidence Graph** | 证据模型、置信度引擎、图谱 API 与可视化 | ⬜ |
+| 3 | **Evidence Graph** | 证据模型、置信度引擎、图谱 API 与可视化（RAG 核心已完成） | 🔄 进行中 |
 | 4 | JD Analyzer | JD 结构化解析、技能树、解析基准 | ⬜ |
 | 5 | Job Matching | 五维可解释评分 + Why 展开 + Gaps/Unknowns | ⬜ |
 | 6 | Resume Copilot | 生成 + 验证门禁 + Diff + 版本管理 | ⬜ |
@@ -250,6 +250,7 @@ graph LR
 | 2026-02-11 | PHASE 1a | `feat(ai): add deterministic AI core` | `packages/ai` 9,165 行 / 62 文件；10 个版本化 Prompt；173 → 201 测试通过 |
 | 2026-02-11 | PHASE 1b | `refactor(ai): split oversized modules; add architecture guard scripts` | 三个守卫脚本（分层 / 500 行 / 设计令牌）；CI 双路径（SQLite + PostgreSQL）；docker-compose 全栈 |
 | 2026-02-11 | PHASE 1c | `feat(web): scaffold Next.js app; feat(evals): labeled benchmark` | 前端 83 文件全部 typecheck/lint/build 通过；评测框架实测出 100% distractor 泄漏与 13.3% 误判并修复为 0 |
+| 2026-02-11 | PHASE 3a | `feat(rag): hybrid retrieval with RRF fusion` | `rag/` 分块 + BM25 + RRF + 精确向量检索 + 混合检索器（40 测试）；Recall@5 评测 0.966；共享分词层抽取；评测工具链拆分至全部 < 500 行 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 

@@ -30,6 +30,13 @@
         "supported",
         "unsupported"
       ]
+    },
+    "retrieval": {
+      "path": "evals/datasets/retrieval.jsonl",
+      "samples": 59,
+      "sha256": "16dcd7db9b6655a7ca0f75bf3b036d6b343dd176305f450c5fe1a274e51a2977",
+      "documents": 20,
+      "note": "samples counts queries; documents counts indexed evidence fragments"
     }
   }
 }

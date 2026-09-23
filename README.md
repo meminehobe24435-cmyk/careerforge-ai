@@ -230,6 +230,9 @@ checked rather than trusted. Provider: **heuristic** (the zero-API-key path).
 | Claim validation | false "supported" rate | **0.000** | ≤ 0.05 |
 | Claim validation | supported-claim recall | **1.000** | ≥ 0.85 |
 | Claim validation | safer-rewrite offered | 0.489 | — |
+| Retrieval | Recall@5 | **0.966** (57/59) | ≥ 0.95 |
+| Retrieval | Recall@1 | 0.847 | — |
+| Retrieval | MRR | 0.901 | ≥ 0.85 |
 
 **The datasets are generated with exact ground truth, not scraped** — real job ads
 carry no labels, so precision and recall would be unmeasurable. They should be
@@ -243,17 +246,21 @@ read as indicators on a controlled corpus, not as market-representative accuracy
 | Required-skill precision | 0.791 | Residual over-extraction when a technology appears outside any recognised section |
 | Safer-rewrite rate | 0.489 | A rewrite is only offered when a clause can actually be dropped; many claims are single-clause |
 | Claim threshold margin | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
+| Retrieval paraphrase misses | 2 / 59 | The zero-key character-n-gram embedding misses two intent-style queries; both are recorded in the report with the ids returned instead |
 
-The measurement loop is the point: the first run of this suite reported
-**100% distractor leakage** and a **13.3% false-support rate**. Both were fixed in
-response to the number, and both now sit at zero.
+The measurement loop is the point. The first run of these suites reported
+**100% distractor leakage**, a **13.3% false-support rate**, and a **0.675
+Recall@5**. All three were investigated; the first two were fixed in response to
+the number and now sit at zero, while the third turned out to be partly a bug in
+my own dataset — the query `vTaskDelayUntil` did not appear anywhere in the
+corpus. After fixing it the same suite reads 0.966.
 
 ### Not yet measured
 
-`retrieval_recall` (needs the PHASE 3 retriever), `interview_relevance` (PHASE 7)
-and an end-to-end pipeline suite (PHASE 6). A suite is added when the component it
-measures exists — shipping a metric for something that has not been built is the
-failure mode this project is about.
+`interview_relevance` (PHASE 7), an end-to-end pipeline suite (PHASE 6) and
+confidence calibration (needs hand-labelled evidence). A suite is added when the
+component it measures exists — shipping a metric for something that has not been
+built is the failure mode this project is about.
 
 > The frontend has **no automated tests yet** (PHASE 12). Its dashboard success
 > path has not been exercised against a running API, and responsive behaviour was

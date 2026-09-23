@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-23T20:04:59.197613+00:00",
-  "gitSha": "e150759",
+  "generatedAt": "2026-09-23T20:12:07.367543+00:00",
+  "gitSha": "0f1f8f2",
   "provider": "heuristic",
   "providerChain": [
     "heuristic"
@@ -37,6 +37,13 @@
         "supported",
         "unsupported"
       ]
+    },
+    "retrieval": {
+      "path": "evals/datasets/retrieval.jsonl",
+      "samples": 59,
+      "sha256": "16dcd7db9b6655a7ca0f75bf3b036d6b343dd176305f450c5fe1a274e51a2977",
+      "documents": 20,
+      "note": "samples counts queries; documents counts indexed evidence fragments"
     }
   },
   "datasetCaveat": "Controlled benchmark with exact ground truth. Generated, not scraped: real postings carry no labels. Treat these numbers as upper-bound indicators of extraction quality, not as market-representative accuracy.",
@@ -48,7 +55,9 @@
     "jd.years_accuracy": 0.9,
     "claim.numeric_rejection_rate": 1.0,
     "claim.over_support_rate": 0.05,
-    "claim.support_recall": 0.85
+    "claim.support_recall": 0.85,
+    "retrieval.recall_at_5": 0.95,
+    "retrieval.mrr": 0.85
   },
   "suites": {
     "jd_extraction": {
@@ -121,7 +130,7 @@
       },
       "failures": [],
       "skipped": null,
-      "duration_ms": 464
+      "duration_ms": 503
     },
     "claim_validation": {
       "samples": 120,
@@ -163,7 +172,66 @@
       },
       "failures": [],
       "skipped": null,
-      "duration_ms": 34
+      "duration_ms": 35
+    },
+    "retrieval_recall": {
+      "samples": 59,
+      "metrics": {
+        "retrieval.mrr": 0.90113,
+        "retrieval.recall_at_1": 0.847458,
+        "retrieval.recall_at_5": 0.966102
+      },
+      "counters": {
+        "queries": 59,
+        "recall_at_1_hits": 50,
+        "recall_at_5_hits": 57
+      },
+      "breakdown": {
+        "by_query_type": {
+          "exact_term": {
+            "queries": 21.0,
+            "recall_at_1": 0.9048,
+            "recall_at_5": 1.0,
+            "mrr": 0.9524
+          },
+          "intent": {
+            "queries": 38.0,
+            "recall_at_1": 0.8158,
+            "recall_at_5": 0.9474,
+            "mrr": 0.8728
+          }
+        }
+      },
+      "failures": [
+        {
+          "kind": "retrieval_miss",
+          "query": "多个节点同时发送会不会冲突",
+          "query_type": "intent",
+          "gold_topic": "can",
+          "returned": [
+            "can/evidence_1.md",
+            "docker/evidence_1.md",
+            "pytest/evidence_1.md",
+            "rag_rrf/evidence_0.md",
+            "pid/evidence_1.md"
+          ]
+        },
+        {
+          "kind": "retrieval_miss",
+          "query": "怎么保证服务按顺序启动",
+          "query_type": "intent",
+          "gold_topic": "docker",
+          "returned": [
+            "stm32/evidence_1.md",
+            "react_next/evidence_1.md",
+            "pgvector/evidence_0.md",
+            "docker/evidence_1.md",
+            "freertos/evidence_1.md"
+          ]
+        }
+      ],
+      "skipped": null,
+      "duration_ms": 30
     }
   }
 }

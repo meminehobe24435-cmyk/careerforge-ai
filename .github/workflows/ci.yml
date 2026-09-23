@@ -59,6 +59,20 @@ jobs:
         working-directory: apps/api
         run: pytest -q
 
+      - name: Datasets are in sync with the generator
+        run: python evals/generate_datasets.py --check
+
+      - name: Evaluation suites
+        run: python evals/run.py
+
+      - name: Upload the evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: reports/eval-report.json
+          if-no-files-found: warn
+
       - name: Migrations apply cleanly on SQLite
         working-directory: apps/api
         run: alembic upgrade head
