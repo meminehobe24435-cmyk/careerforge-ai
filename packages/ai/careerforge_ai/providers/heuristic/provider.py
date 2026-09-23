@@ -195,10 +195,18 @@ class HeuristicProvider:
 
     @staticmethod
     def _structured_input(messages: Sequence[ChatMessage], context: StructuredContext) -> str:
-        """Prefer the explicit ``source_text`` from context, else the last user turn."""
-        explicit = context.get("source_text")
-        if isinstance(explicit, str) and explicit.strip():
-            return explicit
+        """The text to analyse: the explicit ``source_text``, else the last user turn.
+
+        The *presence* of the key is what matters, not whether the value is
+        non-empty. An earlier version fell through on an empty ``source_text`` and
+        analysed the rendered prompt instead — so an empty job description produced
+        skills "extracted" from the instruction text, which mentions things like
+        "must have", "必备" and technology names in its examples. An empty input
+        must yield an empty extraction.
+        """
+        if "source_text" in context:
+            explicit = context.get("source_text")
+            return explicit if isinstance(explicit, str) else ""
         for message in reversed(messages):
             if message.role == "user" and message.content.strip():
                 return message.content

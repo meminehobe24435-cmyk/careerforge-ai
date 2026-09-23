@@ -1,25 +1,70 @@
 """The nine domain agents.
 
-Each agent owns one workflow and one ``Workflow`` definition:
+Each agent is a named workflow plus the prompt context that workflow needs — not a
+chat loop. Dependencies arrive through :class:`careerforge_ai.orchestrator.RunContext`,
+which is what makes an agent testable with fake ports and its cost attributable
+step by step.
+
+Status, so the README and the docs do not overstate what exists:
 
 ===================================  ==========================================
-Agent                                Responsibility
+Agent                                Status
 ===================================  ==========================================
-``ProfileAgent``                     resume/document → structured profile
-``EvidenceAgent``                    material → evidence nodes and graph edges
-``JobAgent``                         job description → structured analysis
-``MatchAgent``                       deterministic five-dimension match score
-``ResumeAgent``                      bullet-level rewrite under evidence constraints
-``ValidatorAgent``                   claim verification and the hallucination gate
-``InterviewAgent``                   adaptive multi-turn interview simulation
-``CoachAgent``                       skill gaps → 30-day plan with mini projects
-``RecruiterAgent``                   public, evidence-backed candidate profile
+``JobAgent``                         ✅ WF-03 · JD → structured, normalised analysis
+``ValidatorAgent``                   ✅ WF-06 · claim verification and the gate
+``MatchAgent``                       ⬜ WF-04 · deterministic scoring exists in ``scoring/``
+``ProfileAgent``                     ⬜ WF-01 · extraction handler exists in the heuristic provider
+``EvidenceAgent``                    ⬜ WF-02 · graph construction exists in ``graph/``
+``ResumeAgent``                      ⬜ WF-05
+``InterviewAgent``                   ⬜ WF-07
+``CoachAgent``                       ⬜ WF-08
+``RecruiterAgent``                   ⬜ WF-10
 ===================================  ==========================================
 
-PHASE 1 establishes the orchestrator and providers these agents are built on;
-the agents themselves arrive with their respective phases.
+The remaining agents are thin workflow wrappers around already-tested engines; what
+they add is orchestration and tracing, not new logic.
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from careerforge_ai.agents.base import (
+    PROMPT_CHAR_BUDGET,
+    Agent,
+    AgentOutcome,
+    merge_workflow_warnings,
+    normalise_whitespace,
+    render_bullets,
+    strip_markup,
+    truncate_for_prompt,
+)
+from careerforge_ai.agents.job import (
+    JOB_AGENT,
+    JobAgent,
+    build_jd_analysis,
+    build_workflow as build_job_workflow,
+)
+from careerforge_ai.agents.validator import (
+    VALIDATOR_AGENT,
+    ValidatorAgent,
+    build_workflow as build_validator_workflow,
+    validate_claim_text,
+)
+
+__all__ = [
+    "JOB_AGENT",
+    "PROMPT_CHAR_BUDGET",
+    "VALIDATOR_AGENT",
+    "Agent",
+    "AgentOutcome",
+    "JobAgent",
+    "ValidatorAgent",
+    "build_jd_analysis",
+    "build_job_workflow",
+    "build_validator_workflow",
+    "merge_workflow_warnings",
+    "normalise_whitespace",
+    "render_bullets",
+    "strip_markup",
+    "truncate_for_prompt",
+    "validate_claim_text",
+]

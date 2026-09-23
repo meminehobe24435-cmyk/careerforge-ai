@@ -13,10 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from careerforge_ai.parsing.claim_rules import build_safer_formulation, split_clauses
 from careerforge_ai.providers.heuristic.handlers_claim import (
     SUPPORT_OVERLAP_THRESHOLD,
-    _clauses,
-    _safer_formulation,
     validate_claim,
 )
 from careerforge_ai.providers.heuristic.text import (
@@ -130,7 +129,7 @@ class TestValidateClaim:
 
 class TestSaferFormulation:
     def test_drops_the_clause_that_has_no_evidence(self) -> None:
-        safer = _safer_formulation(
+        safer = build_safer_formulation(
             "基于 FreeRTOS 开发多任务实时控制系统，并完成 CAN 总线节点通信",
             "项目基于 FreeRTOS 实现多任务实时控制，任务按优先级划分。",
             [],
@@ -139,15 +138,15 @@ class TestSaferFormulation:
         assert "FreeRTOS" in safer
 
     def test_strips_an_unsupported_number(self) -> None:
-        safer = _safer_formulation("优化算法性能，提升 70%", "优化算法性能。", ["70%"])
+        safer = build_safer_formulation("优化算法性能，提升 70%", "优化算法性能。", ["70%"])
         assert "70%" not in safer
         assert safer
 
     def test_returns_empty_when_nothing_can_be_improved(self) -> None:
-        assert _safer_formulation("完全无关的一句话", "另一个完全无关的句子。", []) == ""
+        assert build_safer_formulation("完全无关的一句话", "另一个完全无关的句子。", []) == ""
 
     def test_clause_splitter_handles_both_languages(self) -> None:
-        assert len(_clauses("A，B；C 以及 D")) == 4
+        assert len(split_clauses("A，B；C 以及 D")) == 4
 
 
 @pytest.mark.skipif(

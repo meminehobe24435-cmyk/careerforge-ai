@@ -186,6 +186,7 @@ class WorkflowExecutor:
             degradation_reason=record.degradation_reason,
             error_code=error_code,
             error_message=error_message,
+            metadata=dict(context.metadata),
         )
 
     # ── internals ────────────────────────────────────────────────────────────

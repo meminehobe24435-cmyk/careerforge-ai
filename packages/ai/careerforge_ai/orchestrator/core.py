@@ -99,6 +99,9 @@ class WorkflowOutput:
     degradation_reason: DegradationReason = DegradationReason.NONE
     error_code: str | None = None
     error_message: str | None = None
+    #: The run context's metadata, including any ``warnings`` steps recorded.
+    #: Surfaced so a caller can report a caveat instead of an unqualified success.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def get(self, step_name: str, default: Any = None) -> Any:
         return self.outputs.get(step_name, default)
