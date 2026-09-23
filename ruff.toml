@@ -1,0 +1,73 @@
+# Ruff configuration for the whole repository (Python side).
+# Docs: https://docs.astral.sh/ruff/
+
+target-version = "py312"
+line-length = 100
+respect-gitignore = true
+exclude = [
+  ".venv",
+  "node_modules",
+  ".git",
+  "data",
+  "reports",
+  "**/migrations/versions",
+]
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "SIM",  # flake8-simplify
+  "RET",  # flake8-return
+  "PTH",  # flake8-use-pathlib
+  "TID",  # flake8-tidy-imports
+  "ARG",  # unused arguments
+  "RUF",  # ruff-specific
+]
+ignore = [
+  "E501",    # line length is handled by the formatter
+  "B008",    # FastAPI's Depends() in defaults is idiomatic
+  "SIM108",  # ternaries are not always clearer
+  "RUF012",  # ClassVar annotation is noise on Pydantic models
+  "ARG001",  # unused arguments are common in Protocol implementations
+  "ARG002",
+  # This project is bilingual by design: Chinese UI copy, prompt templates and
+  # test fixtures use full-width punctuation ("；", "：", "，"). Those characters
+  # are intentional, not confusable typos.
+  "RUF001",
+  "RUF002",
+  "RUF003",
+  # ``__all__`` is grouped by domain with comments rather than sorted
+  # alphabetically; the grouping is more useful to a reader than the ordering.
+  "RUF022",
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = [
+  "S101",    # asserts are the point
+  "ARG001",
+  "ARG002",
+  "B011",
+  "PLC0415", # local imports are fine in tests
+]
+"**/conftest.py" = ["ARG001"]
+"**/alembic/**" = ["INP001", "ARG001", "ARG002"]
+
+[lint.isort]
+known-first-party = ["careerforge_ai", "careerforge_api"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true

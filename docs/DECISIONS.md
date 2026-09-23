@@ -31,20 +31,25 @@
 
 ---
 
-## ADR-001 Monorepo 结构（pnpm workspaces + Turborepo）
+## ADR-001 Monorepo 结构（pnpm workspaces，Turborepo 暂缓）
 
 **背景**：项目包含前端（Next.js）、后端（FastAPI）、Python AI 核心库、共享类型与 UI 包，前后端类型契约必须保持一致。
 
-**决策**：单一仓库，`apps/{web,api}` + `packages/{ai,shared,ui,config}`；TS 侧用 pnpm workspaces + Turborepo 管任务编排；Python 侧 `packages/ai` 作为可独立安装的包，由 `apps/api` 以路径依赖引入。
+**决策**：单一仓库，`apps/{web,api}` + `packages/{ai,shared,ui,config}`；TS 侧用 **pnpm workspaces** 管理，任务编排用 `pnpm -r` / `pnpm --parallel`；Python 侧 `packages/ai` 作为可独立安装的包，由 `apps/api` 以路径依赖引入。
+
+**Turborepo 暂缓（v1.0 不使用）**：Turborepo 的核心价值是**跨包任务缓存与增量构建**。当前仓库只有 1 个可构建的前端应用，任务图几乎是线性的，引入它只会增加一个二进制依赖与一份配置文件，收益为零。触发引入的条件写在这里：**当 `packages/*` 中出现第 2 个需要独立构建产物的包，或 CI 构建时间超过 3 分钟时**，再评估引入。这是有意的"延迟决策"，而不是遗漏。
 
 **被否决**：
 - 多仓库（polyrepo）：类型契约与版本同步成本高，作品集场景下无收益。
 - 把 AI 代码直接塞进 `apps/api`：无法独立测试与评测，违背"AI 核心可独立运行"的目标。
+- 现在引入 Turborepo：为工具而工具，增加无收益的复杂度。
 
 **后果**：
 - ✅ 契约漂移可通过 CI 检测（OpenAPI 生成 + diff）
 - ✅ `python evals/run.py` 可在不启动 API 的情况下跑评测
+- ✅ 依赖树更小、安装更快、失败面更少
 - ⚠️ 需要维护两套包管理（pnpm + pip），文档必须写清
+- ⚠️ 任务并行度依赖 pnpm 自身能力，缺少细粒度缓存
 
 ---
 

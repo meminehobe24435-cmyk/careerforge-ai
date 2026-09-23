@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "careerforge-ai"
+version = "0.1.0"
+description = "CareerForge AI core: agent orchestration, evidence graph, hybrid RAG, deterministic scoring."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "CareerForge AI contributors" }]
+keywords = ["ai", "agents", "rag", "career", "evidence-graph"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+# Deliberately minimal: the AI core must be installable and testable without a
+# web framework, an ORM, or a database driver (see ADR-022).
+dependencies = [
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "httpx>=0.27,<1",
+  "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+parsing = [
+  "pypdf>=5.1",
+  "python-docx>=1.1",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.3",
+]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "mypy>=1.13",
+  "ruff>=0.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/OWNER/careerforge-ai"
+Documentation = "https://github.com/OWNER/careerforge-ai/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["careerforge_ai"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:careerforge_ai.*"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+ignore_missing_imports = true
