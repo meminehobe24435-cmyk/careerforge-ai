@@ -314,13 +314,23 @@ CREATE INDEX ix_embeddings_hnsw ON embeddings
 
 ### 2.7 投递（applications）
 
+> **已实现（PHASE 8b，迁移 `0007`）**。与本节原设计的三处差异，都是被「看板要能在岗位被删后仍然成立」
+> 逼出来的：
+> ① 新增三个**快照列** `company_name` / `role` / `location`：卡片在创建时复制岗位的这些字段，
+> 于是删除岗位（`job_id` 变 NULL）或改动岗位都不会让历史卡片改口。手工录入（无岗位）时它们也是唯一的身份来源；
+> ② `salary_expectation` 为 **text**：候选人写的是「25k×15」「300-400/天」，用数值列会逼客户端
+> 把它规范化成候选人从未说过的东西；
+> ③ `match_score_snapshot` 由服务端从 `job_matches` 最近一行复制，**客户端不可传入**；没有匹配记录时
+> 为 `NULL`（不是 `0`）——「没算过」与「算出来是 0 分」是两件事。
+
 #### `applications`
-`user_id`, `job_id`, `status`(CHECK `wishlist`/`applied`/`oa`/`interview`/`final`/`offer`/`rejected`), `match_score_snapshot numeric(5,2)`, `resume_version_id`, `applied_at`, `next_action_at`, `salary_expectation`, `notes text`, `position int`（看板排序）, `archived_at`
+`user_id`, `job_id`, `resume_version_id`, `company_name`, `role`, `location`, `status`(CHECK `wishlist`/`applied`/`oa`/`interview`/`final`/`offer`/`rejected`), `match_score_snapshot numeric(5,2)`, `applied_at`, `next_action_at`, `salary_expectation text`, `notes text`, `position int`（看板排序）, `archived_at`
 > `ix(user_id, status, position)`；`ix(user_id, next_action_at)`
 
 #### `application_events`
 `application_id`, `user_id`, `from_status`, `to_status`, `note`, `occurred_at`
-> 状态变更审计 + 漏斗统计的数据源
+> **追加式**：状态变更审计 + 漏斗统计的数据源。`from_status` 可空（创建事件没有前一个状态）；
+> 改成同一状态不写事件。`ix(application_id, occurred_at)`
 
 ### 2.8 面试（interviews）
 
@@ -426,8 +436,12 @@ CREATE INDEX ix_embeddings_hnsw ON embeddings
 > `unique(cache_key)`；定期清理过期项
 
 #### `career_events`（Career Timeline）
-`user_id`, `kind`(CHECK `project`/`internship`/`application`/`interview`/`offer`/`skill`/`education`), `ref_type`, `ref_id`, `title`, `occurred_at`, `metadata jsonb`
-> `ix(user_id, occurred_at desc)`
+`user_id`, `kind`(CHECK `project`/`internship`/`application`/`interview`/`offer`/`skill`/`education`), `ref_type`, `ref_id`, `title`, `occurred_at`, `metadata jsonb`, `dedupe_key text`
+> `ix(user_id, occurred_at desc)`；`unique(user_id, dedupe_key)`。**已实现（PHASE 8b，迁移 `0007`）**，
+> 目前由投递看板写入（投递 / 面试 / Offer / 被拒四个里程碑）。与本节原设计的一处差异：新增
+> `dedupe_key`（形如 `application:<id>:<status>`）并用唯一约束兜底——卡片被拖来拖去时，
+> 同一个里程碑只能上一次时间线；会自我膨胀的时间线不是时间线。
+> `ref_id` **不建外键**：里程碑是历史事实，不该因为看板卡片被清理而级联消失。
 
 #### `audit_logs`
 `user_id`, `action`, `resource_type`, `resource_id`, `ip_hash`, `user_agent`, `metadata jsonb`

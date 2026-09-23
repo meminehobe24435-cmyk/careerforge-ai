@@ -6,6 +6,68 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 8b · The application tracker, and a dashboard that stops guessing
+
+- `applications`, `application_events` and `career_events` (§2.7, §2.11) with migration
+  `0007`, verified column-for-column against the ORM models.
+- Nine endpoints: the board, list, create, detail, update, reorder, events, delete, plus
+  `POST /jobs/{id}/applications` — FR-13.5, one click from "I analysed this posting" to
+  "I am tracking it".
+- `GET /applications/board` returns all seven columns in the documented order, empty ones
+  included, with `counts` and `total`. A missing key would force the client to guess, and
+  a guessed board draws the wrong columns the day a stage is added.
+- **Every status change writes an `application_events` row**, which is what PHASE 9's
+  funnel will read. A move to the *same* status writes nothing: a within-column drag is a
+  reorder, and an event log full of `applied → applied` makes one application look like
+  several.
+- `career_events` finally has a writer: the milestones a candidate would put on a CV
+  timeline (applied, interviewed, offered, rejected). Intermediate board moves stay in the
+  event log. A `dedupe_key` plus unique constraint means dragging a card back and forth
+  cannot inflate the timeline with the same milestone.
+- The dashboard's `applications` / `interviews` / `offers` are real counts. PHASE 5 shipped
+  them as named zeros in `meta.unavailable` because no data source existed; that list is now
+  empty and the definitions say which arithmetic each number is — including that
+  `interviews` is a board snapshot, not the ever-reached funnel.
+
+### Changed — PHASE 8b
+
+- **The board is a snapshot, not a view over live postings.** A card copies the company,
+  role, location and the system's last computed match score at creation. Deleting a
+  posting therefore leaves the card standing (its `jobId` goes null) instead of erasing
+  the user's history as a side effect of housekeeping.
+- **A client cannot post a score.** `matchScore` is refused on input; the number on a card
+  is evidence, not a claim. With no stored match it is `null`, never `0` — "never scored"
+  and "scored zero" are different facts.
+- **Drop positions are re-derived server-side.** A drag-and-drop client is a hostile source
+  of ordering data (duplicates, gaps, a whole column in one gesture), so a position is an
+  input to rendering, not a source of truth.
+- No transition is forbidden. The board is dragged, so candidates mis-drop, rewind after a
+  rejection and reopen an old wishlist item; rather than fight the user, every move is
+  recorded. `applied_at` is stamped when a card first leaves `wishlist` and is not erased by
+  a rewind, and `offer`/`rejected` clear `next_action_at`.
+
+### Fixed — PHASE 8b
+
+- **The JD parser could not read a company name.** `_COMPANY_RE` demanded a `公司：` label,
+  while the most common Chinese layout puts the company unlabelled on line one. Every card
+  came out with a blank company and every parse lost the 15% `company_found` weight. The
+  parser now reads a title block — unlabelled first line, `Company — Role` on one line, or
+  the labelled form — requiring a name-shaped candidate, ≤ 24 characters, free of prose
+  words, and neither a role line nor a section header; `我们是一家专注于工业智能化的公司`
+  is therefore still not read as a company.
+- **The eval corpus labelled a company for all 120 postings and nothing scored it.** The
+  gold field was dead data. `jd.company_accuracy` now measures it in both directions —
+  inventing a company for a posting that names none is exactly the error the rule exists to
+  prevent. Measured 1.0000 on 120 samples, with `required_skill_f1` (0.8832) and
+  `distractor_leakage_rate` (0.0000) unmoved.
+- `/applications/board` and `/applications/reorder` are declared before
+  `/applications/{id}`: registered the other way round, a literal path is unreachable and
+  the endpoint answers "Application not found" for its own documented URL. There is a test
+  that would catch it.
+- Three test assertions counted rows across the whole session-shared test database instead
+  of one account's. Each passed in isolation and failed in the full run — the argument for
+  running the whole suite every phase, and for tenant-scoping every assertion.
+
 ### Added — PHASE 6b · The claim gate, made durable
 
 - `resume_versions`, `resume_claims` and `claim_evidence` (§2.9) with migration `0006`,

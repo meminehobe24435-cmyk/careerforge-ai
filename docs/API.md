@@ -336,9 +336,10 @@ AI 相关响应统一携带：
 > `strengths` / `gaps` / `unknowns` 在响应中是 camelCase 且明确的模型；`why.formula` 是真实
 > 公式而非描述，`dimensions[*].weighted` 之和等于 `score`（有测试断言这一点）。
 > 尚未实现：`PATCH /jobs/{id}`（纠正解析结果）、`POST /jobs/match`（不落库的即时匹配）、
-> `POST /jobs/{id}/skill-gap` 与 `/learning-plan`（PHASE 8，CoachAgent）、`/applications`（PHASE 8）。
-> 当前分数里 `experience` 与 `project` 维度为 0，因为 §2.2 的职业实体表尚未实现——分数如实
-> 反映「没有这类数据」，而不是用假设填补。
+> `POST /jobs/{id}/skill-gap` 与 `/learning-plan`（CoachAgent 已有，端点待接）。
+> `POST /jobs/{id}/applications`（加入投递看板）已实现，见 §2.9。
+> `experience` 与 `project` 两个维度自 PHASE 2b 起由 §2.2 的职业实体表驱动；空缺的维度会如实
+> 记为 0 并在 `unknowns` 里说明「没有这类数据」，而不是用假设填补。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -469,17 +470,55 @@ AI 相关响应统一携带：
 
 ### 2.9 投递看板 `/applications`
 
+> **状态：已实现（PHASE 8b）**：下表 7 个端点全部实现，另加 `POST /jobs/{job_id}/applications`
+> （FR-13.5「从 JD 分析结果一键加入投递」）。表见 `docs/DATABASE.md` §2.7（迁移 `0007`）。
+> **看板是快照，不是实时视图**：卡片在创建时复制岗位的公司/角色/地点与**系统最近一次算出的匹配分**，
+> 此后不随岗位变化。`matchScore` **不接受客户端传入**（`extra="forbid"`）——卡片上的分数是证据，不是声明；
+> 岗位被删除时 `jobId` 置空而卡片保留（公司名仍显示），否则一次清理动作就等于删掉用户的求职历史。
+> **每一次状态变更都写一条 `application_events`**（追加式，含 `fromStatus`），这是 PHASE 9 漏斗的数据源；
+> 移到**同一状态**不写事件（列内拖拽是排序而非移动，否则一次投递会被漏斗数成好几次）。
+> `appliedAt` 在首次离开 `wishlist` 时写入，且不被「拖回去」抹掉——倒退是纠正看板，不是否认投过。
+> `offer` / `rejected` 会清空 `nextActionAt`：已结束的投递不该留着提醒。
+> **不禁止任何方向的流转**：看板是拖拽的，候选人会拖错、会在面试后被拒后拖回、会几个月后重新考虑；
+> 与其跟用户较劲，不如把每次移动都记下来——可审计的历史比状态机更值钱。
+> 里程碑（投递 / 面试 / Offer / 被拒）另外写入 `career_events`，**同一状态只写一次**（拖来拖去不会把
+> 时间线撑大）；中间态（`oa` / `final`）只留在事件表里。
+> `GET /applications/board` 返回**全部七列，空列也返回**：空列本身是信息（说明还没到那一步），
+> 缺 key 只会让客户端去猜，而猜出来的看板会在新增阶段的当天画错。
+> `/applications/reorder` 与 `/applications/board` 在路由表中**声明在 `/{application_id}` 之前**：
+> 反过来注册，字面量路径会被当成 id，端点对自己的文档路径回 404。
+> 尚未实现：`/app/applications` 看板页面与拖拽乐观更新（FR-13.1–13.3 的前端部分，PHASE 8c）。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/applications` | 列表（`?status=&includeArchived=`），按 `status` 分组返回 |
-| POST | `/applications` | 新建（`{ jobId \| manual fields, status }`） |
-| GET | `/applications/{id}` | 详情（含事件历史） |
-| PATCH | `/applications/{id}` | 更新字段/状态（状态变更自动写 `application_events`） |
-| PATCH | `/applications/reorder` | 拖拽排序 `{ items:[{id,status,position}] }` |
+| GET | `/applications` | 列表（`?status=`、`?includeArchived=`） |
+| GET | `/applications/board` | 看板：七列（按固定顺序）+ `counts` + `total` + `archived` |
+| POST | `/applications` | 新建（`{ jobId \| manual fields }`，`status` 默认 `wishlist`） |
+| PATCH | `/applications/reorder` | 拖拽落位 `{ items:[{id,status,position}] }`，位置由服务端重新推导 |
+| POST | `/jobs/{job_id}/applications` | 从 JD 分析结果加入看板（body 可省略，公司等取自岗位快照） |
+| GET | `/applications/{id}` | 详情（含事件历史，最新在前） |
+| PATCH | `/applications/{id}` | 更新字段/状态（状态变更自动写 `application_events`；`archived` 归档） |
 | GET | `/applications/{id}/events` | 状态变更历史 |
-| DELETE | `/applications/{id}` | 删除 |
+| DELETE | `/applications/{id}` | 删除（硬删除，事件级联；归档请用 `PATCH archived`） |
 
-### 2.9 简历与断言 `/resume` `/claims` ★
+```json
+{ "success": true, "error": null, "requestId": "req_01HQ…",
+  "data": {
+    "columns": [
+      {"status": "wishlist", "items": []},
+      {"status": "applied",  "items": []},
+      {"status": "oa",       "items": [
+        {"id":"uuid-a1","jobId":"uuid-j1","company":"智远科技","role":"嵌入式软件工程师",
+         "location":"苏州","status":"oa","matchScore":20.0,"position":0,
+         "appliedAt":"2026-02-12T09:15:00+00:00","nextActionAt":null,
+         "salaryExpectation":"18k×15","notes":"","archivedAt":null} ]},
+      {"status": "interview", "items": []}, {"status": "final", "items": []},
+      {"status": "offer", "items": []}, {"status": "rejected", "items": []} ],
+    "counts": {"wishlist":0,"applied":0,"oa":1,"interview":0,"final":0,"offer":0,"rejected":0},
+    "total": 1, "archived": 0 } }
+```
+
+### 2.10 简历与断言 `/resume` `/claims` ★
 
 > **状态：已实现（PHASE 6b）**：`POST /resume/optimize`、`GET /resume/versions`、
 > `GET /resume/versions/{id}`、`DELETE /resume/versions/{id}`，以及 §2.5 的
@@ -508,14 +547,16 @@ AI 相关响应统一携带：
 | GET | `/resume/versions/{id}/diff` | 版本对比 — 未实现 |
 | POST | `/claims/{id}/dismiss` | 忽略某条判定 — 未实现 |
 
-### 2.10 分析 `/dashboard` `/analytics`
+### 2.11 分析 `/dashboard` `/analytics`
 
-> **状态：`/dashboard` 已实现（PHASE 5），`/analytics/*` 未实现（PHASE 9）。**
+> **状态：`/dashboard` 已实现（PHASE 5，PHASE 8b 补齐投递指标），`/analytics/*` 未实现（PHASE 9）。**
 > 有意**不缓存**（与本文档的「含缓存」不同）：这里的每个数字都由用户几秒前才可能改动的行
 > 推导而来（上传简历、跑一次匹配），一个和上一页互相矛盾的缓存首页比多花 30ms 更糟。
 > 缓存属于昂贵的聚合端点 `/analytics/*`，这也是路线图安排的位置。
-> `meta.unavailable` 列出**数据源尚不存在**的指标（投递看板属于 PHASE 8）：仪表盘上的 `0`
-> 会被读成「你没有」，而对一个从未见过投递记录的系统来说，这是一个它无法做出的断言。
+> `applications` / `interviews` / `offers` 自 PHASE 8b 起是**真实计数**（`meta.unavailable` 因此为空，
+> 但机制保留：下一个「先上数字、后接数据源」的功能还要用它）。`interviews` 是**看板快照**——
+> 当前处于 `interview`/`final`/`offer` 的卡片数；曾进面试但已结束的不计入，漏斗口径按事件流统计，
+> 两者本就应该不同，所以口径随数字一起下发。
 > `meta.definitions` 随数字一起给出每个指标实际使用的口径，前端优先使用它而不是本地副本，
 > 避免标签与算法悄悄分叉。
 > `skillsRadar[].market` 目前缺省：市场均值需要岗位语料，尚未收集；编造一条基线会把对比变成装饰。
@@ -547,10 +588,14 @@ AI 相关响应统一携带：
                     {"jobId":"uuid-j2","company":"某 AI 公司","role":"AI Application Engineer",
                      "matchScore":81,"status":"applied"} ],
     "nextActions": [ {"type":"interview","title":"某科技 二面","at":"2026-02-14T09:00:00Z"} ],
-    "meta": {"cacheHit":false,"tookMs":146} } }
+    "meta": {"cacheHit":false,"tookMs":146,
+             "unavailable":{},
+             "definitions":{"applications":"投递看板中未归档的卡片总数（含 wishlist：想看但还没投的也算在跟）。",
+                            "interviews":"当前处于面试阶段的卡片数（interview + final + offer）——这是看板快照，不是「曾经进过面试」的漏斗口径；漏斗按事件流统计，见 PHASE 9 的 /analytics。",
+                            "offers":"当前状态为 offer 的卡片数。"}} } }
 ```
 
-### 2.11 AI 可观测性与成本 `/ai-runs` `/ai-costs`
+### 2.12 AI 可观测性与成本 `/ai-runs` `/ai-costs`
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -562,7 +607,7 @@ AI 相关响应统一携带：
 | GET | `/cache/stats` | 三类缓存命中率 |
 | GET | `/prompts` | Prompt Registry 列表（name/version/sha/isActive） |
 
-### 2.12 公开候选人页与分享 `/public`
+### 2.13 公开候选人页与分享 `/public`
 
 | 方法 | 路径 | 认证 | 说明 |
 |---|---|---|---|
@@ -571,7 +616,7 @@ AI 相关响应统一携带：
 | PATCH | `/public/settings` | ✅ | 逐项可见性设置 |
 | GET | `/public/candidate/{slug}/evidence/{skillId}` | — | 某技能的公开证据（Recruiter View 点击展开） |
 
-### 2.13 系统与搜索 `/system` `/search` `/tasks`
+### 2.14 系统与搜索 `/system` `/search` `/tasks`
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

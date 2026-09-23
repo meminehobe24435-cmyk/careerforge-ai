@@ -136,6 +136,8 @@ NEXT    — 下一阶段目标
 |---|---|
 | **产出** | `applications` / `application_events` CRUD；`KanbanBoard`（dnd-kit，乐观更新 + 回滚 + 键盘可操作）；`/app/applications`；`career_events` 写入；移动端列表视图 |
 | **退出标准** | 拖拽后刷新状态持久；失败自动回滚且有 Toast；键盘可完成一次拖拽（a11y 断言）；状态变更全部有事件记录 |
+| **进度** | **8b 已完成**（后端 + 仪表盘指标）：迁移 `0007`、9 个端点、事件与时间线、位置由服务端推导、`career_events` 里程碑去重。**8c 待做**：`/app/applications` 看板页面与拖拽乐观更新（FR-13.1–13.3 前端部分、移动端列表视图） |
+| **验证命令** | `pytest tests/test_applications.py tests/test_application_moves.py tests/test_dashboard.py`、`python evals/run.py --suite jd_extraction` |
 
 ### PHASE 9 · Career Analytics
 
@@ -275,6 +277,8 @@ graph LR
 | 2026-09-24 | PHASE 5b | `test(web): run the real client against a live API` | 前端**首次真正连上后端**：`smoke:api` 用 `@careerforge/shared` 的真实客户端 + 运行时守卫打真实服务，7/7 通过（登录、dashboard 守卫、健康状态归一、证据图谱、岗位、匹配、404 信封）；`next build` 全绿并逐页 200；仪表盘新增「尚未接入」渲染 |
 | 2026-09-24 | PHASE 2c | `feat(api): persist the career entities and read the real profile everywhere` | `educations` / `experiences` / `projects` / `achievements` / `profile_skills` + 迁移 `0005`；`POST /profile/import` 与 `GET /profile`；三个下游（图谱、匹配、仪表盘）改为读取真实画像。实测（全新库）：图 16 节点、**0 个占位节点**（此前 project/experience 全是 `project:de6dd367` 这类占位）；匹配 `skill` 0.0 → **39.16**、`evidence` 0.0 → **87.0**、总分 16.4 → **40.76**，缺口从 `['stm32','free_rtos','can']`（三个假缺口）修正为 `['autosar']` |
 | 2026-09-24 | PHASE 6b | `feat(api): persist resume versions and claims; give the gate a retriever` | `resume_versions` / `resume_claims` / `claim_evidence` + 迁移 `0006`；`POST /resume/optimize`、`GET /resume/versions[/{id}]`、`POST /evidence/validate` 与 `/batch`（≤20）。真实服务实测：支持的句子 `partially_supported`（1 条来源，按设计不足以 corroborate）、编造的句子 `contradicted` 并给出 3 条规则依据与降级改写、每次改写逐条 gate 并落库 `integrity=0.5` |
+| 2026-09-24 | PHASE 6c | `fix(ai): refuse an unsupported claim instead of calling it contradicted` | 关闭 PHASE 6b 记录的三条限制：无支撑断言判 `unsupported` 而非 `contradicted`、规则 blocker 不再被检索命中软化、单来源降级写入 `single_source_only` 理由、删数字后仍残留无支撑技术名词时**不提供**降级改写。评测指标全部不变（`numeric_rejection_rate 1.0000`、`over_support_rate 0.0000`、`safer_rewrite_rate 0.6222`、`support_recall 1.0000`）——说明改的是「怎么说」而不是「有多严」 |
+| 2026-09-24 | PHASE 8b | `feat(api): the application tracker — board, events and a real dashboard` | `applications` / `application_events` / `career_events` + 迁移 `0007`；9 个端点（含 FR-13.5 一键加入）；仪表盘三项指标由**真实计数**取代 PHASE 5 的具名零值（`meta.unavailable` 由 3 项变为 `{}`）。真实服务实测见下方「PHASE 8 实测问题记录」 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -345,6 +349,15 @@ graph LR
 | 2 | **「已声明且有证据」的技能被判为缺口**：声明行来自简历抽取，其 `evidence_count` 为 0，引擎的规则 2（声明但无证据 → 缺口）因此把 STM32/FreeRTOS/CAN 全部报成缺口——而图谱里它们各有 8 条证据。等于告诉候选人他们缺三样自己明明有的东西 | 真实服务端到端跑分（`gaps=['stm32','free_rtos','can']` 与 EVIDENCED_BY 边自相矛盾） | 修复：声明技能与证据图谱**并集合并**（保留声明等级、补上真实计数、补上有证据但未声明的技能）；实测 `skill` 0.0 → 39.16、`evidence` 0.0 → 87.0、总分 16.4 → 40.76，缺口修正为 `['autosar']` |
 | 3 | **重复导入会重建实体行**：`_replace_*` 用 delete+insert，行的 UUID 随之改变，图谱中指向旧 UUID 的边全部失联，画布上出现 `project:de6dd367` 这种打不开的占位节点——而 `dedupe_key` 的存在意义正是跨导入识别同一实体 | 真实服务连续两次导入 + 图谱对照 | 修复：改为按 `dedupe_key` 就地更新（行身份稳定，边继续有效）；真被删除的实体连同其边一起删除。实测：第二次导入后图与分数与第一次**完全一致**、占位节点 0 |
 | 4 | `profile_service.py` 触及 500 行守卫（两次：529 行、501 行） | 自建守卫脚本 | 两次都拆分而非豁免：行→schema 映射独立为 `profile_mapping.py`；`node_id_for_row` 归入同一模块（那里已是「行如何映射到身份」的归属地） |
+
+### PHASE 8 实测问题记录（发现 → 修复）
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | **JD 解析读不出公司名**：`_COMPANY_RE` 要求 `公司：` 这类标签，而中文 JD 最常见的排版是**首行直接写公司名**（`智远科技\n嵌入式软件工程师`）。结果每张卡片公司为空、`parse_confidence` 白丢 15% 的 `company_found` 权重。评测语料里 120 条 JD 全都带 `company` 金标准，却**没有任何指标在消费它**——金标准是死数据 | 看板卡片公司为空 → 追到解析器，再核对评测语料 | 修复：新增标题块识别（首行无标签公司名 / `Company — Role` 同行 / `公司：X` 标签），并要求名字形状、长度 ≤ 24 字、不含叙述词（`我们|一家|专注|…`）、不是角色行或章节标题；`我们是一家专注于工业智能化的公司` 这类句子因此不会被误读为公司。同时新增指标 `jd.company_accuracy`，实测 **1.0000**（120 条），`required_skill_f1` 与 `distractor_leakage_rate` 保持不变 |
+| 2 | **`career_events` 没有写入方**：PHASE 8a 之前它只是一张被文档承诺、实际没人写的表 | 实现投递看板时对照 §2.11 | 修复：状态变更的**里程碑**（投递/面试/Offer/被拒）写入时间线；中间态（`oa`/`final`）只留在事件表。新增 `dedupe_key` + 唯一约束：卡片拖来拖去同一个里程碑只写一次（有测试） |
+| 3 | **拖拽数据的顺序不可信**：客户端会在一次手势里送来重复位置、跳号位置，或整列重排 | 设计 reorder 端点时枚举 | 处置：位置**不由客户端定义**——服务端按「插入到第 index 位、其余顺延」重建整列顺序再密集写回；`position` 只是渲染顺序的输入，不是事实来源 |
+| 4 | **测试断言跨账号计数**：会话级共享 SQLite 让「本用户事件数」被写成全表计数，单独跑过、全量跑挂（`assert 2 == 1`） | 全量套件 | 修复：三处统计断言全部按 `user_id` 限定。这类缺陷只在全量运行时出现，正是「每阶段跑全量」的价值 |
 
 ### PHASE 6 实测问题记录（发现 → 修复）
 
