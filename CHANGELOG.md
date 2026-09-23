@@ -6,6 +6,45 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 6b · The claim gate, made durable
+
+- `resume_versions`, `resume_claims` and `claim_evidence` (§2.9) with migration `0006`,
+  verified column-for-column against the ORM models.
+- `POST /resume/optimize`, `GET /resume/versions`, `GET /resume/versions/{id}`,
+  `DELETE /resume/versions/{id}`, plus the documented `POST /evidence/validate` and
+  `/evidence/validate/batch` (≤ 20).
+- Every bullet is gated and stored with its verdict: status, confidence, the rules that fired,
+  the safer rewrite, and — for a supported claim — the citations that support it. The
+  candidate's own wording is kept beside the rewrite so a reviewer can judge whether the
+  optimised version invented something.
+- A claim can exist without a résumé version, which is what makes the Validator page possible:
+  a sentence someone is *considering*, checked before it reaches a document.
+
+### Fixed — PHASE 6b
+
+- **Without a retriever the gate did not degrade — it rejected everything.** The retrieval phase
+  reported "no retriever configured" and returned zero hits, so "使用 STM32 与 FreeRTOS 开发电机
+  控制固件" came back unsupported with `skill_not_in_graph`, while the graph held eight pieces of
+  evidence for those skills. The API now builds the project's own hybrid retriever (BM25 +
+  vectors, RRF-fused, ADR-0006) over the caller's stored evidence.
+- **The rules phase runs before retrieval and reads caller-supplied material**, which the API was
+  not passing — so every technical noun in a claim was reported as unmentioned, in the same
+  response that cited a document naming it. The single-claim path now supplies the candidate's
+  material, which is what the contract asks of a caller that holds it.
+- The API's bullet field is `original` while the engine reads `text`; the mismatch made every
+  bullet look empty and the optimiser politely reported having nothing to rewrite. Mapped
+  explicitly — a silent failure rather than an error is the worst kind here.
+- `integrity_score` and `claim_stats` were copied from an engine field that can arrive empty,
+  leaving a version whose summary read `{}` beside a list of claims. Both are now computed from
+  the claims actually stored.
+
+### Known limitations — PHASE 6b
+
+Recorded in `docs/ROADMAP.md` rather than left implicit: the safer rewrite can leave a measure
+verb dangling mid-sentence (`提升了 ，并主导了`); a fabricated claim is classified
+`contradicted` although nothing contradicts it; and a single-source downgrade carries no reason
+in `reasons`, so the status is right but unexplained.
+
 ### Added — PHASE 2b · Career entities and the profile import path
 
 - `educations`, `experiences`, `projects`, `achievements` and `profile_skills` (§2.2) with

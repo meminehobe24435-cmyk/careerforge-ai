@@ -274,6 +274,7 @@ graph LR
 | 2026-09-24 | PHASE 5a | `feat(api): implement GET /dashboard for the frozen client contract` | 前端自 PHASE 0 冻结的 `DashboardResponse` 契约终于有实现：六项指标全部由已存行推导；数据源尚不存在的三项（投递/面试/Offer）在 `meta.unavailable` 中具名而非静默为零；`meta.definitions` 随数字给出真实口径；`profileStrength` 来自确定性引擎 |
 | 2026-09-24 | PHASE 5b | `test(web): run the real client against a live API` | 前端**首次真正连上后端**：`smoke:api` 用 `@careerforge/shared` 的真实客户端 + 运行时守卫打真实服务，7/7 通过（登录、dashboard 守卫、健康状态归一、证据图谱、岗位、匹配、404 信封）；`next build` 全绿并逐页 200；仪表盘新增「尚未接入」渲染 |
 | 2026-09-24 | PHASE 2c | `feat(api): persist the career entities and read the real profile everywhere` | `educations` / `experiences` / `projects` / `achievements` / `profile_skills` + 迁移 `0005`；`POST /profile/import` 与 `GET /profile`；三个下游（图谱、匹配、仪表盘）改为读取真实画像。实测（全新库）：图 16 节点、**0 个占位节点**（此前 project/experience 全是 `project:de6dd367` 这类占位）；匹配 `skill` 0.0 → **39.16**、`evidence` 0.0 → **87.0**、总分 16.4 → **40.76**，缺口从 `['stm32','free_rtos','can']`（三个假缺口）修正为 `['autosar']` |
+| 2026-09-24 | PHASE 6b | `feat(api): persist resume versions and claims; give the gate a retriever` | `resume_versions` / `resume_claims` / `claim_evidence` + 迁移 `0006`；`POST /resume/optimize`、`GET /resume/versions[/{id}]`、`POST /evidence/validate` 与 `/batch`（≤20）。真实服务实测：支持的句子 `partially_supported`（1 条来源，按设计不足以 corroborate）、编造的句子 `contradicted` 并给出 3 条规则依据与降级改写、每次改写逐条 gate 并落库 `integrity=0.5` |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -344,3 +345,21 @@ graph LR
 | 2 | **「已声明且有证据」的技能被判为缺口**：声明行来自简历抽取，其 `evidence_count` 为 0，引擎的规则 2（声明但无证据 → 缺口）因此把 STM32/FreeRTOS/CAN 全部报成缺口——而图谱里它们各有 8 条证据。等于告诉候选人他们缺三样自己明明有的东西 | 真实服务端到端跑分（`gaps=['stm32','free_rtos','can']` 与 EVIDENCED_BY 边自相矛盾） | 修复：声明技能与证据图谱**并集合并**（保留声明等级、补上真实计数、补上有证据但未声明的技能）；实测 `skill` 0.0 → 39.16、`evidence` 0.0 → 87.0、总分 16.4 → 40.76，缺口修正为 `['autosar']` |
 | 3 | **重复导入会重建实体行**：`_replace_*` 用 delete+insert，行的 UUID 随之改变，图谱中指向旧 UUID 的边全部失联，画布上出现 `project:de6dd367` 这种打不开的占位节点——而 `dedupe_key` 的存在意义正是跨导入识别同一实体 | 真实服务连续两次导入 + 图谱对照 | 修复：改为按 `dedupe_key` 就地更新（行身份稳定，边继续有效）；真被删除的实体连同其边一起删除。实测：第二次导入后图与分数与第一次**完全一致**、占位节点 0 |
 | 4 | `profile_service.py` 触及 500 行守卫（两次：529 行、501 行） | 自建守卫脚本 | 两次都拆分而非豁免：行→schema 映射独立为 `profile_mapping.py`；`node_id_for_row` 归入同一模块（那里已是「行如何映射到身份」的归属地） |
+
+### PHASE 6 实测问题记录（发现 → 修复）
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | **没有检索器时门禁不是降级而是全盘拒绝**：验证器缺 retriever 时检索阶段返回零命中，规则阶段读到空的 `evidence_text`，于是「使用 STM32 与 FreeRTOS 开发电机控制固件」被判 `skill_not_in_graph`——而图谱里这两个技能各有 8 条证据 | 真实服务端到端验证 | 修复：API 侧为门禁构建本项目自己的混合检索器（BM25 + 向量 + RRF，逐个用户按请求建立索引） |
+| 2 | **规则阶段早于检索阶段**，且读的是调用方传入的 `evidence_text`。API 未传 → 每个技术名词都被判「证据中未出现」。协议本意是「持有材料的调用方直接提供」，API 没有履行 | 真实服务端到端验证（同一句同时出现「有引用」与「未出现该技能」的自相矛盾） | 修复：单条校验路径传入候选人材料（标题+片段，按置信度截断）。实测：该矛盾理由消失 |
+| 3 | **API 的 bullet 字段名与引擎不符**：API 用 `original`（候选人原话，响应里回 `originalText`），引擎读 `text`。字段名不匹配使每个 bullet 在引擎眼中都是空文本，于是「没有可供改写的要点」——这是静默失败而非报错 | 单元级复现 + 真实服务 | 修复：服务层显式映射；并在注释里写明这是静默失败 |
+| 4 | `integrity_score` / `claim_stats` 直接抄引擎字段，而该字段可能为空：版本摘要显示 `{}`，旁边却列着一串 claim | 端到端 HTTP 测试 | 修复：两个数字都由**本次实际落库的 claims** 计算，摘要与其内容不可能互相矛盾 |
+
+### 已知限制（记录而未修复）
+
+| # | 现象 | 判断 |
+|---|---|---|
+| 1 | 编造的句子被判 `contradicted`，而实际上没有任何证据**反驳**它——只是无支撑 | 分类偏重：`contradicted` 是比事实更强的断言，应落到 `unsupported`。需要区分「与证据冲突」与「无证据」两类输入后再改，否则会把真正的矛盾也降级 |
+| 2 | 降级改写会把度量动词留在句中：`使用 Kubernetes 将部署效率提升了 300%，并主导了…` → `…提升了 ，并主导了…` | PHASE 7c 修的是「动词悬空在句尾」，`_DANGLING_MEASURE_RE` 锚定 `$`；句中情形（后面还有分句）未覆盖。改写文本必须通顺，否则「更安全的版本」比原文更糟 |
+| 3 | 单条来源时状态停在 `partially_supported` 且 reasons 为空 | 状态本身正确（一条来源不构成 corroboration，`single_source_only` 规则码已存在），但**降级理由未写入 reasons**，用户看不出为什么不是 supported |
+| 4 | 启发式抽取器对中文自由格式简历的分段不准确（`项目经历` 的第二行被当成第二个项目，描述行被当成一段经历） | 由 `origin=heuristic` 显式标注、可在 UI 上人工修正；分段器改进属于独立工作 |

@@ -473,6 +473,34 @@ AI 相关响应统一携带：
 | GET | `/applications/{id}/events` | 状态变更历史 |
 | DELETE | `/applications/{id}` | 删除 |
 
+### 2.9 简历与断言 `/resume` `/claims` ★
+
+> **状态：已实现（PHASE 6b）**：`POST /resume/optimize`、`GET /resume/versions`、
+> `GET /resume/versions/{id}`、`DELETE /resume/versions/{id}`，以及 §2.5 的
+> `POST /evidence/validate` 与 `/evidence/validate/batch`（≤ 20 条）。表见 §2.9（迁移 `0006`）。
+> **门禁持有的不是徽章而是引用**：`claim_evidence` 记录「这句话靠哪条证据」，`resume_claims`
+> 记录判定、置信度、触发的规则与降级改写；因此「为什么被改写」在几个月后仍可回答，且不依赖
+> 当时是否配了模型。`resume_claims.resume_version_id` 可空，Validator 页因此能校验一句**尚未**
+> 进入任何版本的草稿。
+> **门禁需要检索器**：缺检索器时它不会降级，而是全盘拒绝——API 侧为每次校验构建当用户的混合
+> 检索器（BM25 + 向量 + RRF），并把候选人材料作为规则阶段的输入传给引擎（协议规定持有材料的
+> 调用方应当提供）。
+> `integrity_score` 与 `claim_stats` 由**本次实际落库的 claim** 计算，不抄引擎字段，避免摘要与
+> 内容互相矛盾。
+> 已知限制见 `docs/ROADMAP.md`「已知限制」：句中度量动词的悬空、`contradicted` 分类偏重、
+> 单来源降级缺理由。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/resume/optimize` | 按目标岗位改写要点，逐条过门禁 → 落库为版本 |
+| GET | `/resume/versions` | 版本列表（含 `integrityScore` 与 `claimStats`） |
+| GET | `/resume/versions/{id}` | 版本详情：要点、逐条 claim（状态/依据/引用/降级改写） |
+| DELETE | `/resume/versions/{id}` | 删除版本（claims 与引用级联） |
+| POST | `/evidence/validate` | Claim Validator 单条（可脱离版本存在） |
+| POST | `/evidence/validate/batch` | 批量校验（≤ 20 条，逐条落库） |
+| GET | `/resume/versions/{id}/diff` | 版本对比 — 未实现 |
+| POST | `/claims/{id}/dismiss` | 忽略某条判定 — 未实现 |
+
 ### 2.10 分析 `/dashboard` `/analytics`
 
 > **状态：`/dashboard` 已实现（PHASE 5），`/analytics/*` 未实现（PHASE 9）。**
