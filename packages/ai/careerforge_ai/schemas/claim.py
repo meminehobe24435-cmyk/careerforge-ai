@@ -29,7 +29,12 @@ from careerforge_ai.schemas.evidence import EvidenceLocator, RetrievalResult
 __all__ = [
     "ClaimLLMVerdict",
     "ClaimReason",
+    # Re-exported because they are part of this module's public vocabulary: a caller
+    # reading a validation result should not have to know they are declared in
+    # ``schemas.common``.
+    "ClaimRuleCode",
     "ClaimSource",
+    "ClaimStatus",
     "ClaimValidation",
     "ClaimValidationRequest",
     "ExtractedClaim",

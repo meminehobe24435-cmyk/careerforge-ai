@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from functools import partial
 from typing import Any
 
 from careerforge_ai.errors import (
@@ -94,9 +95,7 @@ class ResilientProvider:
 
         for index, provider in enumerate(self._chain):
             try:
-                result = await self._attempt(
-                    provider, provider.name, lambda p=provider: call_for(p)
-                )
+                result = await self._attempt(provider, provider.name, partial(call_for, provider))
                 info.attempts += 1
                 info.served_by = provider.name
                 info.degraded = index > 0 or bool(provider.capabilities.deterministic)

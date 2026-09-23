@@ -73,11 +73,15 @@ def _plan_topics(job: JDAnalysis | None, graph: GraphBuildResult | None) -> list
             continue
         seen.add(canonical)
 
-        has_evidence = bool(graph and graph.skill_evidence.get(canonical))
+        # One lookup, used for both the flag and the count: reading the mapping twice
+        # invited the two to disagree, and the second read was the one the checker
+        # could not prove safe.
+        evidence_items = graph.skill_evidence.get(canonical, []) if graph else []
+        has_evidence = bool(evidence_items)
         confidence = graph.skill_confidence.get(canonical, 0.0) if graph else 0.0
 
         if has_evidence:
-            reason = f"岗位要求 {jd_skill.raw_text}，且你有 {len(graph.skill_evidence[canonical])} 条证据"
+            reason = f"岗位要求 {jd_skill.raw_text}，且你有 {len(evidence_items)} 条证据"
             source = "evidence"
         elif jd_skill.requirement is RequirementLevel.REQUIRED:
             reason = f"岗位必备 {jd_skill.raw_text}，但证据图谱中没有支撑，面试中很可能被追问"

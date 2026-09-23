@@ -15,6 +15,7 @@ remove the last resort, and anything served by it is flagged ``degraded``.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import assert_never
 
 from careerforge_ai.config import ProviderName, Settings
 from careerforge_ai.providers.base import LLMProvider
@@ -85,7 +86,10 @@ def build_single_provider(name: ProviderName, settings: Settings) -> LLMProvider
             timeout_s=max(settings.ai_request_timeout_seconds, 120.0),
         )
 
-    return None
+    # Every provider name is handled above. ``assert_never`` states that to the type
+    # checker: adding a fifth provider now fails the build here rather than at runtime,
+    # where an unhandled name would look like "this provider is not configured".
+    assert_never(name)
 
 
 def build_provider(
@@ -117,7 +121,7 @@ def build_provider(
             enabled=cache_enabled,
         )
         if name != "heuristic":
-            wrapped = RoutedProvider(  # type: ignore[assignment]
+            wrapped = RoutedProvider(
                 wrapped,
                 model_by_task={key: value for key, value in model_routing.items() if value},
                 budget=budget,  # type: ignore[arg-type]

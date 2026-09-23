@@ -206,12 +206,7 @@ class PromptRegistry:
         text = path.read_text(encoding="utf-8")
         meta, body = _parse_front_matter(text)
         name = str(meta.get("name") or path.stem)
-        raw_version = meta.get("version", 1)
-        try:
-            version = int(raw_version)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            self.warnings.append(f"{path.name}: invalid version {raw_version!r}, defaulting to 1")
-            version = 1
+        version = _coerce_version(meta.get("version", 1), path.name, self.warnings)
         variables = meta.get("variables") or []
         tags = meta.get("tags") or []
         self.register(
@@ -308,3 +303,21 @@ def find_prompt_values(template: PromptTemplate, values: Mapping[str, object]) -
     """Filter ``values`` down to what the template declares (helper for call sites)."""
     declared = set(template.declared_variables())
     return {key: value for key, value in values.items() if key in declared}
+
+
+def _coerce_version(raw: object, filename: str, warnings: list[str]) -> int:
+    """Read a prompt's front-matter version, warning instead of failing.
+
+    Front matter is hand-written, so a missing or unusable version must not stop the
+    registry from loading: it falls back to 1 and records why. The value type is
+    narrowed rather than coerced blindly — ``bool`` is excluded explicitly because
+    ``int(True)`` is 1, and a version of ``true`` is a typo, not a version.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        warnings.append(f"{filename}: invalid version {raw!r}, defaulting to 1")
+        return 1
+    try:
+        return int(raw)
+    except ValueError:
+        warnings.append(f"{filename}: invalid version {raw!r}, defaulting to 1")
+        return 1

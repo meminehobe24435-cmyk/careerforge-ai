@@ -250,16 +250,19 @@ class Settings(BaseSettings):
         return self.prompts_dir
 
     def provider_is_configured(self, name: ProviderName) -> bool:
-        """Whether a provider has everything it needs to be usable."""
+        """Whether a provider has everything it needs to be usable.
+
+        All four provider names are handled, so there is deliberately no trailing
+        ``return False``: if a fifth provider is ever added, the type checker should
+        point at this function rather than let it silently report "not configured".
+        """
         if name == "heuristic":
             return True
         if name == "deepseek":
             return bool(self.deepseek_api_key)
         if name == "openai":
             return bool(self.openai_api_key)
-        if name == "ollama":
-            return bool(self.ollama_base_url)
-        return False
+        return bool(self.ollama_base_url)
 
     def active_provider_chain(self) -> list[ProviderName]:
         """The provider chain that will actually be attempted, in order."""

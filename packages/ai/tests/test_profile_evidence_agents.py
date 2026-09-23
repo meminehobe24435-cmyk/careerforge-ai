@@ -304,6 +304,29 @@ class TestEvidenceAgent:
             item.confidence for item in second.evidence
         ]
 
+    async def test_dated_profile_entities_carry_a_timezone_aware_timestamp(
+        self, executor: WorkflowExecutor
+    ) -> None:
+        """A résumé says "2023-07", so the instant is midnight UTC on the first.
+
+        The schema wants a ``datetime``, and Pydantic will happily coerce a ``date`` to
+        a *naive* midnight. Recency does not crash on that — it falls back to treating
+        naive values as UTC — but the conversion then happens by accident in a place
+        that cannot say why. This pins the explicit behaviour at the boundary, because
+        every recency number downstream depends on it.
+        """
+        result, _ = await build_graph(executor, profile=_profile_with_dates())
+        assert result is not None
+        dated = [item for item in result.evidence if item.occurred_at is not None]
+        assert dated, "a profile with dates must produce timestamped evidence"
+        for item in dated:
+            assert item.occurred_at.tzinfo is not None
+            assert item.occurred_at == item.occurred_at.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        years = {item.occurred_at.year for item in dated}
+        assert years == {2022, 2023}
+
 
 def _empty_profile():
     from careerforge_ai.schemas.profile import CandidateProfile
@@ -322,5 +345,35 @@ def _profile_with_experience():
                 title="嵌入式实习生",
                 description="使用 STM32 与 FreeRTOS 开发电机控制固件",
             )
+        ],
+    )
+
+
+def _profile_with_dates():
+    """A profile whose entities carry the calendar dates a real résumé has."""
+    from datetime import date
+
+    from careerforge_ai.schemas.profile import (
+        Achievement,
+        CandidateProfile,
+        Experience,
+        Project,
+    )
+
+    return CandidateProfile(
+        slug="alex",
+        experiences=[
+            Experience(
+                company="某科技",
+                title="嵌入式实习生",
+                description="使用 STM32 开发电机控制固件",
+                start_date=date(2023, 7, 1),
+            )
+        ],
+        projects=[
+            Project(name="Balance Robot", summary="两轮自平衡小车", start_date=date(2023, 3, 1))
+        ],
+        achievements=[
+            Achievement(kind="competition", title="电赛省一等奖", awarded_on=date(2022, 10, 1))
         ],
     )

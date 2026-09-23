@@ -199,8 +199,19 @@ def _suggestions(
         }
     )
 
-    suggestions.sort(key=lambda item: float(item.get("impact", 0.0)), reverse=True)
+    suggestions.sort(key=_impact_of, reverse=True)
     return suggestions
+
+
+def _impact_of(row: dict[str, object]) -> float:
+    """Sort key for a suggestion row.
+
+    Rows carry mixed value types (strings, a list of skills, a float impact), so the
+    key is narrowed rather than converted blindly. A row without a usable ``impact``
+    sorts last instead of raising, because advice without an estimate is still advice.
+    """
+    value = row.get("impact", 0.0)
+    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def compute_profile_strength(

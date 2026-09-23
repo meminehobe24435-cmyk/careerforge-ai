@@ -41,8 +41,16 @@ logger = logging.getLogger("careerforge.orchestrator")
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
-StepFn = Callable[["RunContext", Mapping[str, Any]], Awaitable[Any]]
-StepFallback = Callable[["RunContext", Mapping[str, Any], BaseException], Awaitable[Any]]
+#: A step handler receives the run context and the outputs of its dependencies.
+#:
+#: The inputs are typed ``dict``, not ``Mapping``, because that is what the executor
+#: actually builds (a fresh dict keyed by dependency name). Declaring the wider ``Mapping``
+#: looked more general, but parameter types are contravariant: a handler annotated
+#: ``dict[str, Any]`` — which reads naturally, since a handler may want a dict — was then
+#: rejected by the checker. Typing the alias as the concrete argument the caller passes
+#: keeps handlers ergonomic and honest at the same time.
+StepFn = Callable[["RunContext", dict[str, Any]], Awaitable[Any]]
+StepFallback = Callable[["RunContext", dict[str, Any], BaseException], Awaitable[Any]]
 
 
 def digest_of(payload: Any, *, length: int = 16) -> str:

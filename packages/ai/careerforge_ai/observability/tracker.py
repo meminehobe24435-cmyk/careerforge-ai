@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from careerforge_ai.schemas.common import CacheKind
 from careerforge_ai.schemas.observability import (
     AgentRunRecord,
     CacheStats,
@@ -117,9 +118,9 @@ class UsageLedger:
     def groups(self) -> Sequence[CostByGroup]:
         return sorted(self.by_agent.values(), key=lambda group: group.cost_usd, reverse=True)
 
-    def cache_stats(self, kind: object, *, entries: int = 0) -> CacheStats:
+    def cache_stats(self, kind: CacheKind, *, entries: int = 0) -> CacheStats:
         return CacheStats(
-            kind=kind,  # type: ignore[arg-type]
+            kind=kind,
             hits=self.cache_hits,
             misses=max(0, self.calls - self.cache_hits),
             entries=entries,

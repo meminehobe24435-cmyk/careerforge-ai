@@ -117,7 +117,7 @@ def _evidence_links(graph: GraphBuildResult, canonical_id: str) -> list[PublicEv
             continue
         links.append(
             PublicEvidenceLink(
-                evidence_id=item.id,  # type: ignore[arg-type]
+                evidence_id=item.id,
                 title=item.title,
                 kind=item.kind.value,
                 locator_display=item.locator.display,

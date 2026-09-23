@@ -25,6 +25,7 @@ from careerforge_ai.observability.pricing import price_for
 from careerforge_ai.providers.base import (
     ChatMessage,
     ChatResult,
+    ChatRole,
     EmbeddingResult,
     ProviderCapabilities,
     SchemaT,
@@ -268,7 +269,9 @@ class OpenAICompatProvider:
                 vectors.append([float(value) for value in vector])
 
         dim = len(vectors[0]) if vectors else self._embedding_dim
-        usage = _usage_from(data, [ChatMessage(role="user", content=text) for text in texts], "")
+        usage = _usage_from(
+            data, [ChatMessage(role=ChatRole.USER, content=text) for text in texts], ""
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         return EmbeddingResult(
@@ -333,9 +336,9 @@ class OpenAICompatProvider:
                     break
                 conversation = [
                     *conversation,
-                    ChatMessage(role="assistant", content=content[:2000]),
+                    ChatMessage(role=ChatRole.ASSISTANT, content=content[:2000]),
                     ChatMessage(
-                        role="user",
+                        role=ChatRole.USER,
                         content=(
                             "Your previous response did not match the required JSON schema. "
                             f"Validation error:\n{last_error}\n"

@@ -343,9 +343,9 @@ class ProfileAgent:
 
         if result is not None and warnings:
             # De-duplicate: the assemble step already folds step warnings into the
-            # result, and the caller sees both paths.
-            seen: set[str] = set()
-            result.warnings = [w for w in warnings if not (w in seen or seen.add(w))]
+            # result, and the caller sees both paths. ``dict.fromkeys`` keeps the
+            # original order and does not need a side-effecting comprehension.
+            result.warnings = list(dict.fromkeys(warnings))
 
         return AgentOutcome(
             value=result,

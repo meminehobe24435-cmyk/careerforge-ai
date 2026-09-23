@@ -316,8 +316,11 @@ def build_evidence_graph(
         # Projects and experiences that legitimately demonstrate the skill.
         for project in profile.projects:
             identifier = str(project.id) if project.id else project.name
-            pid = project_nodes.get(identifier)
-            if pid is None:
+            # Deliberately not ``pid``: that name is the node id built earlier in this
+            # function, and reusing it for a possibly-missing lookup conflated two
+            # different things.
+            project_node = project_nodes.get(identifier)
+            if project_node is None:
                 continue
             blob = " ".join(
                 [project.name, project.summary, project.description, *project.tech_stack]
@@ -326,8 +329,8 @@ def build_evidence_graph(
             if skill_id in mentions:
                 result.edges.append(
                     GraphEdge(
-                        id=f"{pid}:DEMONSTRATES:{sid}",
-                        source=pid,
+                        id=f"{project_node}:DEMONSTRATES:{sid}",
+                        source=project_node,
                         target=sid,
                         relation=EvidenceRelation.DEMONSTRATES,
                         confidence=confidence or None,

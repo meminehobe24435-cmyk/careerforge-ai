@@ -24,6 +24,7 @@ audit either one on its own.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time
 from typing import Any
 from uuid import UUID
 
@@ -193,6 +194,19 @@ def evidence_from_repository(
     return items
 
 
+def _as_datetime(value: date | None) -> datetime | None:
+    """Lift a calendar date to the UTC instant it starts.
+
+    A résumé says "2023-07", not "2023-07-01T00:00:00Z". Pydantic would coerce the date
+    to midnight silently, which happens to be right but leaves the conversion implicit;
+    the recency factor then reads a naive-looking value that is actually UTC. Doing it
+    here keeps the schema's ``datetime`` honest and the timezone explicit.
+    """
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.combine(value, time.min, tzinfo=UTC)
+
+
 def evidence_from_profile(profile: CandidateProfile) -> list[EvidenceItem]:
     """Turn the candidate's own described entities into evidence.
 
@@ -215,7 +229,7 @@ def evidence_from_profile(profile: CandidateProfile) -> list[EvidenceItem]:
                 locator=EvidenceLocator(section="experience"),
                 source_authority=SourceAuthority.UPLOADED_DOCUMENT,
                 confidence=0.0,
-                occurred_at=experience.start_date,
+                occurred_at=_as_datetime(experience.start_date),
                 metadata={"kind": experience.kind},
             )
         )
@@ -232,7 +246,7 @@ def evidence_from_profile(profile: CandidateProfile) -> list[EvidenceItem]:
                 locator=EvidenceLocator(section="project"),
                 source_authority=SourceAuthority.UPLOADED_DOCUMENT,
                 confidence=0.0,
-                occurred_at=project.start_date,
+                occurred_at=_as_datetime(project.start_date),
                 metadata={"tech_stack": project.tech_stack},
             )
         )
@@ -247,7 +261,7 @@ def evidence_from_profile(profile: CandidateProfile) -> list[EvidenceItem]:
                 locator=EvidenceLocator(section="achievement"),
                 source_authority=SourceAuthority.UPLOADED_DOCUMENT,
                 confidence=0.0,
-                occurred_at=achievement.awarded_on,
+                occurred_at=_as_datetime(achievement.awarded_on),
                 metadata={"kind": achievement.kind},
             )
         )

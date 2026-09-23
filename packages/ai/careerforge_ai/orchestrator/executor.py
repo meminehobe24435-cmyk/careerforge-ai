@@ -29,7 +29,6 @@ from careerforge_ai.errors import (
 from careerforge_ai.orchestrator.core import (
     RunContext,
     Step,
-    StepFailedError as _StepFailed,  # noqa: F401  (re-exported for type checkers)
     Workflow,
     WorkflowOutput,
     digest_of,
