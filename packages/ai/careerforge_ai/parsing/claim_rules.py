@@ -210,6 +210,14 @@ def describe_rules() -> Sequence[dict[str, str]]:
 
 # ── Safer rewrites ───────────────────────────────────────────────────────────
 
+#: A measure verb left without its object once a number is removed.
+#: "优化性能，提升 70%" minus the figure is "优化性能，提升" — broken text.
+_DANGLING_MEASURE_RE = re.compile(
+    r"[，,]?\s*(?:提升了?|提高了?|降低了?|减少了?|增长了?|下降了?|缩短了?|节省了?|达到|超过|"
+    r"improved|increased|reduced|decreased|by|to)\s*$",
+    re.IGNORECASE,
+)
+
 #: Clause separators used when downgrading a claim. A clause is the smallest unit
 #: a candidate can meaningfully drop, in both Chinese and English.
 _CLAUSE_SPLIT_RE = re.compile(r"[，,；;、]|(?:\s+and\s+)|(?:并(?=[\u4e00-\u9fff]))|以及|同时")
@@ -256,7 +264,10 @@ def build_safer_formulation(
     stripped = claim
     for number in dropped_numbers:
         stripped = stripped.replace(number, "")
-    stripped = re.sub(r"\s{2,}", " ", stripped).strip("，,。;； ")
+    stripped = re.sub(r"\s{2,}", " ", stripped)
+    # A measure verb left without its object reads as broken text rather than as a
+    # safer claim, which is the opposite of what a rewrite is for.
+    stripped = _DANGLING_MEASURE_RE.sub("", stripped).strip("，,。;； ")
     return stripped if stripped and stripped != claim else ""
 
 

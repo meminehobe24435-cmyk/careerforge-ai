@@ -142,6 +142,19 @@ class TestSaferFormulation:
         assert "70%" not in safer
         assert safer
 
+    def test_a_dangling_measure_verb_is_removed_with_the_number(self) -> None:
+        # "优化算法性能，提升 70%" minus the figure is "优化算法性能，提升", which reads as
+        # broken text rather than as a safer claim.
+        safer = build_safer_formulation("优化算法性能，提升 70%", "优化算法性能。", ["70%"])
+        assert "70%" not in safer
+        assert not safer.endswith("提升")
+        assert "优化算法性能" in safer
+
+    def test_english_measure_verb_is_removed_too(self) -> None:
+        safer = build_safer_formulation("Improved latency by 40%", "Latency was measured.", ["40%"])
+        assert "40%" not in safer
+        assert not safer.rstrip().lower().endswith("by")
+
     def test_returns_empty_when_nothing_can_be_improved(self) -> None:
         assert build_safer_formulation("完全无关的一句话", "另一个完全无关的句子。", []) == ""
 

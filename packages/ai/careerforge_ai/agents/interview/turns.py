@@ -121,7 +121,14 @@ async def _ask(context: RunContext, inputs: dict[str, Any]) -> InterviewTurn:
         context={
             "source_text": _candidate_material(
                 profile if isinstance(profile, CandidateProfile) else None
-            )
+            ),
+            # The topic, level, mode and progress also travel through the structured
+            # channel: the deterministic interviewer reads context, not the rendered
+            # prompt, and without them it asked the same generic question every turn.
+            "topic": plan_item.topic,
+            "level": current_level.level,
+            "mode": session.mode.value,
+            "asked_count": session.turn_count,
         },
         mode=session.mode.value,
         target_role=(job.role if isinstance(job, JDAnalysis) else "（未指定岗位）"),

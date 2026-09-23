@@ -159,6 +159,7 @@ def evaluate_turn(text: str, context: Mapping[str, Any]) -> ExtractedTurnEvaluat
         technical_accuracy=round(min(88.0, base), 1),
         depth=round(min(85.0, base * (0.85 if len(answer) < _SHORT_ANSWER else 1.0)), 1),
         communication=round(min(90.0, 55.0 + 35.0 * length_factor), 1),
+        confidence=round(_confidence_proxy(answer, hits, length_factor), 1),
         problem_solving=round(min(85.0, base * 0.95), 1),
         engineering_thinking=round(min(85.0, base * 0.9), 1),
         missing_knowledge=[f"未提及「{term}」" for term in missing],
@@ -171,3 +172,37 @@ def evaluate_turn(text: str, context: Mapping[str, Any]) -> ExtractedTurnEvaluat
         suggested_answer="",
         evidence_conflicts=[],
     )
+
+
+#: Hedging that reads as low confidence in *delivery*, as opposed to low accuracy.
+_HEDGES: tuple[str, ...] = (
+    "可能",
+    "大概",
+    "也许",
+    "好像",
+    "不太确定",
+    "应该是吧",
+    "记不清",
+    "maybe",
+    "i think",
+    "probably",
+    "not sure",
+)
+
+#: Markers of an answer delivered from experience rather than recited.
+_ASSERTIVE: tuple[str, ...] = ("我实现", "我用", "我们使用", "因为我", "具体来说", "实际")
+
+
+def _confidence_proxy(answer: str, hits: list[str], length_factor: float) -> float:
+    """A deterministic stand-in for "how assured was the delivery".
+
+    Labelled a proxy because that is what it is: it reads hedging and assertiveness
+    markers, which is what the dimension is about, but it cannot hear tone. Reporting
+    it as one of seven dimensions rather than as a verdict keeps that honest.
+    """
+    lowered = answer.lower()
+    hedges = sum(1 for marker in _HEDGES if marker in lowered)
+    assertive = sum(1 for marker in _ASSERTIVE if marker in lowered)
+    score = 45.0 + 30.0 * length_factor + 4.0 * min(4, assertive) + 2.0 * min(5, len(hits))
+    score -= 12.0 * hedges
+    return max(0.0, min(100.0, score))
