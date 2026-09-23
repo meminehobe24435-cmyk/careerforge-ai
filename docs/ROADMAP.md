@@ -251,6 +251,7 @@ graph LR
 | 2026-02-11 | PHASE 1b | `refactor(ai): split oversized modules; add architecture guard scripts` | 三个守卫脚本（分层 / 500 行 / 设计令牌）；CI 双路径（SQLite + PostgreSQL）；docker-compose 全栈 |
 | 2026-02-11 | PHASE 1c | `feat(web): scaffold Next.js app; feat(evals): labeled benchmark` | 前端 83 文件全部 typecheck/lint/build 通过；评测框架实测出 100% distractor 泄漏与 13.3% 误判并修复为 0 |
 | 2026-02-11 | PHASE 3a | `feat(rag): hybrid retrieval with RRF fusion` | `rag/` 分块 + BM25 + RRF + 精确向量检索 + 混合检索器（40 测试）；Recall@5 评测 0.966；共享分词层抽取；评测工具链拆分至全部 < 500 行 |
+| 2026-02-11 | PHASE 3b | `feat(graph): evidence graph builder, subgraph queries and provenance tracing` | 证据图谱引擎（两遍置信度 + 独立来源corroboration + 子图查询 + 断言溯源）；修复文件扩展名被当作技能的真实缺陷；279 测试通过 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
