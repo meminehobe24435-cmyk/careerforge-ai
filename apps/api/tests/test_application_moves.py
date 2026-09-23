@@ -203,6 +203,8 @@ async def test_a_milestone_is_recorded_once_however_often_the_card_moves(
         rows = (await db.scalars(select(CareerEvent).where(CareerEvent.ref_id == card["id"]))).all()
         kinds = sorted(row.kind for row in rows)
 
-    assert kinds == ["application", "application", "interview", "offer"], (
-        "wishlist, applied, one interview (not two), offer — deduped by status"
+    assert kinds == ["application", "interview", "offer"], (
+        "applied, one interview (not two), offer — deduped by status. Creating the card in "
+        "wishlist is not a milestone: it used to write one, and PHASE 9's trend chart counted "
+        "every application twice because of it."
     )

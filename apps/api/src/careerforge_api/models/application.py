@@ -25,6 +25,7 @@ milestones reach it — applied, interviewed, offered, rejected. Intermediate bo
 (``oa``, ``final``) stay in ``application_events``: a timeline where "moved to OA" sits
 beside "graduated" stops being a timeline. Rejected does belong there: an outcome the
 candidate would put on a CV timeline is exactly the kind of thing this table is for.
+``wishlist`` is not a milestone either, and ``APPLICATION_MILESTONES`` says why.
 """
 
 from __future__ import annotations
@@ -73,10 +74,14 @@ APPLICATION_STATUSES: tuple[str, ...] = (
 #: ``next_action_at`` would be a reminder for something that cannot occur.
 CLOSED_STATUSES: frozenset[str] = frozenset({"offer", "rejected"})
 
-#: Transitions worth putting on a career timeline. ``oa`` and ``final`` are board
-#: positions rather than milestones — see the module docstring.
+#: Transitions worth putting on a career timeline.
+#:
+#: ``wishlist`` is deliberately absent. Adding a card to the board is a bookmark, not an act: a
+#: timeline that records "投递" when the card is created *and* again when it is actually applied
+#: to shows one application twice — and the PHASE 9 trend chart counted it twice, which is how
+#: this was found. ``oa`` and ``final`` are board positions rather than milestones, likewise.
 APPLICATION_MILESTONES: dict[str, str] = {
-    "wishlist": "application",
+    "wishlist": "",
     "applied": "application",
     "oa": "",
     "interview": "interview",

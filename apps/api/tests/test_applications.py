@@ -50,7 +50,10 @@ async def test_a_manual_card_is_tracked_with_its_creation_event(
                 CareerEvent.kind == "application",
             )
         )
-    assert milestones == 1, "adding a card is a career-timeline milestone"
+    # A wishlist card is a bookmark, not an act: no timeline milestone until it is applied to.
+    # It used to write one, and PHASE 9's trend chart counted each application twice because of
+    # it — the audit trail still records the creation, which is where that belongs.
+    assert milestones == 0
 
 
 async def test_a_card_from_a_posting_snapshots_the_posting(
@@ -232,12 +235,13 @@ async def test_deleting_a_card_removes_its_history(
     assert event_rows == 0, "events cascade with the card"
 
     # The timeline deliberately keeps the milestone: a career fact does not un-happen
-    # because a board card was tidied away.
+    # because a board card was tidied away. One milestone here — the move to ``applied`` —
+    # because creating the card in ``wishlist`` is not a milestone.
     async with app.state.session_factory() as db:
         milestones = await db.scalar(
             select(func.count()).select_from(CareerEvent).where(CareerEvent.ref_id == card["id"])
         )
-    assert milestones == 2
+    assert milestones == 1
 
 
 # ── tenancy ──────────────────────────────────────────────────────────────────
