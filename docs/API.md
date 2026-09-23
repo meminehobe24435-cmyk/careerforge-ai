@@ -317,6 +317,12 @@ AI 相关响应统一携带：
 ```
 
 **状态语义**：`supported` / `partially_supported` / `unsupported` / `contradicted`（详见 PRD 4.4）。
+`contradicted` **只用于证据确实与之冲突**（时间线冲突，或模型报告了 `contradicting_evidence`）；
+规则层 blocker（无同类量化支撑、技术名词不在证据中、最高级措辞）一律判 `unsupported`——被拒绝，
+但不被诬指为已被反驳。规则 blocker **允许**附带 `safeRewrite`（删掉数字正是不支持数字的正确修法），
+但若删掉数字后句中仍残留证据无法支撑的技术名词，则不提供改写：保留名字、只删数字，等于用看不出
+删改痕迹的方式断言同一件无法支撑的事。状态为 `partially_supported` 且独立来源不足 2 条时，会写入
+`single_source_only` 理由，降级必须说明原因。
 
 ### 2.6 岗位与匹配 `/jobs`
 
@@ -487,8 +493,9 @@ AI 相关响应统一携带：
 > 调用方应当提供）。
 > `integrity_score` 与 `claim_stats` 由**本次实际落库的 claim** 计算，不抄引擎字段，避免摘要与
 > 内容互相矛盾。
-> 已知限制见 `docs/ROADMAP.md`「已知限制」：句中度量动词的悬空、`contradicted` 分类偏重、
-> 单来源降级缺理由。
+> 剩余已知限制见 `docs/ROADMAP.md`「已知限制」：去掉度量动词后分句可能只剩名词短语（规则无法诚实
+> 重建被删的谓词，保留分句交给候选人补完）。此前记录的「句中度量动词悬空」「`contradicted` 分类
+> 偏重」「单来源降级缺理由」已在 PHASE 6c 修复，见 `CHANGELOG.md`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

@@ -38,12 +38,38 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   leaving a version whose summary read `{}` beside a list of claims. Both are now computed from
   the claims actually stored.
 
-### Known limitations — PHASE 6b
+### Fixed — PHASE 6c · The three recorded limitations, closed
 
-Recorded in `docs/ROADMAP.md` rather than left implicit: the safer rewrite can leave a measure
-verb dangling mid-sentence (`提升了 ，并主导了`); a fabricated claim is classified
-`contradicted` although nothing contradicts it; and a single-source downgrade carries no reason
-in `reasons`, so the status is right but unexplained.
+- **A safer rewrite is no longer offered when it would still assert something unsupported.** If
+  stripping the numbers leaves a technology name the evidence cannot carry, keeping the name and
+  deleting the digits states the same unsupportable thing while hiding that something was removed.
+  Rule blockers now decline to rewrite in that case; a blocker that is *only* a number still gets a
+  rewrite, because removing the number is exactly the correct repair.
+- **The blocking rules no longer soften under retrieval.** A rule blocker with hits used to fall
+  through to `partially_supported`, which relabelled a fabricated number with a gentler verdict.
+- **`contradicted` now means contradicted.** It is reserved for `timeline_conflict` and a model
+  reporting `contradicting_evidence`; rule blockers — no comparable measure, missing technology,
+  superlative language — are `unsupported`. Nothing refuted the fabricated sentence, so calling it
+  refuted was an overclaim of the gate's own.
+- **A dangling measure verb is removed wherever it lands**, not only at the end of a sentence:
+  `_DANGLING_MEASURE_RE` anchors on `(?=[，,；;、]|$)` and both rewrite branches share one tidy pass.
+- **The single-source downgrade explains itself**: `single_source_only` is appended to `reasons`
+  (`目前只有 1 条独立来源；达到 2 条独立来源才能判为 supported。`), so the status is no longer a
+  verdict without a reason.
+
+Verified against a running API on a fresh database: the fabricated sentence returns `unsupported`
+with all three reasons; the supported one gains the `single_source_only` note; neither gets a
+rewrite. Every eval metric is unchanged — `numeric_rejection_rate 1.0000`,
+`over_support_rate 0.0000`, `safer_rewrite_rate 0.6222`, `support_recall 1.0000` — so the three
+fixes changed what the gate *says*, not how strict it is.
+
+### Known limitations — PHASE 6c
+
+Recorded in `docs/ROADMAP.md` rather than left implicit: after a measure verb is removed the clause
+can be left as a bare noun phrase (`响应时间缩短了 40%，并完成了压测` → `响应时间，并完成了压测`);
+the rule cannot honestly rebuild the deleted predicate, so it keeps the clause and leaves it to the
+candidate. Separately, the heuristic extractor still splits free-form Chinese résumés imperfectly —
+marked `origin=heuristic` and correctable, but imperfect.
 
 ### Added — PHASE 2b · Career entities and the profile import path
 
