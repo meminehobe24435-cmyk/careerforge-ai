@@ -238,6 +238,32 @@ async def test_non_json_responses_are_not_enveloped(client: AsyncClient) -> None
     assert "success" not in response.text[:200]
 
 
+async def test_a_bodiless_status_carries_no_envelope(
+    client: AsyncClient, envelope: EnvelopeCheck, demo
+) -> None:
+    """``204`` must not carry a body at all (RFC 9110 §6.4.1).
+
+    The envelope rule covers responses that *have* a JSON body. Putting one on a 204
+    means content on a status defined to have none — which a conforming client is free to
+    ignore, so a delete would look successful without the client reading any of it.
+    """
+    created = envelope(
+        await client.post(
+            "/api/v1/documents",
+            files={"file": ("resume.txt", "# 简历\n\nSTM32 工程师".encode(), "text/plain")},
+            data={"kind": "resume"},
+            headers=demo.headers,
+        )
+    )["data"]
+
+    response = await client.delete(
+        f"/api/v1/documents/{created['documentId']}", headers=demo.headers
+    )
+    assert response.status_code == 204
+    assert response.content == b""
+    assert "content-length" not in {key.lower() for key in response.headers}
+
+
 async def test_internal_envelope_marker_never_reaches_a_client(client: AsyncClient, demo) -> None:
     """The handshake header between the error handlers and the envelope writer is private.
 

@@ -32,6 +32,7 @@ from careerforge_api.middleware.headers import (
 from careerforge_api.middleware.request_id import request_id_of
 
 __all__ = [
+    "BODILESS_STATUSES",
     "ENVELOPE_COMPLETE_HEADER",
     "EnvelopeMiddleware",
     "envelope",
@@ -40,6 +41,10 @@ __all__ = [
     "is_passthrough_path",
     "strip_internal_headers",
 ]
+
+#: Statuses that must not carry a response body (RFC 9110 §6.4.1 and §15.3.5), so the
+#: envelope has nothing to wrap.
+BODILESS_STATUSES = frozenset({204, 304})
 
 #: JSON endpoints that must **not** be enveloped: the OpenAPI document and the
 #: interactive docs are consumed by tooling (`pnpm gen:api` in ``docs/API.md`` §3,
@@ -108,8 +113,15 @@ class EnvelopeMiddleware:
                 already_enveloped = has_envelope_marker(raw_headers)
                 headers = strip_internal_headers(raw_headers)
                 start_message = {**message, "headers": headers}
-                wrap = not already_enveloped and _content_type(headers).startswith(
-                    "application/json"
+                # 204 and 304 are defined to carry no body at all, so there is nothing to
+                # envelop: adding one would produce a response no conforming client is
+                # obliged to read (`DELETE` answering 204 with a JSON body is a protocol
+                # error, not a documented envelope).
+                bodiless = int(message.get("status", 0)) in BODILESS_STATUSES
+                wrap = (
+                    not bodiless
+                    and not already_enveloped
+                    and _content_type(headers).startswith("application/json")
                 )
                 if not wrap:
                     await send(start_message)
