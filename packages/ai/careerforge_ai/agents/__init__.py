@@ -15,7 +15,7 @@ Agent                                Status
 ``MatchAgent``                       ✅ WF-04 · explainable match scoring
 ``ProfileAgent``                     ✅ WF-01 · resume/document → structured profile
 ``EvidenceAgent``                    ✅ WF-02 · material → evidence nodes and graph
-``ResumeAgent``                      ⬜ WF-05
+``ResumeAgent``                      ✅ WF-05 · bullet rewrite under the evidence gate
 ``InterviewAgent``                   ⬜ WF-07
 ``CoachAgent``                       ⬜ WF-08
 ``RecruiterAgent``                   ⬜ WF-10
@@ -62,6 +62,12 @@ from careerforge_ai.agents.profile import (
     build_workflow as build_profile_workflow,
     import_profile,
 )
+from careerforge_ai.agents.resume import (
+    RESUME_AGENT,
+    ResumeAgent,
+    build_workflow as build_resume_workflow,
+    optimize_resume,
+)
 from careerforge_ai.agents.validator import (
     VALIDATOR_AGENT,
     ValidatorAgent,
@@ -71,6 +77,7 @@ from careerforge_ai.agents.validator import (
 
 __all__ = [
     "EVIDENCE_AGENT",
+    "RESUME_AGENT",
     "JOB_AGENT",
     "MATCH_AGENT",
     "PROFILE_AGENT",
@@ -83,12 +90,14 @@ __all__ = [
     "JobAgent",
     "MatchAgent",
     "ProfileAgent",
+    "ResumeAgent",
     "ValidatorAgent",
     "build_evidence_workflow",
     "build_graph",
     "build_jd_analysis",
     "build_job_workflow",
     "build_profile_workflow",
+    "build_resume_workflow",
     "build_match_workflow",
     "build_validator_workflow",
     "merge_workflow_warnings",
@@ -96,6 +105,7 @@ __all__ = [
     "render_bullets",
     "compute_match",
     "import_profile",
+    "optimize_resume",
     "strip_markup",
     "truncate_for_prompt",
     "validate_claim_text",

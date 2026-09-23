@@ -41,11 +41,26 @@ from careerforge_ai.schemas.claim import (
     ClaimValidation,
     SafeRewrite,
 )
-from careerforge_ai.schemas.common import ClaimRuleCode, ClaimStatus, DegradationReason
-from careerforge_ai.schemas.evidence import RetrievalHit
-from careerforge_ai.scoring.confidence import classify_claim_status
+from careerforge_ai.schemas.common import (
+    ClaimRuleCode,
+    ClaimStatus,
+    DegradationReason,
+    EvidenceKind,
+)
+from careerforge_ai.schemas.evidence import EvidenceLocator, RetrievalHit
+from careerforge_ai.scoring.confidence import classify_claim_status, compute_confidence
 
-__all__ = ["VALIDATOR_AGENT", "ValidatorAgent", "build_workflow", "validate_claim_text"]
+__all__ = [
+    "VALIDATOR_AGENT",
+    "ValidatorAgent",
+    "build_workflow",
+    "decide_phase",
+    "evaluate_claim",
+    "retrieve_phase",
+    "rules_phase",
+    "validate_claim_text",
+    "verdict_phase",
+]
 
 VALIDATOR_AGENT = "validator"
 
@@ -69,13 +84,13 @@ def build_workflow() -> Workflow:
         steps=(
             Step(
                 name="rules",
-                fn=_rules,
+                fn=rules_phase,
                 agent=VALIDATOR_AGENT,
                 description="Deterministic rule layer: numbers, technical nouns, over-claiming",
             ),
             Step(
                 name="retrieve",
-                fn=_retrieve,
+                fn=retrieve_phase,
                 depends_on=("rules",),
                 agent=VALIDATOR_AGENT,
                 optional=True,
@@ -83,7 +98,7 @@ def build_workflow() -> Workflow:
             ),
             Step(
                 name="verdict",
-                fn=_verdict,
+                fn=verdict_phase,
                 depends_on=("rules", "retrieve"),
                 agent=VALIDATOR_AGENT,
                 optional=True,
@@ -91,7 +106,7 @@ def build_workflow() -> Workflow:
             ),
             Step(
                 name="decide",
-                fn=_decide,
+                fn=decide_phase,
                 depends_on=("rules", "retrieve", "verdict"),
                 agent=VALIDATOR_AGENT,
                 description="Deterministic gate: status, confidence and safe rewrite",
@@ -103,7 +118,7 @@ def build_workflow() -> Workflow:
 # ── steps ────────────────────────────────────────────────────────────────────
 
 
-async def _rules(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
+async def rules_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
     claim = str(context.metadata.get("claim") or "")
     evidence_text = str(context.metadata.get("evidence_text") or "")
 
@@ -123,7 +138,7 @@ async def _rules(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _retrieve(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
+async def retrieve_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
     """Retrieve supporting evidence, or report honestly that we could not."""
     retriever = context.maybe_service("retriever")
     claim = str(context.metadata.get("claim") or "")
@@ -154,7 +169,7 @@ async def _retrieve(context: RunContext, inputs: dict[str, Any]) -> dict[str, An
     return {"hits": hits, "degraded": result.degraded, "reason": None}
 
 
-async def _verdict(context: RunContext, inputs: dict[str, Any]) -> ClaimLLMVerdict | None:
+async def verdict_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimLLMVerdict | None:
     """Ask the model only when the rules have not already decided."""
     rules = inputs["rules"]
     if rules["blocked"]:
@@ -163,22 +178,28 @@ async def _verdict(context: RunContext, inputs: dict[str, Any]) -> ClaimLLMVerdi
     hits: list[RetrievalHit] = inputs.get("retrieve", {}).get("hits") or []
     claim = str(context.metadata.get("claim") or "")
 
+    evidence_payload = [{"title": hit.title, "snippet": hit.snippet} for hit in hits]
+    evidence_blocks = [f"[{hit.kind.value}] {hit.title} — {hit.snippet[:200]}" for hit in hits]
+
+    # No hits does not mean no evidence. The resume workflow supplies the
+    # candidate's material directly, and judging a bullet against an empty pool
+    # rejected everything the candidate had actually done.
+    supplied = str(context.metadata.get("evidence_text") or "").strip()
+    if not evidence_payload and supplied:
+        evidence_payload = [{"title": "候选人材料（自述）", "snippet": supplied[:4000]}]
+        evidence_blocks = [f"[self_report] 候选人材料 — {supplied[:400]}"]
+
     return await context.structured(
         "evidence_validator",
         ClaimLLMVerdict,
-        context={
-            "source_text": claim,
-            "evidence": [{"title": hit.title, "snippet": hit.snippet} for hit in hits],
-        },
+        context={"source_text": claim, "evidence": evidence_payload},
         claim=claim,
-        evidence_blocks=render_bullets(
-            [f"[{hit.kind.value}] {hit.title} — {hit.snippet[:200]}" for hit in hits]
-        ),
+        evidence_blocks=render_bullets(evidence_blocks),
         job_context=str(context.metadata.get("job_context") or "（未指定目标岗位）"),
     )
 
 
-async def _decide(context: RunContext, inputs: dict[str, Any]) -> ClaimValidation:
+async def decide_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimValidation:
     claim = str(context.metadata.get("claim") or "")
     rules = inputs["rules"]
     retrieval = inputs.get("retrieve") or {"hits": [], "degraded": True}
@@ -203,6 +224,31 @@ async def _decide(context: RunContext, inputs: dict[str, Any]) -> ClaimValidatio
     evidence_confidence = (
         round(sum(hit.confidence for hit in hits[:5]) / len(hits[:5]), 4) if hits else 0.0
     )
+
+    # No retrieval hits but the caller supplied material directly: that material is
+    # one *self-report* source. Scoring it through the same formula is what keeps
+    # the answer honest -- it lands around 0.65, which is a PARTIALLY_SUPPORTED
+    # verdict ("weak evidence"), never SUPPORTED, because one uncorroborated source
+    # is one source by design.
+    if not hits and str(context.metadata.get("evidence_text") or "").strip():
+        self_report = compute_confidence(
+            kind=EvidenceKind.PROJECT,
+            locator=EvidenceLocator(section="profile"),
+            independent_sources=1,
+            extraction_method="heuristic",
+        )
+        evidence_confidence = self_report.score
+        independent_sources = 1
+        reasons.append(
+            ClaimReason(
+                rule=ClaimRuleCode.SINGLE_SOURCE_ONLY,
+                severity="info",
+                message=(
+                    "当前只有候选人自述材料作为证据，属于单来源自述；"
+                    "补充代码、提交或文档后才能升级为可信证据"
+                ),
+            )
+        )
 
     # A contradiction can come from the rules (a number nothing supports) or from
     # the model (evidence that actively conflicts). Both must force CONTRADICTED,
@@ -385,3 +431,62 @@ async def validate_claim_text(
     """Convenience wrapper returning both the validation and its trace."""
     outcome = await ValidatorAgent().run(executor, claim=claim, **kwargs)
     return outcome.value, outcome
+
+
+# ── reusable entry point ─────────────────────────────────────────────────────
+
+#: Metadata keys the phases read. Saved and restored around a batch call so a loop
+#: over many claims cannot leak state between iterations.
+_PHASE_KEYS = ("claim", "evidence_text", "job_context", "retrieval_filters")
+
+
+async def evaluate_claim(
+    context: RunContext,
+    claim: str,
+    *,
+    evidence_text: str = "",
+    job_context: str = "",
+    retrieval_filters: dict[str, Any] | None = None,
+) -> ClaimValidation:
+    """Run the full gate for one claim, outside a workflow.
+
+    Used by the resume workflow, which validates every bullet and would otherwise
+    duplicate the gate. The phases are the same objects the traced workflow runs, so
+    a claim cannot pass here and fail there.
+    """
+    saved = {key: context.metadata.get(key) for key in _PHASE_KEYS}
+    try:
+        context.metadata["claim"] = claim
+        context.metadata["evidence_text"] = evidence_text
+        context.metadata["job_context"] = job_context
+        context.metadata["retrieval_filters"] = retrieval_filters or {}
+
+        rules = await rules_phase(context, {})
+        retrieval = await retrieve_phase(context, {"rules": rules})
+        verdict = await verdict_phase(
+            context,
+            {
+                "rules": rules,
+                "retrieve": {
+                    **retrieval,
+                    "evidence_text": context.metadata.get("evidence_text", ""),
+                },
+            },
+        )
+        return await decide_phase(
+            context,
+            {
+                "rules": rules,
+                "retrieve": {
+                    **retrieval,
+                    "evidence_text": context.metadata.get("evidence_text", ""),
+                },
+                "verdict": verdict,
+            },
+        )
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                context.metadata.pop(key, None)
+            else:
+                context.metadata[key] = value

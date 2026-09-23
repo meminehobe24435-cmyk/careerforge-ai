@@ -230,3 +230,22 @@ class ResumeIntegrity(CFBaseModel):
     @property
     def blocked(self) -> int:
         return self.unsupported + self.contradicted
+
+
+class ExtractedResumeOptimization(StrictModel):
+    """LLM-facing wrapper around the rewritten bullets.
+
+    A bare list cannot carry prompt-level guidance, and the schema is where the
+    no-new-facts constraint is restated for the model one last time — closer to the
+    generation than the prompt's prose is.
+    """
+
+    bullets: list[ResumeBullet] = Field(
+        default_factory=list,
+        description=(
+            "One entry per input bullet, in the same order. Every fact in `optimized` "
+            "must already appear in the candidate material. If a bullet cannot be "
+            "improved without inventing something, improve only its clarity or repeat "
+            "the original text."
+        ),
+    )

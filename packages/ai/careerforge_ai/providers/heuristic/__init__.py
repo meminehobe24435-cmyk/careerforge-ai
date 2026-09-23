@@ -5,8 +5,8 @@ Split by responsibility rather than kept as one module:
 * :mod:`text` — tokenisation, overlap scoring, feature-hash embeddings, sections
 * :mod:`registry` — the handler registry
 * :mod:`handlers_jd` / :mod:`handlers_claim` / :mod:`handlers_profile` /
-  :mod:`handlers_interview` / :mod:`handlers_learning` / :mod:`handlers_github`
-  — one module per schema family
+  :mod:`handlers_interview` / :mod:`handlers_learning` / :mod:`handlers_github` /
+  :mod:`handlers_resume` — one module per schema family
 * :mod:`synthesis` — the generic valid-but-empty fallback
 * :mod:`provider` — the :class:`HeuristicProvider` itself
 
@@ -25,6 +25,7 @@ from careerforge_ai.providers.heuristic import (  # noqa: F401
     handlers_jd,
     handlers_learning,
     handlers_profile,
+    handlers_resume,
 )
 from careerforge_ai.providers.heuristic.provider import HeuristicProvider
 from careerforge_ai.providers.heuristic.registry import HEURISTIC_HANDLERS, handles
