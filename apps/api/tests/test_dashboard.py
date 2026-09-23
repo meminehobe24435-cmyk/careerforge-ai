@@ -97,16 +97,78 @@ async def test_dashboard_matches_the_frozen_client_shape(
     assert isinstance(data["nextActions"], list)
 
 
-async def test_metrics_without_a_data_source_are_named_not_silently_zeroed(
+async def test_tracker_metrics_are_the_boards_real_counts(
+    client: AsyncClient, envelope: EnvelopeCheck, make_user: UserFactory
+) -> None:
+    """PHASE 8 replaced three zeros with counts, so they must be *checked* counts.
+
+    The definition shipped beside the numbers claims a specific arithmetic — every
+    non-archived card for ``applications``, ``interview``+``final``+``offer`` for
+    ``interviews`` — and this asserts the arithmetic rather than the presence of a key.
+    """
+    account = await make_user(display_name="Tracker Metrics")
+
+    async def track(company: str, status: str) -> str:
+        created = await client.post(
+            "/api/v1/applications",
+            json={"company": company, "role": "嵌入式软件工程师", "status": status},
+            headers=account.headers,
+        )
+        assert created.status_code == 201, created.text
+        return created.json()["data"]["id"]
+
+    async def move(application_id: str, status: str) -> None:
+        moved = await client.patch(
+            f"/api/v1/applications/{application_id}",
+            json={"status": status},
+            headers=account.headers,
+        )
+        assert moved.status_code == 200, moved.text
+
+    await track("A", "wishlist")
+    interviewed = await track("B", "wishlist")
+    await move(interviewed, "applied")
+    await move(interviewed, "interview")
+    offering = await track("C", "wishlist")
+    await move(offering, "applied")
+    await move(offering, "final")
+    await move(offering, "offer")
+    rejected = await track("D", "wishlist")
+    await move(rejected, "applied")
+    await move(rejected, "rejected")
+
+    data = envelope(await client.get("/api/v1/dashboard", headers=account.headers))["data"]
+    assert data["stats"]["applications"] == 4.0
+    # interview + final + offer = 2. The rejected card was interviewed-then-rejected and is
+    # deliberately not counted: this is the board's snapshot, not the ever-reached funnel.
+    assert data["stats"]["interviews"] == 2.0
+    assert data["stats"]["offers"] == 1.0
+
+    # Archiving removes a card from every metric, which is what archiving is for.
+    archived = await client.patch(
+        f"/api/v1/applications/{await track('E', 'wishlist')}",
+        json={"archived": True},
+        headers=account.headers,
+    )
+    assert archived.status_code == 200, archived.text
+    after = envelope(await client.get("/api/v1/dashboard", headers=account.headers))["data"]
+    assert after["stats"]["applications"] == 4.0
+
+
+async def test_every_reported_metric_carries_its_definition(
     client: AsyncClient, envelope: EnvelopeCheck, demo: Session
 ) -> None:
-    """A zero on a dashboard reads as "you have none". The tracker has never seen one."""
+    """A number without its definition is a number nobody can check.
+
+    The tracker metrics used to be named in ``meta.unavailable`` because no data source
+    existed; since PHASE 8 they are real, so the assertion is now that nothing is
+    *withheld* and every metric is still *explained*.
+    """
     data = envelope(await client.get("/api/v1/dashboard", headers=demo.headers))["data"]
-    unavailable = data["meta"]["unavailable"]
-    assert set(unavailable) >= {"applications", "interviews", "offers"}
-    assert all("PHASE" in phase for phase in unavailable.values())
-    # Every metric the API reports carries the definition it was computed with.
+    assert data["meta"]["unavailable"] == {}
     assert set(data["meta"]["definitions"]) >= set(data["stats"])
+    # The snapshot-vs-funnel distinction is the one a reader would otherwise get wrong.
+    assert "看板快照" in data["meta"]["definitions"]["interviews"]
 
 
 async def test_an_empty_account_gets_zeros_and_a_first_action(

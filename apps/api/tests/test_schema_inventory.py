@@ -63,6 +63,14 @@ PHASE_4_TABLES = {
     "job_matches",
 }
 
+#: ``docs/DATABASE.md`` §2.7/§2.11 — the application tracker, its event log and the
+#: career timeline.
+PHASE_8_TABLES = {
+    "applications",
+    "application_events",
+    "career_events",
+}
+
 
 def test_metadata_contains_exactly_the_migrated_tables() -> None:
     """Exact, not a superset assertion: a table added without its phase being finished
@@ -75,6 +83,7 @@ def test_metadata_contains_exactly_the_migrated_tables() -> None:
         | PHASE_3_TABLES
         | PHASE_6_TABLES
         | PHASE_4_TABLES
+        | PHASE_8_TABLES
     )
 
 
@@ -122,6 +131,18 @@ def test_every_documented_table_has_its_check_constraints() -> None:
             "ck_job_matches_score_range",
             "ck_job_matches_dimension_scores_range",
         },
+        "applications": {
+            "ck_applications_status_valid",
+            "ck_applications_match_score_snapshot_range",
+            "ck_applications_position_non_negative",
+        },
+        "application_events": {
+            # Both directions of a transition are constrained: a typo in ``to_status``
+            # would otherwise become an eighth board column nobody can see.
+            "ck_application_events_to_status_valid",
+            "ck_application_events_from_status_valid",
+        },
+        "career_events": {"ck_career_events_kind_valid"},
     }
     for table, names in expected.items():
         found = {c.name for c in Base.metadata.tables[table].constraints if c.name}

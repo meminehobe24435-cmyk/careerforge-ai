@@ -10,11 +10,19 @@ PHASE 3 — evidence and the graph edges over it (§2.5).
 PHASE 4 — job postings, their skill requirements and computed matches (§2.6).
 PHASE 2b — the structured career entities: education, experience, projects, achievements (§2.2).
 PHASE 6 — résumé versions, their claims, and the claim→evidence links (§2.9).
+PHASE 8 — the application tracker, its event log and the career timeline (§2.7, §2.11).
 """
 
 from __future__ import annotations
 
 from careerforge_api.db.base import Base
+from careerforge_api.models.application import (
+    APPLICATION_STATUSES,
+    CAREER_EVENT_KINDS,
+    Application,
+    ApplicationEvent,
+    CareerEvent,
+)
 from careerforge_api.models.cache import AI_CACHE_KINDS, AiCache
 from careerforge_api.models.document import (
     DOCUMENT_KINDS,
@@ -82,6 +90,11 @@ from careerforge_api.models.user import (
 )
 
 __all__ = [
+    "Application",
+    "ApplicationEvent",
+    "APPLICATION_STATUSES",
+    "CAREER_EVENT_KINDS",
+    "CareerEvent",
     "ResumeVersion",
     "ResumeClaim",
     "ClaimEvidence",

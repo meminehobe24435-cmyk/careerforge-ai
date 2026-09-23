@@ -8,6 +8,10 @@ never seen an application. Those metrics are reported as ``0`` **and named in
 ``meta.unavailable``** with the phase that will fill them, so the UI can say "not tracked
 yet" instead of showing a false zero.
 
+Since PHASE 8 the tracker exists, so ``applications`` / ``interviews`` / ``offers`` are real
+counts and ``MISSING_SOURCES`` is empty — the mechanism is kept, because the next feature
+that wants to ship a number before its data source will need exactly this.
+
 Every metric also carries its own definition in ``meta.definitions``, which is what keeps
 the label and the arithmetic from drifting apart.
 """
@@ -31,6 +35,7 @@ from careerforge_api.db.compat import utcnow
 from careerforge_api.models.evidence import Evidence, EvidenceLinkRow
 from careerforge_api.models.job_posting import Job, JobMatch, JobSkill
 from careerforge_api.models.user import Profile, User
+from careerforge_api.services.application_service import ApplicationService
 from careerforge_api.services.job_service import canonical_of_skill_node
 from careerforge_api.services.profile_service import ProfileService
 
@@ -38,20 +43,20 @@ __all__ = ["DEFINITIONS", "MISSING_SOURCES", "DashboardPayload", "DashboardServi
 
 #: Metrics whose data source does not exist yet, with the phase that will provide it.
 #: Reported rather than silently zeroed — see the module docstring.
-MISSING_SOURCES: dict[str, str] = {
-    "applications": "PHASE 8（投递看板）",
-    "interviews": "PHASE 8（投递看板）",
-    "offers": "PHASE 8（投递看板）",
-}
+#:
+#: Empty since PHASE 8: the three tracker metrics used to live here. The mechanism stays
+#: because the next feature that ships a number before its data source will need it, and a
+#: removed mechanism is one nobody remembers to reinstate.
+MISSING_SOURCES: dict[str, str] = {}
 
 #: The definition actually used for each metric, shipped alongside the numbers.
 DEFINITIONS: dict[str, str] = {
     "evidenceCoverage": "置信度达到 0.45（claim 门槛）的证据占全部证据的比例——衡量「你的材料有多少是可证明的」。",
     "skillCoverage": "最近一次匹配中，required + preferred 要求里你已具备证据的比例。",
     "resumeMatch": "最近一次匹配的总分 ÷ 100，来自确定性算法 match@1.0.0。",
-    "applications": "投递看板中的岗位总数。数据源尚未实现。",
-    "interviews": "已进入面试阶段的投递数量。数据源尚未实现。",
-    "offers": "已获得 Offer 的数量。数据源尚未实现。",
+    "applications": "投递看板中未归档的卡片总数（含 wishlist：想看但还没投的也算在跟）。",
+    "interviews": "当前处于面试阶段的卡片数（interview + final + offer）——这是看板快照，不是「曾经进过面试」的漏斗口径；漏斗按事件流统计，见 PHASE 9 的 /analytics。",
+    "offers": "当前状态为 offer 的卡片数。",
 }
 
 
@@ -96,15 +101,18 @@ class DashboardService:
         )
 
         latest_match = await self._latest_match(user.id)
+        tracker = await ApplicationService(self._session).stats(user=user)
         stats = {
             "evidenceCoverage": self._evidence_coverage(evidence_rows),
             "skillCoverage": await self._skill_coverage(user.id, latest_match),
             "resumeMatch": round(float(latest_match.score) / 100.0, 4) if latest_match else 0.0,
-            # Present because the contract requires them; zero because nothing has been
-            # tracked, which `unavailable` states explicitly.
-            "applications": 0.0,
-            "interviews": 0.0,
-            "offers": 0.0,
+            # Real counts from the tracker since PHASE 8. `interviews` is a snapshot of
+            # the board (a card currently in interview/final/offer), not the ever-reached
+            # funnel — `DEFINITIONS` says which, because the two differ and a number
+            # without its definition is a number nobody can check.
+            "applications": float(tracker.total),
+            "interviews": float(tracker.interviews),
+            "offers": float(tracker.offers),
         }
 
         return DashboardPayload(
