@@ -102,6 +102,12 @@ class ResilientProvider:
                 info.degraded = index > 0 or bool(provider.capabilities.deterministic)
                 if index > 0:
                     info.reason = self._degraded_reason
+                elif provider.capabilities.deterministic:
+                    # A deterministic provider is the primary *because no key is
+                    # configured*. Reporting ``degraded`` without a reason would leave
+                    # a UI unable to say why, which is the one thing the flag exists
+                    # for.
+                    info.reason = DegradationReason.NO_API_KEY
                 self.last_chain_info = info
                 return result
             except BudgetExceededError:

@@ -22,4 +22,15 @@ __all__ = [
     "ensure_demo_user",
     "seed_all",
     "sync_skill_taxonomy",
+    "AGENT_CATALOGUE",
+    "AIService",
+    "DatabaseRunTracker",
+    "InterviewSessionStore",
 ]
+
+from careerforge_api.services.ai_service import (
+    AGENT_CATALOGUE,
+    AIService,
+    DatabaseRunTracker,
+    InterviewSessionStore,
+)

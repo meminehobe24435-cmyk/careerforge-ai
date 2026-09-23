@@ -50,7 +50,8 @@ from careerforge_api.middleware.logging import RequestLoggingMiddleware
 from careerforge_api.middleware.ratelimit import RateLimitMiddleware, TokenBucketLimiter
 from careerforge_api.middleware.request_id import RequestIDMiddleware
 from careerforge_api.repositories.prompt_repository import PromptRepository
-from careerforge_api.routers import auth, system, tasks
+from careerforge_api.routers import ai, auth, system, tasks
+from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
 from careerforge_api.services.seed_service import ensure_demo_user
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
@@ -150,6 +151,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     )
     application.state.settings = resolved
     application.state.rate_limiter = TokenBucketLimiter()
+    # Interview sessions span several requests, so the store is app-wide. It is
+    # in-process, which ``GET /ai/capabilities`` reports as a limitation.
+    application.state.interview_sessions = InterviewSessionStore()
 
     # ── middleware, innermost first ──────────────────────────────────────────
     # Starlette wraps `add_middleware` calls in reverse: the last one added ends up
@@ -186,6 +190,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(auth.router, prefix=resolved.api_prefix)
     application.include_router(system.router, prefix=resolved.api_prefix)
     application.include_router(tasks.router, prefix=resolved.api_prefix)
+    application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)
     async def root() -> JSONResponse:

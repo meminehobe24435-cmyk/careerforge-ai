@@ -1,0 +1,295 @@
+"""AI service layer: one place that builds executors and runs agents.
+
+Three responsibilities, kept together because they share the same lifetime:
+
+* **Build the executor.** The provider chain is created once per process (it holds a
+  cache and resilience state); the executor, which carries a per-run tracker, is
+  built per request so its traces land in that request's transaction.
+* **Persist run traces.** :class:`DatabaseRunTracker` writes ``agent_runs`` rows so
+  the AI Runs page has real data. It inserts on start and updates on finish: a run
+  whose process died leaves a ``running`` row behind, which is the honest record —
+  silent disappearance would be worse.
+* **Hold interview sessions.** An interview spans several HTTP calls, so its state
+  has to live somewhere between them.
+
+The session store is in-process, and that is a real limitation rather than a design
+choice: a second worker would not see a session started by the first. It is stated
+here and surfaced by ``GET /ai/capabilities`` so the constraint is visible rather
+than discovered. Moving it to Redis is the same change as the queue's.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID, uuid4
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from careerforge_ai.agents import (
+    CoachAgent,
+    EvidenceAgent,
+    InterviewAgent,
+    JobAgent,
+    MatchAgent,
+    ProfileAgent,
+    RecruiterAgent,
+    ResumeAgent,
+    ValidatorAgent,
+)
+from careerforge_ai.orchestrator import ExecutorSettings, WorkflowExecutor
+from careerforge_ai.prompting.registry import PromptRegistry
+from careerforge_ai.providers import LLMProvider
+from careerforge_ai.schemas.interview import InterviewSession
+from careerforge_ai.schemas.observability import AgentRunRecord
+from careerforge_api.core.logging import get_logger
+from careerforge_api.models.observability import AgentRun
+
+__all__ = ["AIService", "DatabaseRunTracker", "InterviewSessionStore", "AGENT_CATALOGUE"]
+
+logger = get_logger("careerforge_api.ai")
+
+#: The agent catalogue, in the order ``docs/ARCHITECTURE.md`` introduces them. Kept
+#: as data so ``GET /ai/capabilities`` reports what exists rather than a hand-written
+#: claim about what exists.
+AGENT_CATALOGUE: tuple[dict[str, str], ...] = (
+    {
+        "agent": "profile",
+        "workflow": "profile_ingest",
+        "status": "ready",
+        "purpose": "简历/文档 → 结构化候选人画像",
+    },
+    {
+        "agent": "evidence",
+        "workflow": "evidence_build",
+        "status": "ready",
+        "purpose": "材料 → 证据节点与证据图谱",
+    },
+    {
+        "agent": "job",
+        "workflow": "jd_analysis",
+        "status": "ready",
+        "purpose": "JD → 结构化、归一化的岗位分析",
+    },
+    {
+        "agent": "match",
+        "workflow": "job_match",
+        "status": "ready",
+        "purpose": "五维可解释匹配评分（确定性）",
+    },
+    {
+        "agent": "validator",
+        "workflow": "claim_validate",
+        "status": "ready",
+        "purpose": "断言验证与防幻觉门禁",
+    },
+    {
+        "agent": "resume",
+        "workflow": "resume_optimize",
+        "status": "ready",
+        "purpose": "简历逐条改写，全部过门禁",
+    },
+    {
+        "agent": "interview",
+        "workflow": "interview_start/turn/finish",
+        "status": "ready",
+        "purpose": "自适应模拟面试与七维 Scorecard",
+    },
+    {
+        "agent": "coach",
+        "workflow": "skill_gap",
+        "status": "ready",
+        "purpose": "技能缺口 → 30 天计划与 mini project",
+    },
+    {
+        "agent": "recruiter",
+        "workflow": "recruiter_publish",
+        "status": "ready",
+        "purpose": "公开候选人页（含 PII 脱敏）",
+    },
+)
+
+
+@dataclass(slots=True)
+class _RunRow:
+    """A run whose row has been inserted and whose steps are accumulated in memory."""
+
+    record: AgentRunRecord
+    row_id: UUID
+
+
+class DatabaseRunTracker:
+    """Persists ``agent_runs``. Insert on start, update on finish.
+
+    Steps are accumulated in memory and written once at the end rather than on every
+    step. A request-scoped run is short enough that incremental writes would only add
+    round-trips, and a crash mid-run still leaves the ``running`` row that says so.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+        self._rows: dict[int, _RunRow] = {}
+
+    async def start_run(self, record: AgentRunRecord) -> AgentRunRecord:
+        row = AgentRun(
+            id=record.id or uuid4(),
+            user_id=record.user_id,
+            workflow=record.workflow,
+            agent=record.agent,
+            status="running",
+            trigger=record.trigger
+            if record.trigger in {"api", "job", "manual", "seed", "eval"}
+            else "api",
+            steps=[],
+            input_ref={},
+            output_ref={},
+            provider=record.provider,
+            model=record.model,
+            request_id=record.request_id,
+            started_at=record.started_at,
+        )
+        self._session.add(row)
+        await self._session.flush()
+        record.id = row.id
+        self._rows[id(record)] = _RunRow(record=record, row_id=row.id)
+        return record
+
+    async def record_step(self, run: AgentRunRecord, step: Any) -> None:
+        # Accumulated on the record; written by ``finish_run``.
+        run.steps.append(step)
+        run.recompute_totals()
+
+    async def finish_run(self, run: AgentRunRecord) -> None:
+        run.recompute_totals()
+        tracked = self._rows.pop(id(run), None)
+        if tracked is None:
+            return
+        row = await self._session.get(AgentRun, tracked.row_id)
+        if row is None:  # pragma: no cover - the row is inserted in start_run
+            return
+        row.status = run.status.value if hasattr(run.status, "value") else str(run.status)
+        row.steps = [step.model_dump(mode="json") for step in run.steps]
+        row.input_ref = dict(run.input_ref)
+        row.output_ref = dict(run.output_ref)
+        row.prompt_tokens = run.tokens.prompt_tokens
+        row.completion_tokens = run.tokens.completion_tokens
+        row.total_tokens = run.tokens.total_tokens
+        row.cost_usd = run.cost.usd
+        row.cost_cny = run.cost.cny
+        row.latency_ms = run.latency_ms
+        row.cache_hit = run.cache_hits > 0
+        row.prompt_version = run.prompt_version
+        row.error = run.error_message
+        row.finished_at = run.finished_at
+
+
+class InterviewSessionStore:
+    """In-process interview sessions, keyed by session id and scoped per user.
+
+    Scoping matters: without the user check, one account could continue another's
+    interview by guessing an id.
+    """
+
+    def __init__(self) -> None:
+        self._sessions: dict[UUID, tuple[UUID | None, InterviewSession]] = {}
+
+    def put(self, session: InterviewSession, *, user_id: UUID | None) -> UUID:
+        session_id = session.id or uuid4()
+        session.id = session_id
+        self._sessions[session_id] = (user_id, session)
+        return session_id
+
+    def get(self, session_id: UUID, *, user_id: UUID | None) -> InterviewSession | None:
+        entry = self._sessions.get(session_id)
+        if entry is None:
+            return None
+        owner, session = entry
+        if owner is not None and owner != user_id:
+            return None
+        return session
+
+    def drop(self, session_id: UUID) -> None:
+        self._sessions.pop(session_id, None)
+
+    @property
+    def active(self) -> int:
+        return len(self._sessions)
+
+
+class AIService:
+    """Request-scoped access to the agent layer."""
+
+    def __init__(
+        self,
+        *,
+        provider: LLMProvider,
+        prompts: PromptRegistry,
+        session: AsyncSession | None = None,
+        sessions: InterviewSessionStore | None = None,
+        retriever: Any | None = None,
+    ) -> None:
+        self._provider = provider
+        self._prompts = prompts
+        self._session = session
+        self.sessions = sessions if sessions is not None else InterviewSessionStore()
+        self._retriever = retriever
+
+    @property
+    def provider_name(self) -> str:
+        return self._provider.name
+
+    def executor(self) -> WorkflowExecutor:
+        """An executor whose traces are persisted through this request's session.
+
+        ``user_id`` and ``request_id`` are passed to ``executor.run()`` by the caller
+        rather than captured here, because a single request may run several agents and
+        each should be attributable on its own.
+        """
+        tracker = DatabaseRunTracker(self._session) if self._session is not None else None
+        return WorkflowExecutor(
+            provider=self._provider,
+            prompts=self._prompts,
+            tracker=tracker,
+            # One retry inside a request: the provider chain already retries transient
+            # failures, and stacking retries multiplies worst-case latency.
+            settings=ExecutorSettings(max_retries=1),
+        )
+
+    # ── agents ───────────────────────────────────────────────────────────────
+
+    def profile_agent(self) -> ProfileAgent:
+        return ProfileAgent()
+
+    def evidence_agent(self) -> EvidenceAgent:
+        return EvidenceAgent()
+
+    def job_agent(self) -> JobAgent:
+        return JobAgent()
+
+    def match_agent(self) -> MatchAgent:
+        return MatchAgent()
+
+    def validator_agent(self) -> ValidatorAgent:
+        return ValidatorAgent()
+
+    def resume_agent(self) -> ResumeAgent:
+        return ResumeAgent()
+
+    def interview_agent(self) -> InterviewAgent:
+        return InterviewAgent()
+
+    def coach_agent(self) -> CoachAgent:
+        return CoachAgent()
+
+    def recruiter_agent(self) -> RecruiterAgent:
+        return RecruiterAgent()
+
+    @property
+    def retriever(self) -> Any | None:
+        """The hybrid retriever, when one is configured for this process.
+
+        ``None`` on the current deployment: the evidence tables arrive with the
+        Evidence Graph phase, so validation runs on supplied material alone and says
+        so in its reasons rather than pretending retrieval happened.
+        """
+        return self._retriever
