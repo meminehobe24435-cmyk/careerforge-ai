@@ -462,14 +462,24 @@ AI 相关响应统一携带：
 
 ### 2.10 分析 `/dashboard` `/analytics`
 
+> **状态：`/dashboard` 已实现（PHASE 5），`/analytics/*` 未实现（PHASE 9）。**
+> 有意**不缓存**（与本文档的「含缓存」不同）：这里的每个数字都由用户几秒前才可能改动的行
+> 推导而来（上传简历、跑一次匹配），一个和上一页互相矛盾的缓存首页比多花 30ms 更糟。
+> 缓存属于昂贵的聚合端点 `/analytics/*`，这也是路线图安排的位置。
+> `meta.unavailable` 列出**数据源尚不存在**的指标（投递看板属于 PHASE 8）：仪表盘上的 `0`
+> 会被读成「你没有」，而对一个从未见过投递记录的系统来说，这是一个它无法做出的断言。
+> `meta.definitions` 随数字一起给出每个指标实际使用的口径，前端优先使用它而不是本地副本，
+> 避免标签与算法悄悄分叉。
+> `skillsRadar[].market` 目前缺省：市场均值需要岗位语料，尚未收集；编造一条基线会把对比变成装饰。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/dashboard` | 聚合首页数据（一次请求，含缓存） |
-| GET | `/analytics/funnel` | 漏斗 `?range=30d\|90d\|all` |
-| GET | `/analytics/rates` | Interview/Offer/Response Rate |
-| GET | `/analytics/skill-correlation` | 技能 ↔ 面试成功率（含样本量） |
-| GET | `/analytics/categories` | 岗位类别表现排行 |
-| GET | `/analytics/timeline` | Career Timeline 事件流 |
+| GET | `/dashboard` | 聚合首页数据（一次请求；每个指标附带口径与可用性） |
+| GET | `/analytics/funnel` | 漏斗 `?range=30d\|90d\|all` — PHASE 9 |
+| GET | `/analytics/rates` | Interview/Offer/Response Rate — PHASE 9 |
+| GET | `/analytics/skill-correlation` | 技能 ↔ 面试成功率（含样本量）— PHASE 9 |
+| GET | `/analytics/categories` | 岗位类别表现排行 — PHASE 9 |
+| GET | `/analytics/timeline` | Career Timeline 事件流 — PHASE 9 |
 
 ```jsonc
 // GET /dashboard → 200

@@ -6,6 +6,32 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 5 · Dashboard endpoint and the first live frontend↔API run
+
+- `GET /dashboard` implements the `DashboardResponse` contract the frontend has carried since
+  PHASE 0: profile strength from the deterministic engine, the six documented metrics derived
+  from stored rows, a skill radar built from the evidence graph, and concrete next actions.
+- `meta.unavailable` names the metrics whose data source does not exist yet (the application
+  tracker belongs to PHASE 8). A zero on a dashboard reads as "you have none", which for a
+  system that has never seen an application would be a claim it cannot make; the UI renders
+  "尚未接入" for those cards instead of the zero.
+- `meta.definitions` ships each metric's actual 口径 with the number, and the UI prefers it
+  over its local copy, so the label and the arithmetic cannot drift apart.
+- `pnpm --filter @careerforge/web smoke:api` runs the **real** frontend client and runtime
+  guards against a live API — the first time the two halves of this project were executed
+  against each other. Seven checks: demo login, the dashboard guard, health normalisation,
+  the evidence graph, the job list, a match, and the error envelope with its requestId.
+
+### Notes — PHASE 5
+
+- `/dashboard` is deliberately uncached, unlike the documented "含缓存": every number comes
+  from rows a user may have changed seconds earlier, and a cached home page that disagrees
+  with the page you just left is worse than a 30 ms query. The cache belongs on the expensive
+  `/analytics/*` aggregations.
+- Browser verification (hydration, interaction) still has not run: it needs Playwright, which
+  is PHASE 12. What is verified here is the build, every route serving, the client/server
+  contract, and the dashboard strings reaching the client bundle.
+
 ### Added — PHASE 4 · JD Analyzer and explainable matching
 
 - `jobs`, `job_skills` and `job_matches` (§2.6) with migration `0004`, verified
