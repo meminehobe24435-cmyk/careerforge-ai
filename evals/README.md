@@ -108,7 +108,7 @@ numbers is decoration.
 | `bonus_skill_f1` | 0.776 | Bonus skills are sparse and their phrasing ("了解 …") is the most varied of the three levels |
 | `required_skill_precision` | 0.791 | Residual over-extraction when a technology is mentioned outside any recognisable section |
 | `requirement_level_accuracy` | 0.946 | A skill mentioned in two sections is classified by its first non-ignored mention |
-| `safer_rewrite_rate` | 0.489 | A rewrite is only offered when a clause can actually be dropped; many single-clause claims have no partial version |
+| `safer_rewrite_rate` | 0.622 | A rewrite is only offered when a clause can actually be dropped; many single-clause claims have no partial version. This stood at 0.489 until the rewrite started removing a measure verb together with its unsupported number — `优化算法性能，提升 70%` had been "rewritten" to `优化算法性能，提升`, which is broken text rather than a safer claim |
 | Threshold margin | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation for `claim_validation` is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
 | Retrieval paraphrase misses | 2 / 59 | `多个节点同时发送会不会冲突` does not reach the fragment describing non-destructive bitwise arbitration, and `怎么保证服务按顺序启动` misses the `healthcheck` fragment. Both are genuine limits of the character-n-gram embedding on the zero-key path, and both are recorded in the report with the ids that were returned instead. |
 
