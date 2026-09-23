@@ -14,6 +14,8 @@ __all__ = [
     "CacheError",
     "CareerForgeError",
     "ConfigurationError",
+    "DocumentParseError",
+    "DocumentTooLargeError",
     "EvidenceGateError",
     "PortError",
     "ProviderError",
@@ -24,6 +26,7 @@ __all__ = [
     "SchemaValidationError",
     "StepFailedError",
     "StepTimeoutError",
+    "UnsupportedDocumentError",
     "WorkflowError",
     "is_retryable",
 ]
@@ -143,6 +146,36 @@ class EvidenceGateError(CareerForgeError):
     """A claim was blocked by the hallucination gate (expected, not a bug)."""
 
     code = "EVIDENCE_GATE_REJECTED"
+
+
+# ── Ingestion ─────────────────────────────────────────────────────────────────
+
+
+class DocumentParseError(CareerForgeError):
+    """A document could not be read into text.
+
+    Raised for a corrupt file, an unsupported internal structure, or a missing
+    optional parser dependency — the message says which, because "could not parse
+    your resume" with no reason is the least useful error a product can show.
+    """
+
+    code = "DOCUMENT_PARSE_FAILED"
+
+
+class UnsupportedDocumentError(DocumentParseError):
+    """The file type is not one this build can read."""
+
+    code = "UNSUPPORTED_DOCUMENT_TYPE"
+
+
+class DocumentTooLargeError(DocumentParseError):
+    """The upload exceeded the ingestion limit; refused rather than truncated.
+
+    Silently reading the first N bytes of a résumé would produce a *plausible*
+    profile from partial material, which is worse than refusing it.
+    """
+
+    code = "DOCUMENT_TOO_LARGE"
 
 
 # ── Workflow ──────────────────────────────────────────────────────────────────
