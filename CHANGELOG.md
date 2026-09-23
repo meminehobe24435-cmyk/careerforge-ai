@@ -6,6 +6,40 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 4 · JD Analyzer and explainable matching
+
+- `jobs`, `job_skills` and `job_matches` (§2.6) with migration `0004`, verified
+  column-for-column against the ORM models. `job_skills` carries an application-generated
+  `dedupe_key` because the documented uniqueness spans a **nullable** column, and `NULL`
+  never compares equal in a unique index on either backend.
+- `POST /jobs/analyze`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/skill-tree`,
+  `DELETE /jobs/{id}`, `POST /jobs/{id}/match` and `GET /jobs/{id}/match`.
+- Every requirement carries the posting's own sentence (`jdEvidence`), so a reader can check
+  that the parser did not invent it. Analysis and matching are synchronous, as documented.
+- The match payload keeps the documented shape: five dimensions with their weights and
+  weighted contributions, `why.formula` holding the actual formula, and the strengths, gaps
+  and unknowns as explicit camelCase models. Each run is stored, so a changed score has a
+  before and after.
+- Pasting the same posting twice updates one job (`description_sha256`), keeping its match
+  history on a single card.
+
+### Fixed — PHASE 4
+
+- **The evidence dimension measured the wrong list.** It was computed over the *highlighted*
+  skills — those whose effective level clears 0.5 — so a candidate satisfying five
+  requirements, each with evidence behind it, scored **0.00** on the dimension whose entire
+  purpose is to measure that evidence. Measured live: evidence 0.0 → 87.0, total score
+  11.56 → 20.26. A regression test now covers the most common shape (one piece of evidence,
+  MODERATE level).
+- A freshly inserted job triggered a synchronous lazy load of its skills relationship and
+  returned a 500 (`MissingGreenlet`); the repository refreshes the relationship it just
+  wrote.
+- `strengths``/`gaps`/`unknowns` leaked the engine's snake_case keys into an otherwise
+  camelCase payload — the same class of defect as the locator in PHASE 3.
+- `test_models.py` outgrew the 500-line guard; split into `test_schema_inventory.py` (what
+  the schema declares) and `test_models.py` (what the database enforces) rather than
+  allowlisted.
+
 ### Added — PHASE 3 · Evidence Graph
 
 - `evidence` and `evidence_links` (§2.5) with migration `0003`, verified column-for-column

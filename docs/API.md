@@ -307,20 +307,34 @@ AI 相关响应统一携带：
 
 ### 2.6 岗位与匹配 `/jobs`
 
+> **状态：已实现（PHASE 4）**：`/jobs/analyze`、`/jobs`、`/jobs/{id}`、`/jobs/{id}/skill-tree`、
+> `DELETE /jobs/{id}`、`/jobs/{id}/match`（POST/GET）。解析与匹配都是**同步**的，符合本文档
+> 的约定：JD 解析是「用户正盯着输入框」的操作，匹配则是确定性算术，把它们塞进队列只会多一次
+> 轮询。
+> 同一段 JD 文本重复提交会**更新同一条岗位**（按 `description_sha256` 去重），因此匹配历史
+> 不会被拆到两张卡片上。每次匹配都**新增一行**而非覆盖：分数变化时，上一行说明了它从多少变来、
+> 由哪个算法版本产生。
+> `strengths` / `gaps` / `unknowns` 在响应中是 camelCase 且明确的模型；`why.formula` 是真实
+> 公式而非描述，`dimensions[*].weighted` 之和等于 `score`（有测试断言这一点）。
+> 尚未实现：`PATCH /jobs/{id}`（纠正解析结果）、`POST /jobs/match`（不落库的即时匹配）、
+> `POST /jobs/{id}/skill-gap` 与 `/learning-plan`（PHASE 8，CoachAgent）、`/applications`（PHASE 8）。
+> 当前分数里 `experience` 与 `project` 维度为 0，因为 §2.2 的职业实体表尚未实现——分数如实
+> 反映「没有这类数据」，而不是用假设填补。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/jobs/analyze` | `{ "text": "JD..." }` 或 `{ "documentId": "..." }` → 200/202（WF-03） |
-| GET | `/jobs` | 列表（`?status=&companyId=&minScore=&q=`） |
-| GET | `/jobs/{id}` | 详情（含 `analysis`） |
+| POST | `/jobs/analyze` | `{ "text": "JD..." }` → 200（WF-03），同步返回解析结果 |
+| GET | `/jobs` | 列表（`?q=` 按岗位名子串） |
+| GET | `/jobs/{id}` | 详情（含 `analysis` 原文与全部要求行） |
 | GET | `/jobs/{id}/skill-tree` | Required / Preferred / Bonus 三层树（每项带 JD 原文出处） |
-| PATCH | `/jobs/{id}` | 修正解析结果（用户纠正提升 `parse_confidence`） |
-| DELETE | `/jobs/{id}` | 删除 |
-| POST | `/jobs/{id}/match` | 计算匹配（WF-04）→ 同步（确定性评分，快） |
-| GET | `/jobs/{id}/match` | 最新匹配结果（含 `why`） |
-| POST | `/jobs/match` | 不保存 JD 的即时匹配（`{ text, ... }`） |
-| POST | `/jobs/{id}/skill-gap` | 缺口矩阵 |
-| POST | `/jobs/{id}/learning-plan` | 30 天计划 + mini projects（WF-08） |
-| POST | `/jobs/{id}/applications` | 加入投递看板 |
+| PATCH | `/jobs/{id}` | 修正解析结果（用户纠正提升 `parse_confidence`）— 未实现 |
+| DELETE | `/jobs/{id}` | 删除（级联要求行与匹配历史） |
+| POST | `/jobs/{id}/match` | 计算匹配（WF-04）→ 同步，落库并返回完整 `why` |
+| GET | `/jobs/{id}/match` | 最新匹配结果（读库，不重算） |
+| POST | `/jobs/match` | 不保存 JD 的即时匹配 — 未实现 |
+| POST | `/jobs/{id}/skill-gap` | 缺口矩阵 — PHASE 8 |
+| POST | `/jobs/{id}/learning-plan` | 30 天计划 + mini projects（WF-08）— PHASE 8 |
+| POST | `/jobs/{id}/applications` | 加入投递看板 — PHASE 8 |
 
 ```jsonc
 // POST /jobs/{id}/match → 200

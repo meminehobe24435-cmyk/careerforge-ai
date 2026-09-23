@@ -269,6 +269,8 @@ graph LR
 | 2026-09-24 | PHASE 2b | `feat(api): persist uploaded documents and parse them in the worker` | 见下方「PHASE 2 实测问题记录」 |
 | 2026-09-24 | PHASE 3c | `fix(graph,scoring): three defects that only a persisted graph exposed` | 首次把图谱落库即暴露三处缺陷：手工证据被按「已上传文档」计分（0.80→0.55 自述档）、五类关系只有边没有可存储的 link（持久化后根节点整片丢失）、`include_orphans` 在传 `GraphQuery` 时被静默忽略 |
 | 2026-09-24 | PHASE 3d | `feat(api): persist the evidence graph and serve it` | `evidence` / `evidence_links` + 迁移 `0003`；置信度公式成为数据库 CHECK；7 个端点（含同步的 `/documents/{id}/analyze`，幂等）；修掉 locator 蛇形命名与「摘要说 129 个节点、画布只有 10 个」两处契约缺陷 |
+| 2026-09-24 | PHASE 4a | `feat(api): persist job postings and explainable matches` | `jobs` / `job_skills` / `job_matches` + 迁移 `0004`；7 个端点（解析、列表、详情、技能树、删除、匹配 POST/GET）；匹配五维加权之和等于总分（有断言），每次匹配留一行历史 |
+| 2026-09-24 | PHASE 4b | `fix(scoring): measure the evidence dimension over met requirements` | 证据强度维度此前按**被高亮的技能**（effective ≥ 0.5）计算，导致「5 项要求命中、每项都有证据」的候选人该维度得 **0.00**；改为按命中的要求计算，实测 11.56 → 20.26 分（证据维度 0.0 → 87.0） |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -317,3 +319,14 @@ graph LR
 | 5 | locator 把存储层的蛇形键（`char_start`）直接透出，其余字段全是 camelCase | 端到端 HTTP 测试 | 修复：显式建模 `LocatorResponse` 并在响应中归一 |
 | 6 | 迁移里 `confidence` 与 `corroboration_count` 的列顺序与模型不一致 | 结构等价测试 | 修复：按 §3 DDL 的顺序显式声明 |
 | 7 | 引擎按内容派生证据 id，数据库自己生成主键：只把 item.id 改写会让所有边指向无法 join 的节点 | 端到端 HTTP 测试（图缺边） | 修复：按 content_hash 建立映射并同时改写 link 两端与 edge 两端 |
+
+### PHASE 4 实测问题记录（发现 → 修复）
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | 证据强度维度按**被高亮的技能**（effective level ≥ 0.5）计算，而不是按命中的要求：一个满足 5 项要求、且每项都有证据的候选人，在这个「专门用来衡量证据」的维度上得 0.00 | 真实服务端到端跑分（11.56 分，与 `evidenceUsed=1` 自相矛盾） | 修复：按命中要求计算；实测证据维度 0.0 → **87.0**，总分 11.56 → **20.26**；新增回归测试（单条证据 + MODERATE 等级这一最常见形态） |
+| 2 | `_profile_of` 里写了 `if False else` 与一个未实现的 `select_profile` 桩函数 | 自查（写完后立即回看） | 重写：直接查询 `profiles`，技能声明由证据图反推 |
+| 3 | 新插入的 `Job` 上读取 `skills` 关系会触发同步惰性加载，异步 ORM 直接抛 `MissingGreenlet`（500） | 端到端 HTTP 测试 | 修复：写入要求行后显式 `refresh(job, ["skills"])`，并在注释里写明原因 |
+| 4 | 响应里的 `strengths`/`gaps`/`unknowns` 直接透出引擎的 snake_case 字典，与其余 camelCase 字段不一致（与 PHASE 3 的 locator 同类） | 端到端 HTTP 测试（KeyError: canonicalId） | 修复：改为三个显式响应模型 |
+| 5 | `test_models.py` 因逐阶段追加断言而超过 500 行守卫 | 自建守卫脚本 | 拆分而非豁免：新的 `test_schema_inventory.py` 负责「模式声明了什么」，`test_models.py` 负责「数据库实际拦住了什么」 |
+| 6 | 新加的租户键测试立刻抓到 `ai_caches` / `llm_calls` / `agent_runs` / `background_jobs` 的 `user_id` 可空 | 新测试 | 不是缺陷而是文档化例外（§2.11 系统级行）：把例外连同理由写进测试，而不是放宽断言 |

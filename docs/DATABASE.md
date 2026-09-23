@@ -277,6 +277,16 @@ CREATE INDEX ix_embeddings_hnsw ON embeddings
 
 ### 2.6 岗位与匹配（jobs）
 
+> **状态：已实现（PHASE 4）** — 模型 `apps/api/src/careerforge_api/models/job_posting.py`、
+> 迁移 `alembic/versions/0004_jobs.py`。两处与本文档的偏差，均为有意为之：
+> ① `companies` 表与 `jobs.company_id` 外键暂缺（指向缺失表的外键无法创建），公司身份先
+> 由 `company_name_raw` 承载；② `jobs.user_id` 目前为 **NOT NULL**，因为本版本还没有公共
+> 岗位库，一个可空的租户键会让每一次读取都更难推理；将来放开只是一行
+> `ALTER COLUMN DROP NOT NULL`。
+> `job_skills` 额外带一个由应用层生成的 `dedupe_key`（能归一化时是 canonical id，否则是
+> 原文）：本文档要求的唯一性落在**可空列**上，而 `NULL` 在两种后端的唯一索引里都不等于
+> 自身，约束会对「未归一化的技能」静默失效。
+
 #### `companies`（全局）
 `name`, `normalized_name text unique`, `website`, `industry`, `size`, `logo_url`, `notes`
 
