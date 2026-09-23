@@ -139,6 +139,14 @@ from careerforge_ai.schemas.profile import (
     Project,
     SkillRef,
 )
+from careerforge_ai.schemas.public import (
+    ExtractedRecruiterSummary,
+    PublicEvidenceLink,
+    PublicProfileSummary,
+    PublicProject,
+    PublicSectionVisibility,
+    PublicSkill,
+)
 
 __all__ = [
     # common
@@ -188,10 +196,16 @@ __all__ = [
     "ExtractedEducation",
     "ExtractedExperience",
     "ExtractedProfile",
+    "ExtractedRecruiterSummary",
     "ExtractedProject",
     "ProfileImportResult",
     "ProfileSkill",
     "ProfileStrength",
+    "PublicEvidenceLink",
+    "PublicProfileSummary",
+    "PublicProject",
+    "PublicSectionVisibility",
+    "PublicSkill",
     "ProfileStrengthDimension",
     "Project",
     "SkillRef",

@@ -18,7 +18,6 @@ Agent                                Status
 ``ResumeAgent``                      ✅ WF-05 · bullet rewrite under the evidence gate
 ``InterviewAgent``                   ⬜ WF-07
 ``CoachAgent``                       ⬜ WF-08
-``RecruiterAgent``                   ⬜ WF-10
 ===================================  ==========================================
 
 The remaining agents are thin workflow wrappers around already-tested engines; what
@@ -75,6 +74,11 @@ from careerforge_ai.agents.profile import (
     build_workflow as build_profile_workflow,
     import_profile,
 )
+from careerforge_ai.agents.recruiter import (
+    RECRUITER_AGENT,
+    RecruiterAgent,
+    publish_profile,
+)
 from careerforge_ai.agents.resume import (
     RESUME_AGENT,
     ResumeAgent,
@@ -90,6 +94,7 @@ from careerforge_ai.agents.validator import (
 
 __all__ = [
     "COACH_AGENT",
+    "RECRUITER_AGENT",
     "INTERVIEW_AGENT",
     "EVIDENCE_AGENT",
     "RESUME_AGENT",
@@ -107,6 +112,7 @@ __all__ = [
     "JobAgent",
     "MatchAgent",
     "ProfileAgent",
+    "RecruiterAgent",
     "ResumeAgent",
     "ValidatorAgent",
     "build_coach_workflow",
@@ -126,6 +132,7 @@ __all__ = [
     "finish_interview",
     "import_profile",
     "optimize_resume",
+    "publish_profile",
     "start_interview",
     "submit_answer",
     "strip_markup",

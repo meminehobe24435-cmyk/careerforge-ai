@@ -8,6 +8,13 @@ non-reproducible too.
 
 from __future__ import annotations
 
+from careerforge_ai.parsing.pii import (
+    PiiFinding,
+    PiiKind,
+    contains_pii,
+    redact_pii,
+    scan_pii,
+)
 from careerforge_ai.parsing.skill_taxonomy import (
     ALIAS_INDEX,
     SKILL_BY_ID,
@@ -22,11 +29,16 @@ from careerforge_ai.parsing.skill_taxonomy import (
 
 __all__ = [
     "ALIAS_INDEX",
+    "PiiFinding",
+    "PiiKind",
     "SKILLS",
     "SKILL_BY_ID",
     "TAXONOMY_VERSION",
     "Skill",
+    "contains_pii",
     "extract_skill_mentions",
+    "redact_pii",
+    "scan_pii",
     "is_known_skill",
     "normalize_skill",
     "skill_categories",
