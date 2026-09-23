@@ -213,8 +213,14 @@ async def test_match_scores_against_the_stored_evidence_graph(
     assert match["dimensions"]["skill"]["evidenceIds"], "met requirements must cite evidence"
     assert all(item["reason"] for item in match["strengths"])
 
-    # Requirements the résumé does not cover are gaps — that is the product's point.
-    assert gapped, "a posting asking for CAN/SPI/AUTOSAR must produce gaps"
+    # Requirements the résumé does not cover are reported as gaps or as unknowns — the
+    # product's point. Asserted as a property rather than a fixed list: which of the posting's
+    # requirements are unmet depends on evidence other tests in this session have added, and
+    # AUTOSAR is the one nothing anywhere evidences.
+    unmet = {item["canonicalId"] for item in match["gaps"]} | {
+        item["canonicalId"] for item in match["unknowns"]
+    }
+    assert "autosar" in unmet, (match["gaps"], match["unknowns"])
 
     async with app.state.session_factory() as db:
         stored = await db.scalar(select(func.count()).select_from(JobMatch))

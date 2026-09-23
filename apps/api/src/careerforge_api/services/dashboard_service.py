@@ -32,6 +32,7 @@ from careerforge_api.models.evidence import Evidence, EvidenceLinkRow
 from careerforge_api.models.job_posting import Job, JobMatch, JobSkill
 from careerforge_api.models.user import Profile, User
 from careerforge_api.services.job_service import canonical_of_skill_node
+from careerforge_api.services.profile_service import ProfileService
 
 __all__ = ["DEFINITIONS", "MISSING_SOURCES", "DashboardPayload", "DashboardService", "MetricNote"]
 
@@ -151,23 +152,21 @@ class DashboardService:
         profile_row: Profile | None,
         skills_with_evidence: dict[str, int],
     ) -> CandidateProfile:
-        """The profile the strength engine reads, filled from stored rows.
+        """The profile the strength engine reads, assembled from stored rows.
 
-        Skills come from the evidence graph. The entity tables (§2.2) do not exist yet, so
-        the engine's completeness and achievement dimensions legitimately read zero — the
-        score reflects missing *inputs*, not a judgement the system cannot make.
+        Now that §2.2's entity tables exist, the completeness and achievement dimensions have
+        real inputs: an imported profile moves the score, and a profile that was never imported
+        reads zero because nothing has been stated — which is the honest meaning of zero here,
+        not a judgement the system declines to make.
+
+        Skills fall back to the evidence graph when nothing is declared, so evidence the
+        candidate has but never listed still counts as coverage.
         """
-        slug = (
-            profile_row.slug
-            if profile_row is not None and profile_row.slug
-            else f"user-{user.id.hex[:8]}"
-        )
-        headline = (
-            profile_row.headline
-            if profile_row is not None and profile_row.headline
-            else user.display_name
-        )
-        skills = [
+        profile = await ProfileService(self._session).load(user)
+        if profile.skills:
+            return profile
+
+        profile.skills = [
             ProfileSkill(
                 skill=SkillRef(
                     canonical_id=canonical,
@@ -187,16 +186,7 @@ class DashboardService:
             )
             for canonical, count in sorted(skills_with_evidence.items())
         ]
-        return CandidateProfile(
-            slug=slug,
-            headline=headline,
-            years_experience=(
-                float(profile_row.years_experience)
-                if profile_row is not None and profile_row.years_experience is not None
-                else None
-            ),
-            skills=skills,
-        )
+        return profile
 
     @staticmethod
     def _evidence_stats(rows: list[Evidence]) -> EvidenceStats:

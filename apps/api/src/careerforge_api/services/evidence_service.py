@@ -45,6 +45,7 @@ from careerforge_api.models.evidence import Evidence, EvidenceLinkRow
 from careerforge_api.models.skill import Skill
 from careerforge_api.models.user import Profile, User
 from careerforge_api.repositories.evidence_repository import EvidenceRepository
+from careerforge_api.services.profile_service import ProfileService
 
 __all__ = [
     "EvidenceAnalysisResult",
@@ -232,17 +233,14 @@ class EvidenceService:
         return list((await self._session.scalars(statement)).all())
 
     async def _profile_of(self, user: User) -> CandidateProfile:
-        """The profile the builder needs, filled from the stored row.
+        """The stored profile, assembled from rows.
 
-        The builder reads ``slug`` and ``headline`` for node labels. The entity tables
-        (``docs/DATABASE.md`` §2.2) arrive with the profile phase, so the headline falls
-        back to the account's display name: a node labelled "Candidate" tells a reviewer
-        nothing, and a display name is at least true.
+        Every consumer reads the profile the same way — this service, the match engine and the
+        dashboard all go through ``ProfileService.load`` — so a project the candidate added is
+        both a node in the graph and an input to the project match dimension, rather than one
+        or the other.
         """
-        profile = await self._session.scalar(select(Profile).where(Profile.user_id == user.id))
-        slug = profile.slug if profile and profile.slug else f"user-{user.id.hex[:8]}"
-        headline = profile.headline if profile and profile.headline else user.display_name
-        return CandidateProfile(slug=slug, headline=headline)
+        return await ProfileService(self._session).load(user)
 
     async def _persist_evidence(
         self, *, user_id: UUID, result: GraphBuildResult
@@ -334,15 +332,26 @@ class EvidenceService:
                 meta={"category": skill.category, "canonicalId": skill.canonical_id},
             )
 
-        profile = await self._session.scalar(select(Profile).where(Profile.user_id == user.id))
-        slug = profile.slug if profile and profile.slug else f"user-{user.id.hex[:8]}"
+        profile_row = await self._session.scalar(select(Profile).where(Profile.user_id == user.id))
+        slug = (
+            profile_row.slug
+            if profile_row is not None and profile_row.slug
+            else f"user-{user.id.hex[:8]}"
+        )
         candidate_id = node_id(GraphNodeType.CANDIDATE, slug)
         nodes[candidate_id] = GraphNode(
             id=candidate_id,
             type=GraphNodeType.CANDIDATE,
-            label=(profile.headline if profile and profile.headline else user.display_name),
+            label=(
+                profile_row.headline
+                if profile_row is not None and profile_row.headline
+                else user.display_name
+            ),
             meta={"slug": slug},
         )
+        # Entity nodes, recomputed with the same keys the builder used. Without them every
+        # candidate->project edge ends in a placeholder node.
+        nodes.update(await ProfileService(self._session).graph_nodes(user))
 
         links = await self._evidence.list_links(user_id=user.id)
         edges: list[GraphEdge] = []

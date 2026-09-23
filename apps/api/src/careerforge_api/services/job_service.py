@@ -22,7 +22,6 @@ import hashlib
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerforge_ai.agents.job import build_jd_analysis
@@ -30,23 +29,23 @@ from careerforge_ai.agents.match import compute_match
 from careerforge_ai.graph import node_id as node_id_for_skill
 from careerforge_ai.graph.builder_types import GraphBuildResult
 from careerforge_ai.orchestrator import WorkflowExecutor
-from careerforge_ai.parsing.skill_taxonomy import SKILL_BY_ID, SKILLS
+from careerforge_ai.parsing.skill_taxonomy import SKILLS
 from careerforge_ai.schemas.common import (
     EvidenceKind,
     GraphNodeType,
-    SkillCategory,
-    SkillLevel,
     SourceAuthority,
 )
 from careerforge_ai.schemas.evidence import EvidenceItem, EvidenceLocator
 from careerforge_ai.schemas.job import JDAnalysis, JDSkill, RequirementLevel
 from careerforge_ai.schemas.match import JobMatchResult
-from careerforge_ai.schemas.profile import CandidateProfile, ProfileSkill, SkillRef
+from careerforge_ai.schemas.profile import CandidateProfile
 from careerforge_api.models.evidence import Evidence
 from careerforge_api.models.job_posting import Job
-from careerforge_api.models.user import Profile, User
+from careerforge_api.models.user import User
 from careerforge_api.repositories.evidence_repository import EvidenceRepository
 from careerforge_api.repositories.job_repository import JobRepository
+from careerforge_api.services.profile_mapping import merge_skills_with_evidence
+from careerforge_api.services.profile_service import ProfileService
 
 __all__ = ["JobAnalysisOutcome", "JobService"]
 
@@ -282,16 +281,16 @@ class JobService:
         )
 
     async def _profile_of(self, user: User) -> CandidateProfile:
-        """The profile the match engine reads, filled from the stored rows.
+        """The profile the match engine reads, assembled from stored rows.
 
-        Skills are declared from the **evidence graph** rather than from ``profile.skills``:
-        the entity tables (§2.2) arrive with the profile phase, and an empty declaration list
-        would make every required skill look unmatched even when evidence for it exists —
-        the score would be wrong in the direction that flatters nobody.
+        Declared skills come from ``profile_skills`` when the candidate has imported a profile
+        (their levels are real assessments), and from the evidence graph otherwise — evidence
+        that exists but is undeclared must still count, or the score penalises a candidate for
+        a declaration they never had to make.
         """
-        profile_row = await self._session.scalar(select(Profile).where(Profile.user_id == user.id))
-        links = await self._evidence.list_links(user_id=user.id)
+        profile = await ProfileService(self._session).load(user)
 
+        links = await self._evidence.list_links(user_id=user.id)
         counts: dict[str, int] = {}
         for link in links:
             if link.relation != "EVIDENCED_BY" or link.from_type != GraphNodeType.SKILL.value:
@@ -300,34 +299,7 @@ class JobService:
             if canonical:
                 counts[canonical] = counts.get(canonical, 0) + 1
 
-        skills = [
-            ProfileSkill(
-                skill=SkillRef(
-                    canonical_id=canonical,
-                    display_name=SKILL_BY_ID[canonical].display_name
-                    if canonical in SKILL_BY_ID
-                    else canonical.replace("_", " ").title(),
-                    category=SKILL_BY_ID[canonical].category
-                    if canonical in SKILL_BY_ID
-                    else SkillCategory.TOOL,
-                ),
-                level=SkillLevel.MODERATE,
-                evidence_count=count,
-            )
-            for canonical, count in sorted(counts.items())
-        ]
-
-        slug = (
-            profile_row.slug
-            if profile_row is not None and profile_row.slug
-            else f"user-{user.id.hex[:8]}"
-        )
-        headline = (
-            profile_row.headline
-            if profile_row is not None and profile_row.headline
-            else user.display_name
-        )
-        return CandidateProfile(slug=slug, headline=headline, skills=skills)
+        return merge_skills_with_evidence(profile, counts)
 
     # ── reads ────────────────────────────────────────────────────────────────
 

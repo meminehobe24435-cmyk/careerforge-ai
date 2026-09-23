@@ -8,6 +8,7 @@ PHASE 1 — identity, platform and observability.
 PHASE 2 — documents and their chunks (§2.3).
 PHASE 3 — evidence and the graph edges over it (§2.5).
 PHASE 4 — job postings, their skill requirements and computed matches (§2.6).
+PHASE 2b — the structured career entities: education, experience, projects, achievements (§2.2).
 """
 
 from __future__ import annotations
@@ -49,6 +50,17 @@ from careerforge_api.models.observability import (
     AgentRun,
     LlmCall,
 )
+from careerforge_api.models.profile_entity import (
+    ACHIEVEMENT_KINDS,
+    ENTITY_ORIGINS,
+    EXPERIENCE_KINDS,
+    PROFILE_SKILL_LEVELS,
+    Achievement,
+    Education,
+    Experience,
+    ProfileSkillRow,
+    Project,
+)
 from careerforge_api.models.prompt import PromptVersion
 from careerforge_api.models.skill import SKILL_CATEGORIES, Skill
 from careerforge_api.models.user import (
@@ -60,6 +72,15 @@ from careerforge_api.models.user import (
 )
 
 __all__ = [
+    "Project",
+    "ProfileSkillRow",
+    "Experience",
+    "Education",
+    "Achievement",
+    "PROFILE_SKILL_LEVELS",
+    "EXPERIENCE_KINDS",
+    "ENTITY_ORIGINS",
+    "ACHIEVEMENT_KINDS",
     "AGENT_RUN_STATUSES",
     "AGENT_RUN_TRIGGERS",
     "AI_CACHE_KINDS",

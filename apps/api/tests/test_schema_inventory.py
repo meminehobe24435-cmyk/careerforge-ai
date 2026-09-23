@@ -34,6 +34,15 @@ PHASE_2_TABLES = {
     "document_chunks",
 }
 
+#: ``docs/DATABASE.md`` §2.2 — the structured career entities.
+PHASE_2B_TABLES = {
+    "educations",
+    "experiences",
+    "projects",
+    "achievements",
+    "profile_skills",
+}
+
 #: ``docs/DATABASE.md`` §2.5 — evidence and the edges over it.
 PHASE_3_TABLES = {
     "evidence",
@@ -53,7 +62,7 @@ def test_metadata_contains_exactly_the_migrated_tables() -> None:
     should fail here rather than pass unnoticed."""
     assert (
         set(Base.metadata.tables)
-        == PHASE_1_TABLES | PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES
+        == PHASE_1_TABLES | PHASE_2_TABLES | PHASE_2B_TABLES | PHASE_3_TABLES | PHASE_4_TABLES
     )
 
 
