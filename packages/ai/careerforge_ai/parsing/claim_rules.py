@@ -212,9 +212,15 @@ def describe_rules() -> Sequence[dict[str, str]]:
 
 #: A measure verb left without its object once a number is removed.
 #: "优化性能，提升 70%" minus the figure is "优化性能，提升" — broken text.
+#:
+#: The lookahead matches a clause separator as well as the end of the string, because the verb
+#: dangles mid-sentence too: dropping "300%" from "将部署效率提升了 300%，并主导了…" left
+#: "将部署效率提升了 ，并主导了…". Requiring a separator (or the end) after the verb is what keeps
+#: this from eating a verb that still has an object — "提升了部署效率" has text after it and is left
+#: alone.
 _DANGLING_MEASURE_RE = re.compile(
     r"[，,]?\s*(?:提升了?|提高了?|降低了?|减少了?|增长了?|下降了?|缩短了?|节省了?|达到|超过|"
-    r"improved|increased|reduced|decreased|by|to)\s*$",
+    r"improved|increased|reduced|decreased|by|to)\s*(?=[，,；;、]|$)",
     re.IGNORECASE,
 )
 
@@ -254,7 +260,7 @@ def build_safer_formulation(
             candidate = "，".join(kept)
             for number in dropped_numbers:
                 candidate = candidate.replace(number, "")
-            candidate = re.sub(r"\s{2,}", " ", candidate).strip("，,。;； ")
+            candidate = _tidy(candidate)
             if candidate and candidate != claim:
                 return candidate
 
@@ -264,11 +270,27 @@ def build_safer_formulation(
     stripped = claim
     for number in dropped_numbers:
         stripped = stripped.replace(number, "")
-    stripped = re.sub(r"\s{2,}", " ", stripped)
-    # A measure verb left without its object reads as broken text rather than as a
-    # safer claim, which is the opposite of what a rewrite is for.
-    stripped = _DANGLING_MEASURE_RE.sub("", stripped).strip("，,。;； ")
+    stripped = _tidy(stripped)
+    # Removing the number is not enough when the sentence also names a technology the evidence
+    # does not carry: the result would still assert something unsupported, now with the figure
+    # gone so the reader cannot even see what was removed. No safer rewrite exists for such a
+    # sentence, and saying so is the honest answer.
+    if missing_technical_tokens(stripped, evidence_text):
+        return ""
     return stripped if stripped and stripped != claim else ""
+
+
+def _tidy(text: str) -> str:
+    """Whitespace, a dangling measure verb, and the punctuation it leaves behind.
+
+    Shared by both rewrite branches because both can strand a verb: the clause branch drops
+    numbers from the clauses it keeps, and the fallback drops them from the whole sentence.
+    """
+    tidied = re.sub(r"\s{2,}", " ", text)
+    tidied = _DANGLING_MEASURE_RE.sub("", tidied)
+    # "…效率 ，并主导" → the verb left a space before the separator.
+    tidied = re.sub(r"\s+([，,；;、])", r"\1", tidied)
+    return tidied.strip("，,。;； ")
 
 
 def numeric_risk_summary(reasons: Sequence[ClaimReason]) -> str:

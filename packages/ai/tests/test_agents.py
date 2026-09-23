@@ -201,7 +201,11 @@ class TestValidatorAgent:
             user_id=user_id,
         )
         assert validation is not None
-        assert validation.status is ClaimStatus.CONTRADICTED
+        # ``unsupported``, not ``contradicted``: nothing in the evidence says the number is wrong —
+        # there is simply no comparable measurement. A contradiction is a claim the evidence
+        # conflicts with, and calling this one contradicted told the candidate their own material
+        # disagreed with them when it said nothing at all. The refusal is identical either way.
+        assert validation.status is ClaimStatus.UNSUPPORTED
         assert validation.is_blocking
         assert validation.has_quantified_claim
         assert any("70%" in str(mention.raw) for mention in validation.numeric_mentions)
@@ -215,8 +219,10 @@ class TestValidatorAgent:
         )
         validation, _ = await validate_claim_text(executor, "将测试覆盖率提升至 90%")
         assert validation is not None
-        # The rule layer blocks before retrieval is even attempted.
-        assert validation.status is ClaimStatus.CONTRADICTED
+        # The rule layer blocks before retrieval is even attempted, and a block is a refusal —
+        # not a refutation. See the note in the test above for why the status is unsupported.
+        assert validation.status is ClaimStatus.UNSUPPORTED
+        assert validation.is_blocking
 
     async def test_accepts_a_claim_with_two_independent_sources(self) -> None:
         shared = "项目基于 FreeRTOS 实现多任务实时控制，任务按优先级划分并周期调度。"

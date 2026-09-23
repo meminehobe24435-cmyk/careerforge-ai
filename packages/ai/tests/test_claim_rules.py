@@ -155,6 +155,52 @@ class TestSaferFormulation:
         assert "40%" not in safer
         assert not safer.rstrip().lower().endswith("by")
 
+    def test_a_measure_verb_dangling_mid_sentence_is_removed(self) -> None:
+        """The verb dangles inside a sentence too, not only at its end.
+
+        Dropping "40%" from "响应时间缩短了 40%，并完成了压测" used to leave
+        "响应时间缩短了 ，并完成了压测": the regex was anchored at the end of the string, so the
+        mid-sentence case went straight through. Both clauses here are evidenced, so the rewrite
+        is the whole sentence with the figure and its verb gone.
+        """
+        evidence = "响应时间缩短，并完成了压测。响应时间通过压测验证。"
+        safer = build_safer_formulation("响应时间缩短了 40%，并完成了压测", evidence, ["40%"])
+        assert "40%" not in safer
+        assert "缩短了 ，" not in safer, safer
+        # The verb leaves with its number rather than staying behind without an object, which is
+        # why the clause reads as a noun phrase afterwards ("响应时间，"). Tidy handles spacing and
+        # punctuation; rebuilding the grammar of a sentence whose predicate was removed is not
+        # something a rule can do honestly, so the candidate finishes the clause.
+        assert "压测" in safer
+
+    def test_no_rewrite_is_offered_when_a_technology_is_still_unsupported(self) -> None:
+        """Removing the number is not enough if the sentence still names unevidenced technology.
+
+        The live case: "使用 Kubernetes 将部署效率提升了 300%，并主导了 TensorFlow 模型上线" with
+        neither technology anywhere in the candidate's evidence. A rewrite that keeps both names
+        and merely deletes the figure would assert the same unsupported things, now with the
+        number gone so the reader cannot see what was removed. No safer version exists, and
+        saying so is the honest answer.
+        """
+        evidence = "使用 STM32 与 FreeRTOS 开发电机控制固件。"
+        safer = build_safer_formulation(
+            "使用 Kubernetes 将部署效率提升了 300%，并主导了 TensorFlow 模型上线",
+            evidence,
+            ["300%"],
+        )
+        assert safer == ""
+
+    def test_a_supported_sentence_still_gets_its_numbers_stripped(self) -> None:
+        # The guard above must not swallow the ordinary case: the sentence names an evidenced
+        # technology, so dropping the figure and its verb leaves a claim the evidence can carry.
+        evidence = "使用 STM32 开发电机控制固件，延迟表现见测试记录。"
+        safer = build_safer_formulation(
+            "使用 STM32 开发电机控制固件，延迟降低了 30%", evidence, ["30%"]
+        )
+        assert "30%" not in safer
+        assert "STM32" in safer
+        assert not safer.rstrip().endswith("降低了")
+
     def test_returns_empty_when_nothing_can_be_improved(self) -> None:
         assert build_safer_formulation("完全无关的一句话", "另一个完全无关的句子。", []) == ""
 

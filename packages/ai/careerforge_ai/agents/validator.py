@@ -15,6 +15,10 @@ error, and no model is ever asked to adjudicate a number it cannot verify.
 The final status is computed by the same deterministic function the rest of the
 codebase uses (:func:`careerforge_ai.scoring.confidence.classify_claim_status`), so
 a claim cannot pass here and fail in the graph, or vice versa.
+
+The decision policy itself lives in :mod:`careerforge_ai.agents.validator_decide`:
+this module gathers inputs (rules, evidence, an optional model verdict) and that one
+turns them into a verdict.
 """
 
 from __future__ import annotations
@@ -27,9 +31,9 @@ from careerforge_ai.agents.base import (
     merge_workflow_warnings,
     render_bullets,
 )
+from careerforge_ai.agents.validator_decide import decide_phase
 from careerforge_ai.orchestrator import RunContext, Step, Workflow, WorkflowExecutor
 from careerforge_ai.parsing.claim_rules import (
-    build_safer_formulation,
     detect_missing_technical,
     detect_numeric_risk,
     detect_superlatives,
@@ -37,18 +41,10 @@ from careerforge_ai.parsing.claim_rules import (
 from careerforge_ai.schemas.claim import (
     ClaimLLMVerdict,
     ClaimReason,
-    ClaimSource,
     ClaimValidation,
-    SafeRewrite,
 )
-from careerforge_ai.schemas.common import (
-    ClaimRuleCode,
-    ClaimStatus,
-    DegradationReason,
-    EvidenceKind,
-)
-from careerforge_ai.schemas.evidence import EvidenceLocator, RetrievalHit
-from careerforge_ai.scoring.confidence import classify_claim_status, compute_confidence
+from careerforge_ai.schemas.common import DegradationReason
+from careerforge_ai.schemas.evidence import RetrievalHit
 
 __all__ = [
     "VALIDATOR_AGENT",
@@ -68,10 +64,6 @@ VALIDATOR_AGENT = "validator"
 #: needs *corroboration*, not just one hit: the gate requires two independent
 #: sources, so the retriever has to be given the chance to find a second one.
 _RETRIEVAL_TOP_K = 8
-
-#: Distinct evidence kinds required before a claim may be called supported. A file
-#: and a commit are independent; two files in one repository are not.
-_MIN_INDEPENDENT_SOURCES = 2
 
 
 def build_workflow() -> Workflow:
@@ -196,173 +188,6 @@ async def verdict_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimLLM
         claim=claim,
         evidence_blocks=render_bullets(evidence_blocks),
         job_context=str(context.metadata.get("job_context") or "（未指定目标岗位）"),
-    )
-
-
-async def decide_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimValidation:
-    claim = str(context.metadata.get("claim") or "")
-    rules = inputs["rules"]
-    retrieval = inputs.get("retrieve") or {"hits": [], "degraded": True}
-    hits: list[RetrievalHit] = list(retrieval.get("hits") or [])
-    verdict: ClaimLLMVerdict | None = inputs.get("verdict")
-
-    reasons: list[ClaimReason] = list(rules["reasons"])
-    sources = [
-        ClaimSource(
-            evidence_id=hit.evidence_id,
-            title=hit.title,
-            kind=hit.kind.value,
-            relevance=hit.relevance,
-            channel=hit.channel,
-            locator=hit.locator,
-            snippet=hit.snippet[:300],
-        )
-        for hit in hits
-    ]
-
-    independent_sources = len({hit.kind.value for hit in hits})
-    evidence_confidence = (
-        round(sum(hit.confidence for hit in hits[:5]) / len(hits[:5]), 4) if hits else 0.0
-    )
-
-    # No retrieval hits but the caller supplied material directly: that material is
-    # one *self-report* source. Scoring it through the same formula is what keeps
-    # the answer honest -- it lands around 0.65, which is a PARTIALLY_SUPPORTED
-    # verdict ("weak evidence"), never SUPPORTED, because one uncorroborated source
-    # is one source by design.
-    if not hits and str(context.metadata.get("evidence_text") or "").strip():
-        self_report = compute_confidence(
-            kind=EvidenceKind.PROJECT,
-            locator=EvidenceLocator(section="profile"),
-            independent_sources=1,
-            extraction_method="heuristic",
-        )
-        evidence_confidence = self_report.score
-        independent_sources = 1
-        reasons.append(
-            ClaimReason(
-                rule=ClaimRuleCode.SINGLE_SOURCE_ONLY,
-                severity="info",
-                message=(
-                    "当前只有候选人自述材料作为证据，属于单来源自述；"
-                    "补充代码、提交或文档后才能升级为可信证据"
-                ),
-            )
-        )
-
-    # A contradiction can come from the rules (a number nothing supports) or from
-    # the model (evidence that actively conflicts). Both must force CONTRADICTED,
-    # which is the one status the gate never lets through with a rewrite.
-    contradiction = bool(rules["blocked"])
-    if verdict is not None:
-        if verdict.contradicting_evidence:
-            contradiction = True
-            reasons.append(
-                ClaimReason(
-                    rule=ClaimRuleCode.LOW_CONFIDENCE_SOURCES,
-                    severity="blocker",
-                    message="证据与断言冲突：" + "；".join(verdict.contradicting_evidence[:2]),
-                )
-            )
-        if verdict.unsupported_parts:
-            reasons.append(
-                ClaimReason(
-                    rule=ClaimRuleCode.NO_EVIDENCE_MATCH,
-                    severity="warning" if verdict.supported else "blocker",
-                    message="模型判定以下部分缺乏支撑：" + "；".join(verdict.unsupported_parts[:3]),
-                )
-            )
-
-    model_supported = verdict.supported if verdict is not None else False
-    if verdict is None and not rules["blocked"]:
-        # The model step degraded. Fall back to the retrieval signal alone and say
-        # so in the reasons rather than pretending the judgement was made.
-        model_supported = not rules["missing_technical"] and evidence_confidence >= 0.75
-        reasons.append(
-            ClaimReason(
-                rule=ClaimRuleCode.LOW_CONFIDENCE_SOURCES,
-                severity="info",
-                message="模型判定不可用，本次结论仅基于确定性规则与证据检索",
-            )
-        )
-    elif verdict is not None and not verdict.supported and not verdict.partially_supported:
-        model_supported = False
-
-    if rules["blocked"] or contradiction:
-        status = classify_claim_status(evidence_confidence, independent_sources, contradicted=True)
-    elif not model_supported:
-        status = ClaimStatus.UNSUPPORTED if not hits else ClaimStatus.PARTIALLY_SUPPORTED
-    else:
-        status = classify_claim_status(evidence_confidence, independent_sources)
-
-    if (
-        status is ClaimStatus.SUPPORTED and independent_sources < _MIN_INDEPENDENT_SOURCES
-    ):  # pragma: no cover - classify_claim_status already enforces this
-        status = ClaimStatus.PARTIALLY_SUPPORTED
-
-    safe_rewrite = _safe_rewrite(claim, rules, verdict, inputs)
-
-    unknowns: list[str] = []
-    if not hits:
-        unknowns.append("证据库中没有与这句描述相关的内容")
-    if verdict is not None and verdict.unsupported_parts:
-        unknowns.extend(verdict.unsupported_parts[:3])
-
-    context.metadata["output_ref"] = {
-        "status": status.value,
-        "confidence": evidence_confidence,
-        "sources": len(sources),
-    }
-
-    return ClaimValidation(
-        claim=claim,
-        status=status,
-        confidence=evidence_confidence,
-        sources=sources,
-        reasons=reasons,
-        safe_rewrite=safe_rewrite,
-        unknowns=unknowns,
-        has_quantified_claim=bool(rules["mentions"]),
-        numeric_mentions=list(rules["mentions"]),
-        independent_source_count=independent_sources,
-        model=context.provider.name if verdict is not None else None,
-        prompt_version="evidence_validator@v1" if verdict is not None else None,
-    )
-
-
-def _safe_rewrite(
-    claim: str,
-    rules: dict[str, Any],
-    verdict: ClaimLLMVerdict | None,
-    inputs: dict[str, Any],
-) -> SafeRewrite | None:
-    """Prefer the model's reformulation; fall back to dropping unsupported clauses."""
-    evidence_text = str(inputs.get("retrieve", {}).get("evidence_text") or "")
-    if not evidence_text:
-        evidence_text = str(
-            "\n".join(
-                f"{hit.title}\n{hit.snippet}"
-                for hit in (inputs.get("retrieve", {}).get("hits") or [])
-            )
-        )
-
-    if verdict is not None and verdict.safer_formulation.strip():
-        return SafeRewrite(
-            text=verdict.safer_formulation.strip(),
-            removed_claims=list(verdict.unsupported_parts[:4]),
-            rationale="由证据验证模型给出的降级表述",
-            confidence=0.7,
-        )
-
-    dropped = list(rules.get("unsupported_numbers") or [])
-    candidate = build_safer_formulation(claim, evidence_text, dropped)
-    if not candidate:
-        return None
-    return SafeRewrite(
-        text=candidate,
-        removed_claims=dropped,
-        rationale="移除了证据无法支撑的量化表述与小句",
-        confidence=0.5,
     )
 
 

@@ -144,7 +144,10 @@ class TestValidateClaim:
         )
         assert response.status_code == 200, response.text
         data = envelope(response)["data"]
-        assert data["status"] == "contradicted"
+        # `unsupported`, not `contradicted`: nothing in the evidence contradicts the 70%,
+        # it simply has no comparable measurement anywhere. Calling that a contradiction
+        # would tell the candidate their own evidence says otherwise when it says nothing.
+        assert data["status"] == "unsupported"
         assert data["is_blocking"] is True
         assert data["allows_resume_inclusion"] is False
         assert any("70%" in reason["message"] for reason in data["reasons"])

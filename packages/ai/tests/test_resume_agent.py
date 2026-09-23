@@ -121,7 +121,10 @@ class TestGate:
         )
         assert result is not None
         assert result.rejected
-        assert result.rejected[0].status is ClaimStatus.CONTRADICTED
+        # ``unsupported``: the evidence does not refute the number, it simply cannot carry it.
+        # The bullet is refused either way — what changed is that the gate no longer claims the
+        # candidate's own material conflicts with them.
+        assert result.rejected[0].status is ClaimStatus.UNSUPPORTED
         # The blocked bullet must not appear among the accepted ones.
         assert all("70%" not in bullet.optimized for bullet in result.bullets)
 
@@ -165,7 +168,12 @@ class TestGate:
         )
         assert result is not None
         assert sum(result.claim_stats.values()) == len(result.validations)
-        assert result.claim_stats.get("contradicted", 0) == 1
+        # The fabricated metric lands in ``unsupported`` (refused but not refuted); the
+        # evidence-supported bullet is at most partially supported, because one profile is one
+        # source and corroboration needs two.
+        assert result.claim_stats.get("unsupported", 0) == 1
+        assert result.claim_stats.get("partially_supported", 0) == 1
+        assert result.claim_stats.get("contradicted", 0) == 0
 
     async def test_self_report_alone_is_weak_not_supported(
         self, executor: WorkflowExecutor, profile: CandidateProfile
