@@ -4,17 +4,28 @@ import {
   createApiClient,
   isApplicationBoard,
   isApplicationDetail,
+  isCategoryPerformanceList,
   isDashboardResponse,
+  isFunnelResponse,
+  isRatesResponse,
+  isSkillCorrelationList,
+  isTimelineResponse,
+  type AnalyticsRange,
   type ApplicationBoardResponse,
   type ApplicationCreateRequest,
   type ApplicationDetail,
   type ApplicationReorderItem,
   type ApplicationUpdateRequest,
+  type CategoryPerformance,
   type DashboardResponse,
   type DemoLoginResponse,
+  type FunnelResponse,
   type LoginRequest,
   type LoginResponse,
+  type RatesResponse,
+  type SkillCorrelation,
   type SystemHealthResponse,
+  type TimelineResponse,
   type User,
 } from '@careerforge/shared';
 
@@ -105,6 +116,78 @@ async function fetchApplication(id: string): Promise<ApplicationDetail> {
   return data;
 }
 
+/* analytics (API.md §2.11) — guarded before a chart can draw them */
+
+async function fetchFunnel(range: AnalyticsRange): Promise<FunnelResponse> {
+  const data = await client.get<unknown>('/analytics/funnel', { query: { range } });
+  if (!isFunnelResponse(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /analytics/funnel 返回的结构与 docs/API.md §2.11 不一致（缺 meta 或 stages）',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
+async function fetchRates(range: AnalyticsRange): Promise<RatesResponse> {
+  const data = await client.get<unknown>('/analytics/rates', { query: { range } });
+  if (!isRatesResponse(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /analytics/rates 返回的结构与 docs/API.md §2.11 不一致',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
+async function fetchSkillCorrelation(range: AnalyticsRange): Promise<SkillCorrelation[]> {
+  const data = await client.get<unknown>('/analytics/skill-correlation', { query: { range } });
+  if (!isSkillCorrelationList(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /analytics/skill-correlation 返回的结构与 docs/API.md §2.11 不一致',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
+async function fetchCategories(range: AnalyticsRange): Promise<CategoryPerformance[]> {
+  const data = await client.get<unknown>('/analytics/categories', { query: { range } });
+  if (!isCategoryPerformanceList(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /analytics/categories 返回的结构与 docs/API.md §2.11 不一致',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
+async function fetchTimeline(range: AnalyticsRange): Promise<TimelineResponse> {
+  const data = await client.get<unknown>('/analytics/timeline', { query: { range } });
+  if (!isTimelineResponse(data)) {
+    throw new ApiError({
+      code: 'INVALID_RESPONSE',
+      message: 'GET /analytics/timeline 返回的结构与 docs/API.md §2.11 不一致',
+      requestId: null,
+      status: 200,
+      body: data,
+    });
+  }
+  return data;
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
 
@@ -127,6 +210,13 @@ export const api = {
     client.patch<unknown>(`/applications/${id}`, payload),
   reorderApplications,
   deleteApplication: (id: string) => client.delete<void>(`/applications/${id}`),
+
+  /* analytics (API.md §2.11) */
+  funnel: fetchFunnel,
+  rates: fetchRates,
+  skillCorrelation: fetchSkillCorrelation,
+  categories: fetchCategories,
+  timeline: fetchTimeline,
 
   /* escape hatch for phases that have not landed yet */
   request: client.request,

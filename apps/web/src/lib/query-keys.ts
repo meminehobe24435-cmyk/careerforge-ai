@@ -18,4 +18,12 @@ export const queryKeys = {
     board: (includeArchived = false) => ['applications', 'board', { includeArchived }] as const,
     detail: (id: string) => ['applications', 'detail', id] as const,
   },
+  analytics: {
+    all: () => ['analytics'] as const,
+    funnel: (range: string) => ['analytics', 'funnel', range] as const,
+    rates: (range: string) => ['analytics', 'rates', range] as const,
+    correlation: (range: string) => ['analytics', 'correlation', range] as const,
+    categories: (range: string) => ['analytics', 'categories', range] as const,
+    timeline: (range: string) => ['analytics', 'timeline', range] as const,
+  },
 } as const;

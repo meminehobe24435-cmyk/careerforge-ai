@@ -26,14 +26,23 @@ import {
 } from '../../../packages/shared/src/api/client.ts';
 import {
   isApplicationBoard,
+  isCategoryPerformanceList,
   isDashboardResponse,
+  isFunnelResponse,
+  isRatesResponse,
   isRecord,
+  isSkillCorrelationList,
+  isTimelineResponse,
   toServiceHealthStatus,
 } from '../../../packages/shared/src/api/guards.ts';
 import {
   APPLICATION_STATUSES,
   type ApplicationBoardResponse,
   type ApplicationStatus,
+  type CategoryPerformance,
+  type FunnelResponse,
+  type RatesResponse,
+  type TimelineResponse,
 } from '../../../packages/shared/src/api/types.ts';
 
 const baseUrl = process.env['API_BASE_URL']?.trim() || DEFAULT_API_BASE_URL;
@@ -198,6 +207,75 @@ async function main(): Promise<void> {
     pass(
       'PATCH /applications/reorder',
       `status=interview events=${events.length} (每次变更都留痕)`,
+    );
+
+    /* 6b. Analytics, against a board whose contents this script just built.
+     *
+     * The funnel is deterministic here — one card, moved to interview — so the numbers are
+     * asserted rather than merely fetched. A funnel endpoint that "returns 200" is worthless;
+     * one that reports the wrong count is worse than useless. */
+    const funnelRaw = await client.get<unknown>('/analytics/funnel?range=all');
+    if (!isFunnelResponse(funnelRaw)) {
+      throw new Error('GET /analytics/funnel is not the documented shape (missing meta/stages)');
+    }
+    const funnel = funnelRaw as FunnelResponse;
+    const counts = Object.fromEntries(funnel.stages.map((stage) => [stage.key, stage.count]));
+    if (counts['applications'] !== 1 || counts['interviews'] !== 1) {
+      throw new Error(`funnel disagrees with the board it just built: ${JSON.stringify(counts)}`);
+    }
+    if (funnel.meta.windowBasis !== 'applications' || funnel.meta.notes.length === 0) {
+      throw new Error('the funnel did not state its window basis');
+    }
+    pass(
+      'GET /analytics/funnel',
+      `applications=${counts['applications']} interviews=${counts['interviews']} ` +
+        `cohort=${funnel.meta.cohortSize} basis=${funnel.meta.windowBasis}`,
+    );
+
+    const ratesRaw = await client.get<unknown>('/analytics/rates?range=all');
+    if (!isRatesResponse(ratesRaw)) throw new Error('GET /analytics/rates is not the documented shape');
+    const rates = ratesRaw as RatesResponse;
+    const interviewCard = rates.cards.find((card) => card.key === 'interviewRate');
+    if (!interviewCard || interviewCard.denominator !== 1 || interviewCard.numerator !== 1) {
+      throw new Error(`unexpected interview rate card: ${JSON.stringify(interviewCard)}`);
+    }
+    if (interviewCard.sufficient) {
+      throw new Error('one application must not be reported as a sufficient sample');
+    }
+    pass(
+      'GET /analytics/rates',
+      `interviewRate=${interviewCard.numerator}/${interviewCard.denominator} ` +
+        `sufficient=${interviewCard.sufficient} (n<${rates.meta.minimumSample})`,
+    );
+
+    const correlation = await client.get<unknown>('/analytics/skill-correlation?range=all');
+    if (!isSkillCorrelationList(correlation)) {
+      throw new Error('GET /analytics/skill-correlation is not the documented shape');
+    }
+    pass('GET /analytics/skill-correlation', `rows=${(correlation as unknown[]).length}`);
+
+    const categories = await client.get<unknown>('/analytics/categories?range=all');
+    if (!isCategoryPerformanceList(categories)) {
+      throw new Error('GET /analytics/categories is not the documented shape');
+    }
+    const firstCategory = (categories as CategoryPerformance[])[0];
+    pass(
+      'GET /analytics/categories',
+      firstCategory
+        ? `category=${firstCategory.category} applications=${firstCategory.applications}`
+        : 'no category rows',
+    );
+
+    const timelineRaw = await client.get<unknown>('/analytics/timeline?range=all');
+    if (!isTimelineResponse(timelineRaw)) {
+      throw new Error('GET /analytics/timeline is not the documented shape');
+    }
+    const timeline = timelineRaw as TimelineResponse;
+    if (timeline.buckets.length === 0) throw new Error('the trend returned no months');
+    pass(
+      'GET /analytics/timeline',
+      `entries=${timeline.entries.length} months=${timeline.buckets.length} ` +
+        `basis=${timeline.meta.windowBasis}`,
     );
 
     await client.delete(`/applications/${cardId}`);

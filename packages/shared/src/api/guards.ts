@@ -6,9 +6,14 @@ import {
   type ApplicationDetail,
   type ApplicationEvent,
   type ApplicationStatus,
+  type CategoryPerformance,
   type DashboardResponse,
   type DashboardStats,
+  type FunnelResponse,
+  type RatesResponse,
   type ServiceHealthStatus,
+  type SkillCorrelation,
+  type TimelineResponse,
 } from './types.ts';
 
 /** Narrow `unknown` to a plain object (safe for `noUncheckedIndexedAccess`). */
@@ -131,4 +136,91 @@ export function isApplicationDetail(value: unknown): value is ApplicationDetail 
   if (!isApplicationCard(value)) return false;
   const events = (value as { events?: unknown }).events;
   return Array.isArray(events) && events.every((event) => isApplicationEvent(event));
+}
+
+/* ------------------------------------------------------------------ *
+ * Analytics (API.md §2.11)
+ * ------------------------------------------------------------------ */
+
+/**
+ * `GET /analytics/funnel`.
+ *
+ * The guard requires the meta block, because a funnel without its window and its stated basis
+ * is exactly the payload that gets misread: the five counts look authoritative on their own.
+ */
+export function isFunnelResponse(value: unknown): value is FunnelResponse {
+  if (!isRecord(value)) return false;
+  const meta = value['meta'];
+  if (!isRecord(meta) || !isString(meta['range']) || !isNumber(meta['cohortSize'])) return false;
+  const stages = value['stages'];
+  return (
+    Array.isArray(stages) &&
+    stages.length > 0 &&
+    stages.every(
+      (stage) =>
+        isRecord(stage) &&
+        isString(stage['key']) &&
+        isNumber(stage['count']) &&
+        isNumber(stage['shareOfFirst']),
+    )
+  );
+}
+
+export function isRatesResponse(value: unknown): value is RatesResponse {
+  if (!isRecord(value)) return false;
+  if (!isRecord(value['meta'])) return false;
+  const cards = value['cards'];
+  return (
+    Array.isArray(cards) &&
+    cards.length > 0 &&
+    cards.every(
+      (card) =>
+        isRecord(card) &&
+        isString(card['key']) &&
+        isNumber(card['numerator']) &&
+        isNumber(card['denominator']) &&
+        typeof card['sufficient'] === 'boolean',
+    )
+  );
+}
+
+export function isTimelineResponse(value: unknown): value is TimelineResponse {
+  if (!isRecord(value)) return false;
+  if (!isRecord(value['meta'])) return false;
+  const entries = value['entries'];
+  const buckets = value['buckets'];
+  return (
+    Array.isArray(entries) &&
+    Array.isArray(buckets) &&
+    entries.every((entry) => isRecord(entry) && isString(entry['title'])) &&
+    buckets.every((bucket) => isRecord(bucket) && isString(bucket['month']))
+  );
+}
+
+/** The correlation and category endpoints return bare arrays; validate the fields used. */
+export function isSkillCorrelationList(value: unknown): value is SkillCorrelation[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (row) =>
+        isRecord(row) &&
+        isString(row['skillId']) &&
+        isNumber(row['withSkillTotal']) &&
+        isNumber(row['withoutSkillTotal']) &&
+        typeof row['sufficient'] === 'boolean',
+    )
+  );
+}
+
+export function isCategoryPerformanceList(value: unknown): value is CategoryPerformance[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (row) =>
+        isRecord(row) &&
+        isString(row['category']) &&
+        isNumber(row['applications']) &&
+        isNumber(row['interviews']),
+    )
+  );
 }

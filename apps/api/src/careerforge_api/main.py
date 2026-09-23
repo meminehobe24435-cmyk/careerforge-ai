@@ -52,6 +52,7 @@ from careerforge_api.middleware.request_id import RequestIDMiddleware
 from careerforge_api.repositories.prompt_repository import PromptRepository
 from careerforge_api.routers import (
     ai,
+    analytics,
     applications,
     auth,
     dashboard,
@@ -215,6 +216,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(resume.validator_router, prefix=resolved.api_prefix)
     application.include_router(applications.router, prefix=resolved.api_prefix)
     application.include_router(applications.job_router, prefix=resolved.api_prefix)
+    application.include_router(analytics.router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)
