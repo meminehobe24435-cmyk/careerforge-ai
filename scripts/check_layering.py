@@ -15,8 +15,8 @@ Usage::
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
+import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AI_CORE = REPO_ROOT / "packages" / "ai" / "careerforge_ai"

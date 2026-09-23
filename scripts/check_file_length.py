@@ -12,8 +12,8 @@ Usage::
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,7 +68,8 @@ def main() -> int:
     violations = [
         (count, path)
         for count, path in measured
-        if count > MAX_LINES and str(path.relative_to(REPO_ROOT)).replace("\\", "/") not in ALLOWLIST
+        if count > MAX_LINES
+        and str(path.relative_to(REPO_ROOT)).replace("\\", "/") not in ALLOWLIST
     ]
 
     if violations:

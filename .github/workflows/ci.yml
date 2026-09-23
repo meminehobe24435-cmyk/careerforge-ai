@@ -44,9 +44,16 @@ jobs:
           pip install -e "apps/api[dev]"
 
       - name: Lint (ruff)
+        # The whole repository, not just the two packages: `scripts/` and `evals/`
+        # are guarded by pre-commit, and a scope narrower than pre-commit's is how a
+        # guard script quietly rots — its own lint errors are then never seen. Keep
+        # this command and the pre-commit `files:` patterns in agreement.
+        #
+        # `--exclude docs` covers the formatter only: doc snippets are deliberately
+        # laid out for reading, and `ruff check` still reads them (see ruff.toml).
         run: |
-          ruff check packages/ai apps/api tests
-          ruff format --check packages/ai apps/api tests
+          ruff check .
+          ruff format --check --exclude docs .
 
       - name: Type check (mypy) — AI core [strict]
         working-directory: packages/ai

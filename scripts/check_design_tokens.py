@@ -15,9 +15,9 @@ Usage::
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,9 +49,7 @@ def _looks_like_colour_usage(line: str) -> bool:
     stripped = line.strip()
     if stripped.startswith(("//", "/*", "*", "<!--")):
         return False
-    if "var(--" in stripped:
-        return False
-    return True
+    return "var(--" not in stripped
 
 
 def main() -> int:

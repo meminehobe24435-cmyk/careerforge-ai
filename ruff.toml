@@ -71,3 +71,14 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
 docstring-code-format = true
+# Snippets in `docs/` are illustrative prose: a contract table whose inline
+# comments are aligned on purpose, bodies elided with "...". Those are exactly the
+# layouts a formatter normalises (`name: str                      # 步骤名` becomes
+# two spaces), so rewriting them makes the docs worse. `ruff check` still reads
+# them, so a snippet with a real lint error is still caught.
+#
+# The exclusion is passed on the command line (`ruff format --check --exclude docs .`)
+# rather than set here as `exclude = ["docs"]`: measured on ruff 0.16.8, a
+# `format.exclude` entry is accepted by the config parser but does not take effect
+# when the target is a directory — `ruff format --check .` still reported
+# docs/ARCHITECTURE.md, while `--exclude docs` on the same invocation dropped it.
