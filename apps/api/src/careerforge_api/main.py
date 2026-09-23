@@ -50,7 +50,16 @@ from careerforge_api.middleware.logging import RequestLoggingMiddleware
 from careerforge_api.middleware.ratelimit import RateLimitMiddleware, TokenBucketLimiter
 from careerforge_api.middleware.request_id import RequestIDMiddleware
 from careerforge_api.repositories.prompt_repository import PromptRepository
-from careerforge_api.routers import ai, auth, documents, evidence, jobs, system, tasks
+from careerforge_api.routers import (
+    ai,
+    auth,
+    dashboard,
+    documents,
+    evidence,
+    jobs,
+    system,
+    tasks,
+)
 from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
 from careerforge_api.services.seed_service import ensure_demo_user
@@ -197,6 +206,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(documents.router, prefix=resolved.api_prefix)
     application.include_router(evidence.router, prefix=resolved.api_prefix)
     application.include_router(jobs.router, prefix=resolved.api_prefix)
+    application.include_router(dashboard.router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)
