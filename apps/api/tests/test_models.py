@@ -44,11 +44,17 @@ PHASE_2_TABLES = {
     "document_chunks",
 }
 
+#: ``docs/DATABASE.md`` §2.5 — evidence and the edges over it.
+PHASE_3_TABLES = {
+    "evidence",
+    "evidence_links",
+}
+
 
 def test_metadata_contains_exactly_the_migrated_tables() -> None:
     """Exact, not a superset assertion: a table added without its phase being finished
     should fail here rather than pass unnoticed."""
-    assert set(Base.metadata.tables) == PHASE_1_TABLES | PHASE_2_TABLES
+    assert set(Base.metadata.tables) == PHASE_1_TABLES | PHASE_2_TABLES | PHASE_3_TABLES
 
 
 def test_every_documented_table_has_its_check_constraints() -> None:
@@ -71,19 +77,106 @@ def test_every_documented_table_has_its_check_constraints() -> None:
             "ck_document_chunks_chunk_index_non_negative",
             "ck_document_chunks_char_range_valid",
         },
+        "evidence": {
+            # The formula constraint is the point of this table: a stored confidence that
+            # its own five factors do not produce must be impossible.
+            "ck_evidence_confidence_formula",
+            "ck_evidence_kind_valid",
+            "ck_evidence_confidence_unit_range",
+        },
+        "evidence_links": {
+            "ck_evidence_links_relation_valid",
+            "ck_evidence_links_no_self_loops",
+        },
     }
     for table, names in expected.items():
         found = {c.name for c in Base.metadata.tables[table].constraints if c.name}
         assert names <= found, f"{table} is missing {names - found}"
 
 
-def test_evidence_confidence_formula_constraint_arrives_with_phase_3() -> None:
-    """The formula CHECK from docs/DATABASE.md §3 arrives with the `evidence` table.
+async def test_evidence_confidence_formula_is_enforced_by_the_database(app: FastAPI) -> None:
+    """``docs/DATABASE.md`` §3: the stored confidence must be the formula applied to the
+    stored factors.
 
-    Noted explicitly so its absence is a known boundary rather than an oversight: the
-    constraint cannot exist before the table it constrains does.
+    This is the guarantee the product rests on — "0.72 confidence" only means something if
+    it can be recomputed from the row. Writing a number its own inputs do not produce must
+    be impossible, not merely discouraged.
     """
-    assert "evidence" not in Base.metadata.tables
+    await _assert_confidence_probe(app, confidence=0.72, accepted=True)
+    await _assert_confidence_probe(app, confidence=0.50, accepted=False)
+    # ... and within the rounding tolerance the engine actually uses.
+    await _assert_confidence_probe(app, confidence=0.721, accepted=True)
+
+
+async def _assert_confidence_probe(app: FastAPI, *, confidence: float, accepted: bool) -> None:
+    """Probe one row: factors fixed at a=0.7 r=1.0 s=0.6 n=1 e=0.8 → 0.72 exactly."""
+    from careerforge_api.models.evidence import Evidence
+
+    async with app.state.session_factory() as session:
+        owner = await UserRepository(session).create(
+            email=f"formula-{uuid4().hex[:8]}@example.com",
+            display_name="Formula Probe",
+            password_hash="$2b$12$probe",
+        )
+        await session.commit()
+        owner_id = owner.id
+
+    row = {
+        "id": uuid4(),
+        "user_id": owner_id,
+        "kind": "manual",
+        "title": "probe",
+        "snippet": "",
+        "locator": {},
+        "source_authority": 0.7,
+        "specificity": 0.6,
+        "extraction_quality": 0.8,
+        "recency_score": 1.0,
+        "corroboration_count": 1,
+        "confidence": confidence,
+        "content_hash": uuid4().hex,
+        # ``metadata_``, not ``metadata``: the ORM attribute is renamed because
+        # ``Table.metadata`` is SQLAlchemy's own and would shadow it. The column itself is
+        # named ``metadata`` (``docs/DATABASE.md`` §2.5).
+        "metadata_": {},
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
+    async with app.state.session_factory() as session:
+        if accepted:
+            await session.execute(insert(Evidence).values(row))
+            await session.commit()
+            return
+        with pytest.raises(IntegrityError):
+            await session.execute(insert(Evidence).values(row))
+            await session.flush()
+        await session.rollback()
+
+
+def test_a_stored_confidence_matches_its_factors() -> None:
+    """The Python mirror of the SQL formula agrees with the arithmetic the docs state."""
+    from careerforge_api.models.evidence import Evidence
+
+    row = Evidence(
+        user_id=uuid4(),
+        kind="manual",
+        title="probe",
+        snippet="",
+        locator={},
+        source_authority=0.7,
+        specificity=0.6,
+        extraction_quality=0.8,
+        recency_score=1.0,
+        corroboration_count=1,
+        confidence=0.72,
+        content_hash="x",
+        metadata_={},
+    )
+    assert row.recomputed_confidence == 0.72
+    row.corroboration_count = 5  # 0.4 + 1.0 capped at 1.0
+    assert row.recomputed_confidence == round(
+        0.30 * 0.7 + 0.15 * 1.0 + 0.20 * 0.6 + 0.20 * 1.0 + 0.15 * 0.8, 3
+    )
 
 
 async def _expect_integrity_error(session_factory, statement) -> None:

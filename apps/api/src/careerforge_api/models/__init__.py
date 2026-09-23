@@ -6,6 +6,7 @@ is what ``create_all`` and the Alembic baseline both read.
 
 PHASE 1 — identity, platform and observability.
 PHASE 2 — documents and their chunks (§2.3).
+PHASE 3 — evidence and the graph edges over it (§2.5).
 """
 
 from __future__ import annotations
@@ -17,6 +18,12 @@ from careerforge_api.models.document import (
     DOCUMENT_PARSE_STATUSES,
     Document,
     DocumentChunk,
+)
+from careerforge_api.models.evidence import (
+    EVIDENCE_KINDS,
+    EVIDENCE_RELATIONS,
+    Evidence,
+    EvidenceLinkRow,
 )
 from careerforge_api.models.job import (
     BACKGROUND_JOB_STATUSES,
@@ -49,6 +56,8 @@ __all__ = [
     "BACKGROUND_JOB_TERMINAL_STATUSES",
     "DOCUMENT_KINDS",
     "DOCUMENT_PARSE_STATUSES",
+    "EVIDENCE_KINDS",
+    "EVIDENCE_RELATIONS",
     "LLM_OPERATIONS",
     "LLM_STATUSES",
     "ROLE_VALUES",
@@ -60,6 +69,8 @@ __all__ = [
     "Base",
     "Document",
     "DocumentChunk",
+    "Evidence",
+    "EvidenceLinkRow",
     "LlmCall",
     "Profile",
     "PromptVersion",
