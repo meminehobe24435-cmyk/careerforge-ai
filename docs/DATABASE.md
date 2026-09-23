@@ -200,6 +200,14 @@ erDiagram
 
 ### 2.5 证据层（evidence）★ 核心
 
+> **状态：已实现（PHASE 3）** — 模型 `apps/api/src/careerforge_api/models/evidence.py`、
+> 迁移 `alembic/versions/0003_evidence.py`。置信度公式是**数据库 CHECK 约束**：
+> 落库的 `confidence` 必须等于五个因子按公式计算的结果（容差 0.002，对应引擎的三位
+> 小数舍入），因此 UI 上显示的分数可用 SQL 复现。§3 的 DDL 用 PostgreSQL 的 `least()`
+> 写上限，实际约束用 `CASE`，因为 SQLite 对应的是两参数 `min()`，而 CI 同时跑两种方言
+> （ADR-004）。`repo_file_id` / `repo_commit_id` 暂未建列：它们外键指向 §2.4 尚未存在的
+> 表，指向缺失表的外键无法创建，而没有外键的列会接受悬空 id。
+
 #### `evidence`
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -455,7 +463,8 @@ CREATE TABLE evidence_links (
   weight     numeric(4,3) NOT NULL DEFAULT 1.0,
   confidence numeric(4,3),
   rationale  text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX uq_evidence_links_edge
   ON evidence_links (user_id, from_type, from_id, to_type, to_id, relation);

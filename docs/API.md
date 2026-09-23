@@ -234,16 +234,29 @@ AI 相关响应统一携带：
 
 ### 2.5 证据与图谱 `/evidence` `/evidence-graph` `/claims` ★
 
+> **状态：已实现（PHASE 3）**。`evidence` / `evidence_links` 已落库（迁移 `0003`），置信度
+> 由数据库 CHECK 约束保证「分数 = 五因子计算结果」。**图的节点是派生的**：技能节点来自
+> `skills` 字典、候选人节点来自 `profiles`，只有证据与边是独立表，因此重新分析幂等
+> （证据按内容去重、边按五元组去重）。
+> `POST /evidence` 的置信度由服务端计算，请求体禁止传 `confidence`（多传字段直接 400）。
+> `GET /evidence-graph` 的 `stats` 描述**本次返回的子图**，`totals` 描述全图，避免出现
+> 「画布 10 个节点、摘要写 129」这类自相矛盾。
+> `POST /evidence/validate` 的能力已由 `POST /ai/validate/claim` 提供（同一套确定性门禁）；
+> 批量校验（≤ 20 条）随 PHASE 6 简历 Copilot 一起接入。
+> `POST /documents/{id}/analyze` 是**同步**端点：它只做确定性的本地计算，不调用模型，
+> 因此不套用 §1.4 的 202 约定。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/evidence-graph` | 子图查询：`?focus=skill:stm32&depth=2&types=project,repo_file&limit=` |
-| GET | `/evidence` | 证据列表（`?kind=&minConfidence=&projectId=&since=&q=`） |
+| GET | `/evidence` | 证据列表（`?kind=&minConfidence=&limit=`） |
 | GET | `/evidence/{id}` | 证据详情（locator、置信度拆解、来源） |
-| POST | `/evidence` | 手工添加证据（`manual` 类型） |
-| DELETE | `/evidence/{id}` | 删除 |
+| POST | `/evidence` | 手工添加证据（`manual` 类型，置信度服务端计算） |
+| DELETE | `/evidence/{id}` | 删除（同时删除引用它的边） |
 | GET | `/evidence/{id}/trace` | 反向溯源：该证据支持了哪些 Claim |
-| POST | `/evidence/validate` | **Claim Validator（单条）** — 同步返回 |
-| POST | `/evidence/validate/batch` | 批量验证（≤ 20 条） |
+| POST | `/documents/{id}/analyze` | 由已存文档构建证据与技能边（同步、幂等） |
+| POST | `/evidence/validate` | **Claim Validator（单条）** — 现由 `/ai/validate/claim` 提供 |
+| POST | `/evidence/validate/batch` | 批量验证（≤ 20 条）— PHASE 6 |
 | GET | `/claims` | 断言列表（`?status=&versionId=&jobId=`） |
 | GET | `/claims/{id}` | 断言详情（含检索详情与判定理由） |
 | POST | `/claims/{id}/accept` · `/reject` | 接受/拒绝 AI 改写建议 |

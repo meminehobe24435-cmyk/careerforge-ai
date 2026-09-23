@@ -267,6 +267,8 @@ graph LR
 | 2026-09-24 | PHASE 7c | `fix(ai): stop the interviewer repeating its opening question` | 真实 HTTP 请求暴露三处缺陷：追问复读开场问题、confidence 维度恒为 0、改写后残留悬空的度量动词；`safer_rewrite_rate` 实测由 **0.489 → 0.622** |
 | 2026-09-24 | PHASE 12a | `fix(ai): make mypy --strict pass across the AI core` | 默认配置 51 个类型错误 + strict 专属 8 个全部清零；顺带修掉 3 个潜在缺陷（`Mapping`/`dict` 逆变、naive datetime 静默强制转换、不可达回退分支）；`ci` 提交移除 `continue-on-error` |
 | 2026-09-24 | PHASE 2b | `feat(api): persist uploaded documents and parse them in the worker` | 见下方「PHASE 2 实测问题记录」 |
+| 2026-09-24 | PHASE 3c | `fix(graph,scoring): three defects that only a persisted graph exposed` | 首次把图谱落库即暴露三处缺陷：手工证据被按「已上传文档」计分（0.80→0.55 自述档）、五类关系只有边没有可存储的 link（持久化后根节点整片丢失）、`include_orphans` 在传 `GraphQuery` 时被静默忽略 |
+| 2026-09-24 | PHASE 3d | `feat(api): persist the evidence graph and serve it` | `evidence` / `evidence_links` + 迁移 `0003`；置信度公式成为数据库 CHECK；7 个端点（含同步的 `/documents/{id}/analyze`，幂等）；修掉 locator 蛇形命名与「摘要说 129 个节点、画布只有 10 个」两处契约缺陷 |
 
 > 后续每阶段完成后在此追加一行（时间 / 阶段 / 提交信息 / 关键可验证结果）。
 
@@ -301,3 +303,17 @@ graph LR
 | 6 | `utf-8-sig` 解码无 BOM 的文件也自称 `utf-8-sig`（声称了一个不存在的 BOM） | 单元测试 | 修复：按实际字节报告编码 |
 | 7 | 列表的 `status` 过滤在 `LIMIT` 之后做，页码与总数会互相矛盾 | 自查 | 修复：过滤下推到 SQL，`byKind` 改为一次 GROUP BY |
 | 8 | 夹具字节在同一 session 的共享数据库里重复，导致第二个测试的上传被去重成空操作 | 测试间互相污染 | 修复：夹具字节每次唯一，并在文件头说明原因 |
+
+### PHASE 3 实测问题记录（发现 → 修复）
+
+把内存里的图谱第一次真正落库、并真实启动服务遍历它，暴露的问题：
+
+| # | 问题 | 发现方式 | 结果 |
+|---|---|---|---|
+| 1 | 手工添加的证据被按 `UPLOADED_DOCUMENT` 档计分（0.80）——用户随手打字即可获得接近文档级的置信度，正是本产品要防的事 | 端到端 HTTP 测试 | 修复：改为自述档 0.55，并用「与上传文档的差值恰等于权威权重×档位差」的量化断言钉住 |
+| 2 | 五类关系只 append 了 `GraphEdge` 而没有对应的 `EvidenceLink`：内存图看着完整，落库后根节点与全部教育/经历/成果节点消失 | 端到端 HTTP 测试（候选节点未出现） | 修复：补齐 5 处 link，并加不变量测试（边集合 == link 集合）防止再犯 |
+| 3 | `include_orphans` 在传入 `GraphQuery` 时被静默忽略（该分支唯独漏了这个字段），而每次 API 调用都传 `GraphQuery` | 真实服务对照实验 | 修复：转发该字段；测试显式构造一个 build 不会产生的孤立节点 |
+| 4 | `stats` 按全图计算，`nodes` 却是子图：UI 会在 10 个节点的画布上方显示「129 个节点」 | 真实服务对照实验 | 修复：`stats` 描述本次返回，`totals` 描述全图 |
+| 5 | locator 把存储层的蛇形键（`char_start`）直接透出，其余字段全是 camelCase | 端到端 HTTP 测试 | 修复：显式建模 `LocatorResponse` 并在响应中归一 |
+| 6 | 迁移里 `confidence` 与 `corroboration_count` 的列顺序与模型不一致 | 结构等价测试 | 修复：按 §3 DDL 的顺序显式声明 |
+| 7 | 引擎按内容派生证据 id，数据库自己生成主键：只把 item.id 改写会让所有边指向无法 join 的节点 | 端到端 HTTP 测试（图缺边） | 修复：按 content_hash 建立映射并同时改写 link 两端与 edge 两端 |
