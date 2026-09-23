@@ -4,145 +4,22 @@ Two properties matter more than the rest. The difficulty ladder must move by rul
 its boundaries, because that is the part of an interview simulator most easily
 hand-waved. And the evidence-consistency check must find real conflicts by set
 comparison rather than by asking a model whether something "feels" inconsistent.
+
+The fixtures and answer constants this module shares with ``test_interview_signals``
+live in ``conftest`` and ``interview_data`` so the two cannot drift apart.
 """
 
 from __future__ import annotations
 
-import pytest
+from tests.interview_data import LONG_ANSWER, SHORT_ANSWER
 
 from careerforge_ai.agents import InterviewAgent, finish_interview, start_interview, submit_answer
 from careerforge_ai.agents.interview import next_difficulty
-from careerforge_ai.graph import build_evidence_graph
-from careerforge_ai.orchestrator import ExecutorSettings, WorkflowExecutor
-from careerforge_ai.prompting.registry import load_prompt_registry
-from careerforge_ai.providers.heuristic import HeuristicProvider
-from careerforge_ai.schemas.common import (
-    DifficultyLevel,
-    EvidenceKind,
-    InterviewMode,
-    InterviewStatus,
-    RequirementLevel,
-    SkillCategory,
-    SkillLevel,
-    SourceAuthority,
-    utcnow,
-)
-from careerforge_ai.schemas.evidence import EvidenceItem, EvidenceLocator
+from careerforge_ai.orchestrator import WorkflowExecutor
+from careerforge_ai.schemas.common import DifficultyLevel, InterviewMode, InterviewStatus
 from careerforge_ai.schemas.interview import InterviewScorecard
-from careerforge_ai.schemas.job import JDAnalysis, JDSkill
-from careerforge_ai.schemas.profile import (
-    CandidateProfile,
-    Experience,
-    ProfileSkill,
-    Project,
-    SkillRef,
-)
-
-LONG_ANSWER = (
-    "我们使用 FreeRTOS 的队列在中断与任务之间传递数据，因为直接操作全局变量会带来竞态；"
-    "任务按优先级划分，共享资源用互斥量保护以避免优先级反转，考虑过直接关中断但代价是延迟变大，"
-    "所以最终选择了队列加信号量的方案。"
-)
-SHORT_ANSWER = "用过。"
-
-
-@pytest.fixture
-def executor() -> WorkflowExecutor:
-    return WorkflowExecutor(
-        provider=HeuristicProvider(),
-        prompts=load_prompt_registry(),
-        settings=ExecutorSettings(max_retries=0, backoff_base_s=0.0),
-    )
-
-
-@pytest.fixture
-def profile() -> CandidateProfile:
-    return CandidateProfile(
-        slug="alex",
-        headline="Embedded Engineer",
-        summary="电子信息工程本科，做过两轮自平衡机器人。",
-        years_experience=1.0,
-        experiences=[
-            Experience(
-                company="某科技",
-                title="嵌入式实习生",
-                description="使用 STM32 与 FreeRTOS 开发电机控制固件。",
-            )
-        ],
-        projects=[
-            Project(
-                name="Balance Robot",
-                summary="基于 STM32 的两轮自平衡小车",
-                tech_stack=["STM32", "FreeRTOS", "PID"],
-            )
-        ],
-        skills=[
-            ProfileSkill(
-                skill=SkillRef(
-                    canonical_id="stm32", display_name="STM32", category=SkillCategory.EMBEDDED
-                ),
-                level=SkillLevel.STRONG,
-                evidence_count=2,
-            ),
-            ProfileSkill(
-                skill=SkillRef(
-                    canonical_id="free_rtos",
-                    display_name="FreeRTOS",
-                    category=SkillCategory.EMBEDDED,
-                ),
-                level=SkillLevel.STRONG,
-                evidence_count=2,
-            ),
-        ],
-    )
-
-
-@pytest.fixture
-def job() -> JDAnalysis:
-    def required(canonical_id: str, raw: str) -> JDSkill:
-        return JDSkill(
-            canonical_id=canonical_id,
-            raw_text=raw,
-            requirement=RequirementLevel.REQUIRED,
-            jd_evidence=f"熟悉 {raw}",
-        )
-
-    return JDAnalysis(
-        company="某科技",
-        role="嵌入式软件工程师",
-        required_skills=[
-            required("free_rtos", "FreeRTOS"),
-            required("stm32", "STM32"),
-            required("can", "CAN"),
-        ],
-    )
-
-
-@pytest.fixture
-def graph(profile: CandidateProfile):
-    return build_evidence_graph(
-        profile=profile,
-        evidence=[
-            EvidenceItem(
-                kind=EvidenceKind.REPO_FILE,
-                title="freertos.c",
-                snippet="基于 FreeRTOS 的任务划分与优先级配置，任务间通过队列通信，共享资源用互斥量保护。",
-                locator=EvidenceLocator(path="Core/Src/freertos.c", line=18),
-                source_authority=SourceAuthority.CODE_OR_COMMIT,
-                confidence=0.0,
-                occurred_at=utcnow(),
-            ),
-            EvidenceItem(
-                kind=EvidenceKind.REPO_FILE,
-                title="motor_control.c",
-                snippet="在 STM32 上实现 PID 电机闭环控制。",
-                locator=EvidenceLocator(path="Core/Src/motor_control.c", line=42),
-                source_authority=SourceAuthority.CODE_OR_COMMIT,
-                confidence=0.0,
-                occurred_at=utcnow(),
-            ),
-        ],
-    )
+from careerforge_ai.schemas.job import JDAnalysis
+from careerforge_ai.schemas.profile import CandidateProfile
 
 
 class TestDifficultyLadder:
@@ -184,10 +61,10 @@ class TestDifficultyLadder:
 
 class TestStart:
     async def test_builds_a_plan_and_asks_the_first_question(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
         session, outcome = await start_interview(
-            executor, mode=InterviewMode.TECHNICAL, job=job, profile=profile, graph=graph
+            iv_exec, mode=InterviewMode.TECHNICAL, job=iv_job, profile=iv_profile, graph=iv_graph
         )
         assert outcome.ok
         assert session is not None
@@ -198,47 +75,47 @@ class TestStart:
         assert session.status is InterviewStatus.IN_PROGRESS
 
     async def test_plan_is_derived_from_the_job(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         topics = {item.topic for item in session.plan}
         assert {"free_rtos", "stm32"} & topics
 
     async def test_gap_requirements_are_flagged_in_the_plan(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         gaps = [item for item in session.plan if item.source == "gap"]
         # CAN is required but has no evidence, so it is worth probing.
         assert any("CAN" in item.reason for item in gaps)
 
     async def test_works_without_a_job(
-        self, executor: WorkflowExecutor, profile: CandidateProfile
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile
     ) -> None:
-        session, outcome = await start_interview(executor, profile=profile)
+        session, outcome = await start_interview(iv_exec, profile=iv_profile)
         assert outcome.ok
         assert session is not None
         assert session.plan
         assert session.turns
 
     async def test_question_records_its_level(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         assert session.turns[0].question_level is not None
 
 
 class TestTurn:
     async def test_records_the_answer_and_the_evaluation(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         updated, outcome = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert outcome.ok
         assert updated is not None
@@ -249,13 +126,13 @@ class TestTurn:
         assert 0.0 <= candidate.evaluation.score <= 100.0
 
     async def test_evaluation_targets_the_question_not_the_answer(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         first_question = session.turns[0].content
         updated, outcome = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert updated is not None
         # The evaluator prompt is rendered with the question, so its trace records it.
@@ -264,25 +141,25 @@ class TestTurn:
         assert first_question  # the question exists and was used as the prompt input
 
     async def test_asks_a_follow_up_question(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         before = len(session.turns)
         updated, _ = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert updated is not None
         assert len(updated.turns) == before + 2  # the answer and the next question
         assert updated.turns[-1].role == "interviewer"
 
     async def test_reports_the_difficulty_change(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         _, outcome = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         change = outcome.extras.get("difficultyChange")
         assert change is not None
@@ -292,17 +169,17 @@ class TestTurn:
 
 class TestFinish:
     async def test_produces_a_seven_dimension_scorecard(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         for _ in range(3):
             session, _ = await submit_answer(
-                executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+                iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
             )
             assert session is not None
         scorecard, outcome = await finish_interview(
-            executor, session=session, profile=profile, graph=graph
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
         )
         assert outcome.ok
         assert scorecard is not None
@@ -311,16 +188,16 @@ class TestFinish:
         assert 0.0 <= scorecard.overall_score <= 100.0
 
     async def test_per_question_review_is_populated(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         session, _ = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert session is not None
         scorecard, _ = await finish_interview(
-            executor, session=session, profile=profile, graph=graph
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
         )
         assert scorecard is not None
         assert scorecard.per_question
@@ -329,47 +206,49 @@ class TestFinish:
         assert review.verdict in {"strong", "mixed", "weak"}
 
     async def test_flags_a_thin_interview(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         session, _ = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert session is not None
-        _, outcome = await finish_interview(executor, session=session, profile=profile, graph=graph)
+        _, outcome = await finish_interview(
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
+        )
         assert any("样本偏少" in warning for warning in outcome.warnings)
 
     async def test_marks_the_session_complete(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         session, _ = await submit_answer(
-            executor, session=session, answer=LONG_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert session is not None
-        await finish_interview(executor, session=session, profile=profile, graph=graph)
+        await finish_interview(iv_exec, session=session, profile=iv_profile, graph=iv_graph)
         assert session.status is InterviewStatus.COMPLETED
         assert session.scorecard is not None
 
 
 class TestEvidenceConsistency:
     async def test_flags_a_technology_with_no_evidence(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         session, _ = await submit_answer(
-            executor,
+            iv_exec,
             session=session,
             answer="我在项目里用 Kubernetes 做了服务编排，并用 TensorFlow 训练了模型。",
-            profile=profile,
-            graph=graph,
+            profile=iv_profile,
+            graph=iv_graph,
         )
         assert session is not None
         scorecard, _ = await finish_interview(
-            executor, session=session, profile=profile, graph=graph
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
         )
         assert scorecard is not None
         assert scorecard.evidence_conflicts
@@ -384,18 +263,18 @@ class TestEvidenceConsistency:
         assert consistency.score < 100.0
 
     async def test_an_answer_about_evidenced_work_raises_no_conflict(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
         # Every technology named here has evidence, so there is nothing to flag.
         answer = "我用 FreeRTOS 做了任务划分，用 STM32 完成 PID 电机闭环控制。"
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         session, _ = await submit_answer(
-            executor, session=session, answer=answer, profile=profile, graph=graph
+            iv_exec, session=session, answer=answer, profile=iv_profile, graph=iv_graph
         )
         assert session is not None
         scorecard, _ = await finish_interview(
-            executor, session=session, profile=profile, graph=graph
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
         )
         assert scorecard is not None
         assert scorecard.evidence_conflicts == []
@@ -426,7 +305,7 @@ class TestConsistencyRulePrecision:
         assert claimed_skills("因为直接操作全局变量会带来竞态，所以改用队列。") == set()
 
     async def test_a_declared_but_unproven_skill_is_a_gap_not_a_conflict(
-        self, executor: WorkflowExecutor, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_job: JDAnalysis, iv_graph
     ) -> None:
         """The resume lists Rust, so saying it again is consistent, not a contradiction.
 
@@ -437,7 +316,7 @@ class TestConsistencyRulePrecision:
         from careerforge_ai.schemas.common import SkillCategory, SkillLevel
         from careerforge_ai.schemas.profile import CandidateProfile, ProfileSkill, SkillRef
 
-        profile = CandidateProfile(
+        rust_profile = CandidateProfile(
             slug="alex",
             skills=[
                 ProfileSkill(
@@ -449,18 +328,20 @@ class TestConsistencyRulePrecision:
                 )
             ],
         )
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(
+            iv_exec, job=iv_job, profile=rust_profile, graph=iv_graph
+        )
         assert session is not None
         session, _ = await submit_answer(
-            executor,
+            iv_exec,
             session=session,
             answer="我用 Rust 重写过一部分工具链。",
-            profile=profile,
-            graph=graph,
+            profile=rust_profile,
+            graph=iv_graph,
         )
         assert session is not None
         scorecard, _ = await finish_interview(
-            executor, session=session, profile=profile, graph=graph
+            iv_exec, session=session, profile=rust_profile, graph=iv_graph
         )
         assert scorecard is not None
         flagged = {conflict.evidence_state for conflict in scorecard.evidence_conflicts}
@@ -469,27 +350,29 @@ class TestConsistencyRulePrecision:
 
 class TestWorkflowShape:
     async def test_start_trace_names_its_steps(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        _, outcome = await start_interview(executor, job=job, profile=profile, graph=graph)
+        _, outcome = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert [step.name for step in outcome.record.steps] == ["plan", "question"]
 
     async def test_turn_trace_names_its_steps(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
         _, outcome = await submit_answer(
-            executor, session=session, answer=SHORT_ANSWER, profile=profile, graph=graph
+            iv_exec, session=session, answer=SHORT_ANSWER, profile=iv_profile, graph=iv_graph
         )
         assert [step.name for step in outcome.record.steps] == ["evaluate", "adapt", "question"]
 
     async def test_finish_trace_names_its_steps(
-        self, executor: WorkflowExecutor, profile: CandidateProfile, job: JDAnalysis, graph
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
     ) -> None:
-        session, _ = await start_interview(executor, job=job, profile=profile, graph=graph)
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
         assert session is not None
-        _, outcome = await finish_interview(executor, session=session, profile=profile, graph=graph)
+        _, outcome = await finish_interview(
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
+        )
         assert [step.name for step in outcome.record.steps] == [
             "aggregate",
             "consistency",

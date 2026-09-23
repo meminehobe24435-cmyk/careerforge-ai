@@ -11,7 +11,12 @@ from datetime import timedelta
 
 import pytest
 
+from careerforge_ai.graph import build_evidence_graph
+from careerforge_ai.orchestrator import ExecutorSettings, WorkflowExecutor
+from careerforge_ai.prompting.registry import load_prompt_registry
+from careerforge_ai.providers.heuristic import HeuristicProvider
 from careerforge_ai.schemas.common import (
+    EvidenceKind,
     EvidenceStrength,
     RequirementLevel,
     SkillCategory,
@@ -209,4 +214,118 @@ def fixture_evidence() -> EvidenceItem:
         source_authority=SourceAuthority.CODE_OR_COMMIT,
         confidence=0.95,
         occurred_at=utcnow() - timedelta(days=30),
+    )
+
+
+# ── interview fixtures ──────────────────────────────────────────────────────
+# Shared by ``test_interview_agent`` and ``test_interview_signals``. They live in
+# conftest because a fixture copied into two modules drifts, and a drifted fixture is a
+# test that quietly stops testing the same thing.
+#
+# The ``iv_`` prefix is load-bearing: eight other modules define fixtures named
+# ``executor`` / ``profile`` / ``job`` / ``graph`` with *different* data, so generic
+# names here would let a module silently satisfy a missing fixture with the wrong input.
+# The names are also kept short on purpose — the four of them travel together through
+# every signature and call in the two interview modules, and a longer prefix pushes
+# those call sites past the column limit, which the formatter answers by wrapping each
+# one over four lines.
+
+
+@pytest.fixture
+def iv_exec() -> WorkflowExecutor:
+    return WorkflowExecutor(
+        provider=HeuristicProvider(),
+        prompts=load_prompt_registry(),
+        settings=ExecutorSettings(max_retries=0, backoff_base_s=0.0),
+    )
+
+
+@pytest.fixture
+def iv_profile() -> CandidateProfile:
+    return CandidateProfile(
+        slug="alex",
+        headline="Embedded Engineer",
+        summary="电子信息工程本科，做过两轮自平衡机器人。",
+        years_experience=1.0,
+        experiences=[
+            Experience(
+                company="某科技",
+                title="嵌入式实习生",
+                description="使用 STM32 与 FreeRTOS 开发电机控制固件。",
+            )
+        ],
+        projects=[
+            Project(
+                name="Balance Robot",
+                summary="基于 STM32 的两轮自平衡小车",
+                tech_stack=["STM32", "FreeRTOS", "PID"],
+            )
+        ],
+        skills=[
+            ProfileSkill(
+                skill=SkillRef(
+                    canonical_id="stm32", display_name="STM32", category=SkillCategory.EMBEDDED
+                ),
+                level=SkillLevel.STRONG,
+                evidence_count=2,
+            ),
+            ProfileSkill(
+                skill=SkillRef(
+                    canonical_id="free_rtos",
+                    display_name="FreeRTOS",
+                    category=SkillCategory.EMBEDDED,
+                ),
+                level=SkillLevel.STRONG,
+                evidence_count=2,
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def iv_job() -> JDAnalysis:
+    def required(canonical_id: str, raw: str) -> JDSkill:
+        return JDSkill(
+            canonical_id=canonical_id,
+            raw_text=raw,
+            requirement=RequirementLevel.REQUIRED,
+            jd_evidence=f"熟悉 {raw}",
+        )
+
+    return JDAnalysis(
+        company="某科技",
+        role="嵌入式软件工程师",
+        required_skills=[
+            required("free_rtos", "FreeRTOS"),
+            required("stm32", "STM32"),
+            # Required but unevidenced, so the plan must flag it as a gap to probe.
+            required("can", "CAN"),
+        ],
+    )
+
+
+@pytest.fixture
+def iv_graph(iv_profile: CandidateProfile):
+    return build_evidence_graph(
+        profile=iv_profile,
+        evidence=[
+            EvidenceItem(
+                kind=EvidenceKind.REPO_FILE,
+                title="freertos.c",
+                snippet="基于 FreeRTOS 的任务划分与优先级配置，任务间通过队列通信，共享资源用互斥量保护。",
+                locator=EvidenceLocator(path="Core/Src/freertos.c", line=18),
+                source_authority=SourceAuthority.CODE_OR_COMMIT,
+                confidence=0.0,
+                occurred_at=utcnow(),
+            ),
+            EvidenceItem(
+                kind=EvidenceKind.REPO_FILE,
+                title="motor_control.c",
+                snippet="在 STM32 上实现 PID 电机闭环控制。",
+                locator=EvidenceLocator(path="Core/Src/motor_control.c", line=42),
+                source_authority=SourceAuthority.CODE_OR_COMMIT,
+                confidence=0.0,
+                occurred_at=utcnow(),
+            ),
+        ],
     )
