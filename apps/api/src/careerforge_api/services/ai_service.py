@@ -44,6 +44,11 @@ from careerforge_ai.schemas.interview import InterviewSession
 from careerforge_ai.schemas.observability import AgentRunRecord
 from careerforge_api.core.logging import get_logger
 from careerforge_api.models.observability import AgentRun
+from careerforge_api.services.metering import (
+    DatabaseCacheStore,
+    MeteredProvider,
+    RunRecorder,
+)
 
 __all__ = ["AIService", "DatabaseRunTracker", "InterviewSessionStore", "AGENT_CATALOGUE"]
 
@@ -126,9 +131,13 @@ class DatabaseRunTracker:
     round-trips, and a crash mid-run still leaves the ``running`` row that says so.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, recorder: RunRecorder | None = None) -> None:
         self._session = session
         self._rows: dict[int, _RunRow] = {}
+        #: Told about the run id so the model calls made inside it can point back at it. Without
+        #: this link ``llm_calls`` rows are orphans, and "which model call belonged to this run"
+        #: — the question the AI Runs page exists to answer — has no answer.
+        self._recorder = recorder
 
     async def start_run(self, record: AgentRunRecord) -> AgentRunRecord:
         row = AgentRun(
@@ -152,6 +161,8 @@ class DatabaseRunTracker:
         await self._session.flush()
         record.id = row.id
         self._rows[id(record)] = _RunRow(record=record, row_id=row.id)
+        if self._recorder is not None:
+            self._recorder.bind_run(row.id)
         return record
 
     async def record_step(self, run: AgentRunRecord, step: Any) -> None:
@@ -227,12 +238,19 @@ class AIService:
         session: AsyncSession | None = None,
         sessions: InterviewSessionStore | None = None,
         retriever: Any | None = None,
+        cache_store: DatabaseCacheStore | None = None,
+        user_id: UUID | None = None,
     ) -> None:
         self._provider = provider
         self._prompts = prompts
         self._session = session
         self.sessions = sessions if sessions is not None else InterviewSessionStore()
         self._retriever = retriever
+        #: Shared across requests (built once with the provider chain), so a second identical
+        #: request hits the first one's cached answer — which is what makes a hit rate meaningful.
+        self.cache_store = cache_store
+        self._user_id = user_id
+        self._recorder: RunRecorder | None = None
 
     @property
     def provider_name(self) -> str:
@@ -247,22 +265,55 @@ class AIService:
         """
         return self._provider
 
-    def executor(self) -> WorkflowExecutor:
-        """An executor whose traces are persisted through this request's session.
+    def executor(self, *, agent: str = "api", workflow: str = "ai") -> WorkflowExecutor:
+        """An executor whose traces and model calls are persisted through this session.
 
-        ``user_id`` and ``request_id`` are passed to ``executor.run()`` by the caller
-        rather than captured here, because a single request may run several agents and
-        each should be attributable on its own.
+        ``user_id`` and ``request_id`` are passed to ``executor.run()`` by the caller rather than
+        captured here, because a single request may run several agents and each should be
+        attributable on its own. ``agent`` / ``workflow`` label the metered calls: a ``llm_calls``
+        row that cannot say which agent made the call is a row an operator cannot act on.
         """
-        tracker = DatabaseRunTracker(self._session) if self._session is not None else None
+        tracker = (
+            DatabaseRunTracker(self._session, recorder=self.recorder())
+            if self._session is not None
+            else None
+        )
+        provider = self._provider
+        if self._session is not None:
+            # The wrapper sits *outside* the shared chain, so the cache and the resilience state
+            # the app built once keep being the ones in use; only the recording is per request.
+            provider = MeteredProvider(
+                self._provider,
+                recorder=self.recorder(),
+                agent=agent,
+                workflow=workflow,
+            )
         return WorkflowExecutor(
-            provider=self._provider,
+            provider=provider,
             prompts=self._prompts,
             tracker=tracker,
+            cache=self.cache_store,
             # One retry inside a request: the provider chain already retries transient
             # failures, and stacking retries multiplies worst-case latency.
             settings=ExecutorSettings(max_retries=1),
         )
+
+    def recorder(self) -> RunRecorder:
+        """The metering buffer for this request, or a detached one when there is no session."""
+        if self._recorder is None:
+            self._recorder = RunRecorder(self._session, user_id=self._user_id)  # type: ignore[arg-type]
+        return self._recorder
+
+    async def flush_observability(self) -> int:
+        """Write the buffered model calls and cache events.
+
+        Called by the endpoints that run AI work, before their response is serialised: the
+        request owns the transaction, so this is the one place the rows can be written without
+        opening a second connection mid-flight.
+        """
+        if self._recorder is None:
+            return 0
+        return await self._recorder.flush(cache_store=self.cache_store)
 
     # ── agents ───────────────────────────────────────────────────────────────
 

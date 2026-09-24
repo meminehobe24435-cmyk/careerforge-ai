@@ -31,6 +31,7 @@ from starlette.responses import JSONResponse
 
 from careerforge_ai.prompting.registry import PromptRegistry, load_prompt_registry
 from careerforge_ai.providers import build_provider
+from careerforge_ai.providers.routing import Budget
 from careerforge_api import __version__
 from careerforge_api.core.config import (
     APISettings,
@@ -59,6 +60,7 @@ from careerforge_api.routers import (
     documents,
     evidence,
     jobs,
+    observability,
     profile,
     public,
     resume,
@@ -67,6 +69,7 @@ from careerforge_api.routers import (
 )
 from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
+from careerforge_api.services.metering import DatabaseCacheStore
 from careerforge_api.services.seed_service import ensure_demo_user
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
 from careerforge_api.workers.handlers import register_default_handlers
@@ -106,7 +109,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Built exactly once per process: the chain holds an in-memory cache and its
     # resilience state, and rebuilding it per request would throw both away.
-    app.state.provider = build_provider(settings)
+    #
+    # The cache store and the budget are passed in here for the same reason: a cache that is
+    # rebuilt per request cannot produce a hit, and a budget that is rebuilt per request can
+    # never be exceeded. Both are app-wide state, and both are what PHASE 11's dashboards report.
+    cache_store = DatabaseCacheStore()
+    app.state.ai_cache_store = cache_store
+    budget = Budget(daily_usd=settings.ai_daily_budget_usd)
+    app.state.ai_budget = budget
+    app.state.provider = build_provider(settings, cache_store=cache_store, budget=budget)
     app.state.token_revocations = TokenRevocationRegistry()
 
     selection = build_queue_selection(settings, session_factory)
@@ -218,6 +229,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(applications.router, prefix=resolved.api_prefix)
     application.include_router(applications.job_router, prefix=resolved.api_prefix)
     application.include_router(analytics.router, prefix=resolved.api_prefix)
+    application.include_router(observability.router, prefix=resolved.api_prefix)
     application.include_router(public.router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 

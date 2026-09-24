@@ -14,6 +14,7 @@ and whether the answer was degraded.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -21,7 +22,7 @@ from fastapi import APIRouter, Depends, Request, Response
 
 from careerforge_ai.agents import AgentOutcome
 from careerforge_api.core.errors import NotFoundError, ValidationError
-from careerforge_api.deps import CurrentUser, DbSession, SettingsDep, get_request_id
+from careerforge_api.deps import CurrentUser, DbSession, OptionalUser, SettingsDep, get_request_id
 from careerforge_api.schemas.ai import (
     AiMeta,
     AnalyzeJobRequest,
@@ -61,26 +62,41 @@ def get_interview_sessions(request: Request) -> InterviewSessionStore:
     return store
 
 
-def get_ai_service(
+async def get_ai_service(
     request: Request,
     session: DbSession,
     settings: SettingsDep,
     sessions: Annotated[InterviewSessionStore, Depends(get_interview_sessions)],
-) -> AIService:
-    """Bind the agent layer to this request's provider, prompts and session."""
+    user: OptionalUser,
+) -> AsyncIterator[AIService]:
+    """Bind the agent layer to this request's provider, prompts and session.
+
+    A generator dependency so the metered model calls and cache events are flushed in the
+    teardown, after the endpoint has run and while the request's session is still open. Doing it
+    here rather than in each endpoint means a new AI endpoint cannot forget to record its
+    calls — the failure mode that left ``llm_calls`` empty for an entire phase.
+    """
     provider = getattr(request.app.state, "provider", None)
     prompts = getattr(request.app.state, "prompt_registry", None)
     if provider is None or prompts is None:  # pragma: no cover - lifespan always sets both
         raise ValidationError(
             "the AI layer is unavailable: the application did not finish starting up"
         )
-    return AIService(
+    service = AIService(
         provider=provider,
         prompts=prompts,
         session=session,
         sessions=sessions,
         retriever=getattr(request.app.state, "retriever", None),
+        # Built once with the provider chain, so a second identical request is served from the
+        # first one's cache and the reported hit rate means something.
+        cache_store=getattr(request.app.state, "ai_cache_store", None),
+        user_id=user.id if user is not None else None,
     )
+    try:
+        yield service
+    finally:
+        await service.flush_observability()
 
 
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
