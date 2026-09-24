@@ -878,15 +878,58 @@ AI 相关响应统一携带：
 
 ### 2.12 AI 可观测性与成本 `/ai-runs` `/ai-costs`
 
-| 方法 | 路径                   | 说明                                              |
-| ---- | ---------------------- | ------------------------------------------------- |
-| GET  | `/ai-runs`             | 列表（`?agent=&workflow=&status=&since=`）        |
-| GET  | `/ai-runs/{id}`        | 详情（步骤链、输入输出摘要、token、成本）         |
-| GET  | `/ai-costs/summary`    | 日 token 用量 / 成本（`?range=7d\|30d`）          |
-| GET  | `/ai-costs/by-agent`   | 每 Agent 成本与调用次数                           |
-| GET  | `/ai-costs/by-feature` | 每功能（JD 分析/简历优化/面试…）成本              |
-| GET  | `/cache/stats`         | 三类缓存命中率                                    |
-| GET  | `/prompts`             | Prompt Registry 列表（name/version/sha/isActive） |
+> **状态：已实现（PHASE 11；前端页面为 PHASE 11b）** — 7 个端点，表见 `docs/DATABASE.md` §2.11。
+> **在此之前 `llm_calls` 与 `ai_caches` 只有表、没有写入方**：`agent_runs` 由执行器写入，但单次模型
+> 调用从未落库，`/cache/stats` 读的是一张空表。现在每次模型调用记一行，缓存事件在**拥有事务的那个
+> 请求结束时**统一写入（`RunRecorder`）——不在代理深处另开连接，PHASE 2 的 `database is locked`
+> 就是这么来的。
+>
+> **报量出来的数，不报估出来的数**：token 与成本取自 provider 自报的用量；延迟取「provider 上报值」
+> 与「实测值」的较大者（heuristic 路径不上报延迟，实测 3ms 却写 0 就是让面板说谎）。
+> 零 Key 的 heuristic 部署**真的不产生 token**：`/ai-costs` 因此返回 0，并在 `notes` 里说明原因，
+> 而不是编一个看起来像支出的数字。
+> **已知缺口（如实记录）**：多数 Agent 走 `structured_output`，其 provider 只返回解析后的 schema、
+> 丢掉用量信封，因此那条路径**没有 token 可记**——这是核心接口自身的限制，不是计量漏了。该路径仍
+> 记录延迟、provider 与 prompt 版本；`chat` 路径的 token/成本有测试覆盖。
+>
+> **两种缓存分开报告**：`agent_runs.cache_hit` 是执行器的**步骤缓存**；`/cache/stats` 的命中率是
+> **provider 缓存**（进程级、跨请求共享）。任一种命中都会把 run 的 `cache_hit` 置真——面板说「未命中」
+> 而缓存页说「命中」是自相矛盾的，读者会立刻停止相信两者。`ai_caches` 是持久层（重启后仍在），
+> 进程计数器是当下状态，两者**并列**而非混算；`hitRate` 在尚无任何查询时是 `null`（空缓存没有命中率，
+> 报 0.0 会被读成「缓存从来不帮忙」）。
+>
+> **预算护栏已接线**：`Budget(daily_usd=ai_daily_budget_usd)` 随 provider chain 在启动时构建；超支时
+> `RoutedProvider` 抛 `BudgetExceededError`，由韧性层降级到链上的下一个 provider（绝不 500）。
+> `/ai-costs` 回报同一个上限——护栏与看板读同一个数字。
+> 没有 owner 的运行（种子、定时任务）也会列出：问「这台部署花了多少」的人需要全貌。
+
+| 方法 | 路径                   | 说明                                                    |
+| ---- | ---------------------- | ------------------------------------------------------- |
+| GET  | `/ai-runs`             | 列表（`?agent=&workflow=&status=&sinceHours=`）✅       |
+| GET  | `/ai-runs/{id}`        | 详情（步骤链 + 逐次模型调用；摘要是 digest 不是原文）✅ |
+| GET  | `/ai-costs`            | 日 token 用量 / 成本 + 合计与预算上限 ✅                |
+| GET  | `/ai-costs/by-agent`   | 每 Agent 成本、次数、平均延迟、缓存命中 ✅              |
+| GET  | `/ai-costs/by-feature` | 每功能（JD 分析 / 简历优化 / 面试…）成本 ✅             |
+| GET  | `/cache/stats`         | 三类缓存的条目与命中率（持久层 + 进程）✅               |
+| GET  | `/prompts`             | Prompt Registry 列表（name/version/sha/isActive）✅     |
+
+```jsonc
+// GET /ai-runs?limit=1 → 200（真机实测：零 Key 路径）
+{ "success": true, "data": { "items": [ {
+    "id": "uuid-run", "workflow": "jd_analysis", "agent": "job", "status": "degraded",
+    "provider": "heuristic", "model": null, "promptVersion": "jd_analysis@v1",
+    "totalTokens": 0, "costUsd": 0.0, "latencyMs": 93, "cacheHit": false,
+    "stepCount": 4 } ], "total": 2, "limit": 1, "offset": 0 } }
+
+// GET /cache/stats → 200（两次相同请求之后：一次未命中、一次命中）
+{ "success": true, "data": {
+    "byKind": [ {"kind":"llm","entries":1,"hits":3,"bytes":824},
+                {"kind":"embedding","entries":0,"hits":0,"bytes":0},
+                {"kind":"tool","entries":0,"hits":0,"bytes":0} ],
+    "persistedHits": 3,
+    "process": { "processHits": 3, "processMisses": 2, "processEntries": 1,
+                 "eventsFlushed": 6, "hitRate": 0.6 } } }
+```
 
 ### 2.13 公开候选人页与分享 `/public`
 

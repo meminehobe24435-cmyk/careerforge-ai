@@ -343,7 +343,90 @@ async function main(): Promise<void> {
     fail('public candidate page', error);
   }
 
-  /* 8. An error path: the envelope must still be an envelope. */
+  /* 8. AI observability: an AI operation must be findable, costed and attributed.
+   *
+   * The check performs a real AI operation first, then looks for it. Asserting the *link* between
+   * the two is the point: `llm_calls` had no writer at all until PHASE 11, so the rows existing is
+   * the thing worth proving. Tokens and cost are asserted as consistent rather than non-zero: the
+   * zero-key heuristic path genuinely spends nothing, and a smoke test demanding non-zero tokens
+   * would be demanding a lie on this deployment. */
+  try {
+    await client.post('/ai/analyze/jd', {
+      text: '招聘嵌入式软件工程师，要求熟悉 STM32 与 FreeRTOS，熟悉 CAN 总线通信协议。',
+    });
+    // A second identical call: the cache is shared app-wide, so this one should be served from
+    // the first one's entry. Asserted rather than assumed — "cache hit rate" is one of the phase's
+    // exit criteria, and a rate nobody has seen rise is a rate nobody has checked.
+    await client.post('/ai/analyze/jd', {
+      text: '招聘嵌入式软件工程师，要求熟悉 STM32 与 FreeRTOS，熟悉 CAN 总线通信协议。',
+    });
+
+    const runs = await client.get<Record<string, unknown>>('/ai-runs?limit=5');
+    const items = Array.isArray(runs['items']) ? (runs['items'] as Record<string, unknown>[]) : [];
+    if (items.length === 0) throw new Error('the AI operation just performed is not in /ai-runs');
+    const run = items[0] as Record<string, unknown>;
+    if (typeof run['latencyMs'] !== 'number' || run['latencyMs'] <= 0) {
+      throw new Error(`the run has no measured latency: ${String(run['latencyMs'])}`);
+    }
+    if (!run['promptVersion']) throw new Error('the run does not name its prompt version');
+    pass(
+      'GET /ai-runs',
+      `${String(run['workflow'])} status=${String(run['status'])} ` +
+        `latency=${String(run['latencyMs'])}ms tokens=${String(run['totalTokens'])} ` +
+        `prompt=${String(run['promptVersion'])}`,
+    );
+
+    const detail = await client.get<Record<string, unknown>>(`/ai-runs/${String(run['id'])}`);
+    const steps = Array.isArray(detail['steps']) ? detail['steps'] : [];
+    const calls = Array.isArray(detail['calls']) ? detail['calls'] : [];
+    if (steps.length === 0) throw new Error('the run has no step chain to drill into');
+    if (calls.length === 0) throw new Error('the run recorded no model call');
+    pass(
+      'GET /ai-runs/:id',
+      `steps=[${steps
+        .map((step) => String((step as Record<string, unknown>)['name']))
+        .join(',')}] calls=${calls.length}`,
+    );
+
+    const costs = await client.get<Record<string, unknown>>('/ai-costs?range=7d');
+    const totals = (costs['totals'] ?? {}) as Record<string, unknown>;
+    if (Number(totals['runs']) < items.length) {
+      throw new Error('/ai-costs reports fewer runs than /ai-runs listed');
+    }
+    pass(
+      'GET /ai-costs',
+      `runs=${String(totals['runs'])} calls=${String(totals['modelCalls'])} ` +
+        `tokens=${String(totals['tokens'])} budget=$${String(costs['dailyBudgetUsd'])}`,
+    );
+
+    const cache = await client.get<Record<string, unknown>>('/cache/stats');
+    const kinds = (Array.isArray(cache['byKind']) ? cache['byKind'] : []).map((entry) =>
+      String((entry as Record<string, unknown>)['kind']),
+    );
+    if (kinds.join(',') !== 'llm,embedding,tool') {
+      throw new Error(`cache kinds are incomplete: ${kinds.join(',')}`);
+    }
+    const process = (cache['process'] ?? {}) as Record<string, unknown>;
+    if (Number(process['processHits']) < 1) {
+      throw new Error(
+        'two identical AI requests produced no cache hit; the shared cache is not working',
+      );
+    }
+    pass(
+      'GET /cache/stats',
+      `kinds=[${kinds.join(',')}] hits=${String(process['processHits'])} ` +
+        `misses=${String(process['processMisses'])} rate=${String(process['hitRate'])}`,
+    );
+
+    const prompts = await client.get<unknown>('/prompts');
+    const promptRows = Array.isArray(prompts) ? prompts : [];
+    if (promptRows.length === 0) throw new Error('the prompt registry is empty');
+    pass('GET /prompts', `${promptRows.length} prompts, all versioned and digested`);
+  } catch (error) {
+    fail('ai observability', error);
+  }
+
+  /* 9. An error path: the envelope must still be an envelope. */
   try {
     await client.get('/definitely-not-a-route');
     fail('GET unknown route', new Error('expected a 404, got a success'));

@@ -6,6 +6,63 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 11a · Metering every model call, and a cache that outlives the request
+
+`llm_calls` and `ai_caches` have had models, migrations and indexes since PHASE 1 — and **no
+writer**. The AI Runs page PHASE 1 promised would have shown runs with no calls beneath them, and
+`/cache/stats` would have read an empty table. This phase closes the loop:
+
+- `MeteredProvider` records one row per model call, from **what the provider reported**: tokens,
+  cost, latency, and whether the answer came from the cache. It wraps the shared chain rather than
+  rebuilding it, so the cache and the resilience state the app built once are the ones in use.
+- `DatabaseCacheStore` gives the AI core's cache — synchronous, because a provider's hot path
+  cannot await — a durable layer: it serves from memory and buffers events that `RunRecorder`
+  flushes into `ai_caches` at the end of the request that owns the session.
+- Seven endpoints: `/ai-runs`, `/ai-runs/{id}` (step chain plus every call), `/ai-costs`,
+  `/ai-costs/by-agent`, `/ai-costs/by-feature`, `/cache/stats`, `/prompts`.
+- The **budget guardrail is wired**: `Budget(daily_usd=…)` is built with the provider chain at
+  startup, so exhaustion now degrades to the next provider instead of the ceiling being a
+  configuration field nobody reads. `/ai-costs` reports the same number the guardrail enforces.
+- Step traces carry **digests** of their inputs and outputs, not the payloads: an operator browsing
+  runs should not be reading candidate material.
+
+### Fixed — PHASE 11a
+
+- **The metering decorator swallowed the degradation signal.** `MeteredProvider` forwarded only the
+  protocol members, while the orchestrator reads `provider.last_chain_info` after every structured
+  call to decide whether a run was degraded — so on the zero-key path a run flipped from `degraded`
+  to `succeeded`. That exposed a **latent bug** too: `job_service` asked the executor for
+  `executor.provider.name` on the _not-degraded_ branch only, which had therefore never run, and
+  crashed with `AttributeError` the first time it did. The wrapper now delegates unknown attributes
+  to the provider it wraps — a decorator that measures must not change what it measures — and the
+  service reads the run record's own `model`/`provider`.
+- **One flush inserted the same cache key twice.** A `set` followed by a `get` produced two events,
+  and looking each up individually could not see the row the first had just added but not yet
+  flushed: `UNIQUE constraint failed: ai_caches.cache_key`. Now fetched in one statement and updated
+  in memory.
+- **`_NOTES` was a string, not a tuple.** `list("…")` exploded the explanation into single
+  characters, so `/ai-costs` served `notes: ["t","o","k",…]`. A parenthesised string is not a tuple.
+- **A run said "no cache hit" while the cache page said otherwise.** `agent_runs.cache_hit` only
+  reflected the executor's step cache; a provider-level hit now raises it too, and the difference
+  between the two caches is documented rather than left to the reader.
+- **`vector` health still claimed `not_implemented`**, which stopped being true in PHASE 3: the
+  hybrid retriever answers retrieval today. It now reports `in_memory_index` and states both halves —
+  what serves retrieval, and that the durable index is still missing. Under-reporting is as wrong as
+  over-reporting.
+- **An environment fault disguised as a regression**: the C: drive filled to zero bytes, so pytest
+  could not create `tmp_path` (`OSError: could not create numbered dir … after 10 tries`) and 15
+  tests failed with 16 errors. Regenerable caches were cleared and pytest's basetemp moved to D:.
+  Recorded here because the failure looked exactly like a code regression.
+
+### Known limitation — PHASE 11a
+
+Most agent work goes through `structured_output`, whose provider returns the parsed schema and
+discards its usage envelope, so **that path has no token count to record** — a limit of the core
+interface rather than a gap in the metering. Those calls still record provider, latency and prompt
+version; the token/cost plumbing is covered by tests through the `chat` path, and the notes on
+`/ai-costs` explain why a zero-key deployment honestly reports zero. Fixing it properly means
+changing the core's return shape, which belongs in its own change.
+
 ### Added — PHASE 10 · Recruiter View, and two layers of redaction
 
 - `GET /public/candidate/{slug}` and `GET /public/candidate/{slug}/evidence/{skillId}` take **no
