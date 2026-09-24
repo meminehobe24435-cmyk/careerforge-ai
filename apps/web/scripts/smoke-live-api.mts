@@ -25,10 +25,17 @@ import {
   createApiClient,
 } from '../../../packages/shared/src/api/client.ts';
 import {
+  isAiCosts,
+  isAiRunDetail,
+  isAiRunList,
   isApplicationBoard,
+  isCacheStats,
   isCategoryPerformanceList,
+  isCostByAgentList,
+  isCostByFeatureList,
   isDashboardResponse,
   isFunnelResponse,
+  isPromptVersionList,
   isPublicProfileResponse,
   isRatesResponse,
   isRecord,
@@ -362,7 +369,10 @@ async function main(): Promise<void> {
     });
 
     const runs = await client.get<Record<string, unknown>>('/ai-runs?limit=5');
-    const items = Array.isArray(runs['items']) ? (runs['items'] as Record<string, unknown>[]) : [];
+    // The runtime guard the AI Runs page uses, applied to the live payload: if it rejects, the page
+    // would render "INVALID_RESPONSE" instead of a table, so this is the check that the page works.
+    if (!isAiRunList(runs)) throw new Error('GET /ai-runs does not satisfy isAiRunList');
+    const items = runs['items'] as Record<string, unknown>[];
     if (items.length === 0) throw new Error('the AI operation just performed is not in /ai-runs');
     const run = items[0] as Record<string, unknown>;
     if (typeof run['latencyMs'] !== 'number' || run['latencyMs'] <= 0) {
@@ -373,12 +383,13 @@ async function main(): Promise<void> {
       'GET /ai-runs',
       `${String(run['workflow'])} status=${String(run['status'])} ` +
         `latency=${String(run['latencyMs'])}ms tokens=${String(run['totalTokens'])} ` +
-        `prompt=${String(run['promptVersion'])}`,
+        `prompt=${String(run['promptVersion'])} steps=${String(run['stepCount'])}`,
     );
 
     const detail = await client.get<Record<string, unknown>>(`/ai-runs/${String(run['id'])}`);
-    const steps = Array.isArray(detail['steps']) ? detail['steps'] : [];
-    const calls = Array.isArray(detail['calls']) ? detail['calls'] : [];
+    if (!isAiRunDetail(detail)) throw new Error('GET /ai-runs/:id does not satisfy isAiRunDetail');
+    const steps = detail['steps'] as unknown[];
+    const calls = detail['calls'] as unknown[];
     if (steps.length === 0) throw new Error('the run has no step chain to drill into');
     if (calls.length === 0) throw new Error('the run recorded no model call');
     pass(
@@ -389,7 +400,8 @@ async function main(): Promise<void> {
     );
 
     const costs = await client.get<Record<string, unknown>>('/ai-costs?range=7d');
-    const totals = (costs['totals'] ?? {}) as Record<string, unknown>;
+    if (!isAiCosts(costs)) throw new Error('GET /ai-costs does not satisfy isAiCosts');
+    const totals = costs['totals'] as Record<string, unknown>;
     if (Number(totals['runs']) < items.length) {
       throw new Error('/ai-costs reports fewer runs than /ai-runs listed');
     }
@@ -399,14 +411,24 @@ async function main(): Promise<void> {
         `tokens=${String(totals['tokens'])} budget=$${String(costs['dailyBudgetUsd'])}`,
     );
 
+    // The two breakdowns the cost page needs; without them the panels would render empty rather
+    // than wrong, which is exactly the kind of failure nobody notices.
+    const byAgent = await client.get<unknown>('/ai-costs/by-agent?range=7d');
+    if (!isCostByAgentList(byAgent)) throw new Error('GET /ai-costs/by-agent failed its guard');
+    const byFeature = await client.get<unknown>('/ai-costs/by-feature?range=7d');
+    if (!isCostByFeatureList(byFeature)) throw new Error('GET /ai-costs/by-feature failed its guard');
+    const agentNames = byAgent.map((row) => row.agent).join(',');
+    const featureNames = byFeature.map((row) => `${row.feature}[${row.workflows.join('+')}]`).join(',');
+    if (byFeature.length === 0) throw new Error('the AI work just performed is in no feature bucket');
+    pass('GET /ai-costs/by-agent+by-feature', `agents=[${agentNames}] features=[${featureNames}]`);
+
     const cache = await client.get<Record<string, unknown>>('/cache/stats');
-    const kinds = (Array.isArray(cache['byKind']) ? cache['byKind'] : []).map((entry) =>
-      String((entry as Record<string, unknown>)['kind']),
-    );
+    if (!isCacheStats(cache)) throw new Error('GET /cache/stats does not satisfy isCacheStats');
+    const kinds = (cache['byKind'] as Record<string, unknown>[]).map((entry) => String(entry['kind']));
     if (kinds.join(',') !== 'llm,embedding,tool') {
       throw new Error(`cache kinds are incomplete: ${kinds.join(',')}`);
     }
-    const process = (cache['process'] ?? {}) as Record<string, unknown>;
+    const process = cache['process'] as Record<string, unknown>;
     if (Number(process['processHits']) < 1) {
       throw new Error(
         'two identical AI requests produced no cache hit; the shared cache is not working',
@@ -419,9 +441,11 @@ async function main(): Promise<void> {
     );
 
     const prompts = await client.get<unknown>('/prompts');
-    const promptRows = Array.isArray(prompts) ? prompts : [];
+    if (!isPromptVersionList(prompts)) throw new Error('GET /prompts failed its guard');
+    const promptRows = prompts;
     if (promptRows.length === 0) throw new Error('the prompt registry is empty');
-    pass('GET /prompts', `${promptRows.length} prompts, all versioned and digested`);
+    const active = promptRows.filter((row) => row.isActive).length;
+    pass('GET /prompts', `${promptRows.length} prompts, ${active} active, all versioned`);
   } catch (error) {
     fail('ai observability', error);
   }
