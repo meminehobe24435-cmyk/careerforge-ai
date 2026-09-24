@@ -6,6 +6,65 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 11b · The AI Runs table and the cost dashboard
+
+PHASE 11a wrote the rows; this phase puts them on screen, and refuses to dress up what they say.
+
+- **`/app/ai-runs`** — every traced operation, newest first: agent/workflow, model, tokens, latency,
+  cost, status, cache hit, UTC time and step count, with status / time-window / workflow / agent
+  filters that are sent to the API rather than applied to the page (a client-side filter would
+  silently disagree with `total`). Opening a row fetches _that run's_ step chain and its metered
+  calls — two granularities, kept apart, because a step can make two calls and a call can happen
+  outside a step.
+- **`/app/costs`** — window totals, the daily-budget guardrail against `AI_DAILY_BUDGET_USD`, a daily
+  cost line with its data table underneath, cost per agent, cost per product feature (with the
+  `workflow` values behind each), the cache hit rate split into table-life and process-life readings,
+  and the prompt registry that makes a run's prompt version checkable.
+- `packages/shared` gained `types-observability.ts` and seven runtime guards. The guards are the
+  reason a shape change fails loudly instead of rendering an empty page, and `smoke:api` now feeds
+  the **live** payloads through **the same guards the pages use** — so "the page renders" and "the
+  contract has not drifted" are one check.
+- `pnpm --filter @careerforge/web capture:pages` drives an installed Chrome/Edge over the DevTools
+  Protocol (no Playwright, nothing downloaded) to screenshot both new pages at 1440 and 375, waiting
+  for real data (`[data-run]`, `[data-total]`) before capturing and printing the rendered text.
+
+### Changed — PHASE 11b
+
+- The sidebar and command palette now list `/app/ai-runs` and `/app/costs` as live rather than as
+  PHASE 10 placeholders.
+- The narrow layout of the runs list is a **card list**, not a horizontally scrolling table: at 375 px
+  the table pushed cost, status and time off-screen with nothing to indicate they existed.
+- Timestamps are read on the clock they were written on. The API stores naive-UTC instants and
+  `new Date('2026-09-24T10:00:00')` parses that as _local_ time — an eight-hour error for a reader in
+  UTC+8, and one that looks entirely normal. `parseApiInstant` restores the missing zone and every
+  column is labelled UTC.
+- Cost charts stay honest about their inputs: with a zero total no line is drawn (a flat line at zero
+  is a measurement claim), and the daily chart states that the API returns only days with activity
+  instead of interpolating across the gaps.
+
+### Fixed — PHASE 11b
+
+- **A test that could never fail.** The cache-hit assertion read
+  `assert any(...) or not any(...)` — true whether or not the flag worked. It now asserts the property
+  that is actually checkable at the interface: every run carries a boolean `cacheHit`, including when
+  it is `False`.
+- **Two minutes rendered as `120.00 s`.** `formatDuration` reused the latency formatter's thresholds;
+  a wall clock and a model call are not the same magnitude. It now scales to minutes and hours, and a
+  clock that went backwards reports `—` rather than a negative duration.
+- **"No ceiling" was drawn as 0%.** `dailyBudgetUsd = 0` means no guardrail is configured, not that
+  zero dollars are allowed, so the ratio is `null` and the card says so — the same rule that makes
+  `hitRate: null` read "not served yet" instead of `0%`.
+
+### Known limitation — PHASE 11b
+
+- `/ai-costs` does not zero-fill days with no runs, so the chart can only annotate the window
+  ("2 of 7 days had activity") rather than draw a continuous axis. Zero-filling belongs in the
+  backend query.
+- The runs list shows the first page (50 rows) and says how many it returned; there is no pager or
+  infinite scroll yet.
+- The prompt registry shows the active version's digest, not prompt bodies; bodies live in
+  `apps/api/src/careerforge_api/prompts/` and are versioned into the database on startup.
+
 ### Added — PHASE 11a · Metering every model call, and a cache that outlives the request
 
 `llm_calls` and `ai_caches` have had models, migrations and indexes since PHASE 1 — and **no

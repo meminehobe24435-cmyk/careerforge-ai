@@ -403,6 +403,34 @@
 
 `AiRunsTable`：Agent / Workflow / Model / Tokens / Latency / Cost / Status / Cache / 时间；行展开显示步骤链（每步名称、耗时、token、状态）。`/app/costs`：日 token 折线 + 每 Agent 堆叠柱 + 每功能饼图 + 缓存命中率仪表 + 预算护栏配置（当前用量进度条，超限阈值标记）。
 
+> **状态：已实现（PHASE 11b）** — `components/observability/runs-view.tsx`、
+> `run-table.tsx`、`run-detail-panel.tsx`、`costs-view.tsx`、`daily-cost-chart.tsx`、
+> `cost-breakdown.tsx`、`cache-and-prompts.tsx`；`hooks/use-observability.ts` 收口 7 个端点。
+> 页面的**真机证据**：`pnpm --filter @careerforge/web capture:pages` 用 CDP 驱动本机
+> Chrome/Edge（不装 Playwright），在 1440 与 375 两档各截一张 PNG，并**先等真实数据出现**
+> （`[data-run]` / `[data-total]`）再截图 —— 截到空壳不算通过。产物在 `reports/screenshots/`。
+>
+> 与本节规格的四处差异，均为有意为之：
+>
+> ① **行展开的按钮在行首单元格里**，不是整行 `<tr>` 的 onClick：键盘可达，且用
+> `aria-expanded` / `aria-controls` 正确播报。
+> ② **375px 不是把 9 列表格横向滚动，而是换成卡片列表**。实测：横向滚动会把
+> Cost / Status / 时间 推到屏幕外，且没有任何提示说明它们存在 —— 而这恰是本页存在的理由。
+> 两张布局共用同一份展开状态与同一个 `RunDetailPanel`。
+> ③ **每 Agent「堆叠柱」→ 每 Agent 一条横条 + 完整表格**：堆叠需要第二个维度（天）才成立，
+> 而当前数据量下每条柱只有一段，等于多画了墨水。表格里给出长度无法编码的字段（缓存命中数、
+> 平均耗时），读者真正比较的是这些。
+> ④ **每功能「饼图」→ 一条 100% 占比条 + 列表**：两三个功能时饼图的角度不可读、顺序任意，而
+> 「哪个功能占大头、占多少」正是占比条直接回答的问题。列表同时写出每个功能背后的
+> `workflow`，让「执行器跑了什么」与「用户点了哪个按钮」的映射可见。
+>
+> 另外三条「不假装」的规则写进了组件：
+> 零 Key 部署下整页 token 为 0 时，表格上方**只说一次**为什么（每行都说会翻倍表格高度）；
+> `latencyMs` 为 `null` 显示「—」而不是 `0 ms`；`hitRate` 为 `null` 显示「尚未服务」而不是 0%
+> —— 没被查询过的缓存没有命中率，画一个空仪表等于报告一次并未发生的故障。
+> 时间列一律标 **UTC**：后端存 naive UTC，浏览器 `new Date('…T10:00:00')` 会按本地时区解析
+> （UTC+8 会整体偏移 8 小时），`parseApiInstant` 补齐时区后再格式化。
+
 ### 5.16 `/candidate/[slug]` ★ — Recruiter View
 
 顶部大字姓名 + headline + `Verified by evidence` 徽章 + GitHub/Resume 链接。下方：
