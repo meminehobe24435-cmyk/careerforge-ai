@@ -1,15 +1,23 @@
 import {
   APPLICATION_STATUSES,
+  type AiCosts,
+  type AiRun,
+  type AiRunDetail,
+  type AiRunList,
   type ApplicationBoardResponse,
   type ApplicationCard,
   type ApplicationColumn,
   type ApplicationDetail,
   type ApplicationEvent,
   type ApplicationStatus,
+  type CacheStats,
   type CategoryPerformance,
+  type CostByAgent,
+  type CostByFeature,
   type DashboardResponse,
   type DashboardStats,
   type FunnelResponse,
+  type PromptVersion,
   type PublicEvidence,
   type PublicProfileResponse,
   type PublicSettingsResponse,
@@ -267,5 +275,122 @@ export function isPublicSettingsResponse(value: unknown): value is PublicSetting
     typeof value['isPublished'] === 'boolean' &&
     typeof value['canPublish'] === 'boolean' &&
     isRecord(value['sections'])
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * AI observability (API.md §2.12)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The guards below are deliberately about **presence and type**, not about totals.
+ *
+ * The pages must never invent a number, so what has to be guaranteed is that the fields it prints
+ * exist and are the right kind; whether they are zero is a fact about the deployment (the zero-key
+ * provider really does spend nothing) and not something a guard should reject.
+ */
+
+function isAiRun(value: unknown): value is AiRun {
+  return (
+    isRecord(value) &&
+    isString(value['id']) &&
+    isString(value['workflow']) &&
+    isString(value['agent']) &&
+    isString(value['status']) &&
+    isNumber(value['totalTokens']) &&
+    isNumber(value['costUsd']) &&
+    typeof value['cacheHit'] === 'boolean' &&
+    isNumber(value['stepCount'])
+  );
+}
+
+export function isAiRunList(value: unknown): value is AiRunList {
+  if (!isRecord(value)) return false;
+  const items = value['items'];
+  return Array.isArray(items) && items.every(isAiRun) && isNumber(value['total']);
+}
+
+/** `GET /ai-runs/{id}` — requires the step chain, which is the whole reason to open the row. */
+export function isAiRunDetail(value: unknown): value is AiRunDetail {
+  if (!isAiRun(value)) return false;
+  const detail = value as unknown as Record<string, unknown>;
+  const steps = detail['steps'];
+  const calls = detail['calls'];
+  return (
+    Array.isArray(steps) &&
+    steps.every((step) => isRecord(step) && isString(step['name'])) &&
+    Array.isArray(calls) &&
+    calls.every((call) => isRecord(call) && isString(call['provider']))
+  );
+}
+
+/** `GET /ai-costs` — `totals` is what the page would otherwise have to sum itself. */
+export function isAiCosts(value: unknown): value is AiCosts {
+  if (!isRecord(value)) return false;
+  const totals = value['totals'];
+  const days = value['days'];
+  if (!isRecord(totals) || !isNumber(totals['runs']) || !isNumber(totals['costUsd'])) return false;
+  return (
+    Array.isArray(days) &&
+    days.every((day) => isRecord(day) && isString(day['day']) && isNumber(day['costUsd'])) &&
+    isNumber(value['dailyBudgetUsd'])
+  );
+}
+
+function isCostRow(value: unknown, key: string): boolean {
+  return (
+    isRecord(value) && isString(value[key]) && isNumber(value['runs']) && isNumber(value['tokens'])
+  );
+}
+
+export function isCostByAgentList(value: unknown): value is CostByAgent[] {
+  return Array.isArray(value) && value.every((row) => isCostRow(row, 'agent'));
+}
+
+export function isCostByFeatureList(value: unknown): value is CostByFeature[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (row) =>
+        isCostRow(row, 'feature') && Array.isArray((row as Record<string, unknown>)['workflows']),
+    )
+  );
+}
+
+/**
+ * `GET /cache/stats`.
+ *
+ * `process` must be present and `hitRate` must be a number or `null` — the page prints "尚未服务"
+ * for `null`, and a missing field would make that indistinguishable from a broken response.
+ */
+export function isCacheStats(value: unknown): value is CacheStats {
+  if (!isRecord(value)) return false;
+  const byKind = value['byKind'];
+  const process = value['process'];
+  if (!Array.isArray(byKind) || !byKind.every((item) => isRecord(item) && isString(item['kind']))) {
+    return false;
+  }
+  if (
+    !isRecord(process) ||
+    !isNumber(process['processHits']) ||
+    !isNumber(process['processMisses'])
+  ) {
+    return false;
+  }
+  const hitRate = process['hitRate'];
+  return hitRate === null || isNumber(hitRate);
+}
+
+/** `GET /prompts` — a bare array; `version` is the field the page attributes runs to. */
+export function isPromptVersionList(value: unknown): value is PromptVersion[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (row) =>
+        isRecord(row) &&
+        isString(row['name']) &&
+        isNumber(row['version']) &&
+        typeof row['isActive'] === 'boolean',
+    )
   );
 }

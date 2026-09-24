@@ -246,3 +246,4 @@ export type EvidenceKind = 'repo_file' | 'commit' | 'readme' | 'doc' | 'self_rep
 export * from './types-applications.ts';
 export * from './types-analytics.ts';
 export * from './types-public.ts';
+export * from './types-observability.ts';

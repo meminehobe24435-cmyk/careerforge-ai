@@ -26,6 +26,17 @@ export const queryKeys = {
     categories: (range: string) => ['analytics', 'categories', range] as const,
     timeline: (range: string) => ['analytics', 'timeline', range] as const,
   },
+  observability: {
+    all: () => ['observability'] as const,
+    /** The filter object is part of the key: two filter sets are two different lists. */
+    runs: (filters: Record<string, unknown>) => ['observability', 'runs', filters] as const,
+    run: (id: string) => ['observability', 'run', id] as const,
+    costs: (range: string) => ['observability', 'costs', range] as const,
+    costsByAgent: (range: string) => ['observability', 'costs', 'by-agent', range] as const,
+    costsByFeature: (range: string) => ['observability', 'costs', 'by-feature', range] as const,
+    cache: () => ['observability', 'cache'] as const,
+    prompts: () => ['observability', 'prompts'] as const,
+  },
   publicProfile: {
     settings: () => ['public', 'settings'] as const,
   },

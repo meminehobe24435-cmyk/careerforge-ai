@@ -2,26 +2,42 @@ import {
   ApiError,
   DEFAULT_API_BASE_URL,
   createApiClient,
+  isAiCosts,
+  isAiRunDetail,
+  isAiRunList,
   isApplicationBoard,
   isApplicationDetail,
+  isCacheStats,
   isCategoryPerformanceList,
+  isCostByAgentList,
+  isCostByFeatureList,
   isDashboardResponse,
   isFunnelResponse,
+  isPromptVersionList,
   isRatesResponse,
   isSkillCorrelationList,
   isTimelineResponse,
+  type AiCosts,
+  type AiRunDetail,
+  type AiRunFilters,
+  type AiRunList,
   type AnalyticsRange,
   type ApplicationBoardResponse,
   type ApplicationCreateRequest,
   type ApplicationDetail,
   type ApplicationReorderItem,
   type ApplicationUpdateRequest,
+  type CacheStats,
   type CategoryPerformance,
+  type CostByAgent,
+  type CostByFeature,
   type DashboardResponse,
   type DemoLoginResponse,
   type FunnelResponse,
   type LoginRequest,
   type LoginResponse,
+  type ObservabilityRange,
+  type PromptVersion,
   type PublicSettingsResponse,
   type RatesResponse,
   type SkillCorrelation,
@@ -189,6 +205,82 @@ async function fetchTimeline(range: AnalyticsRange): Promise<TimelineResponse> {
   return data;
 }
 
+/* AI observability (API.md §2.12) — seven endpoints, one guard each */
+
+/**
+ * A rejected shape, with the field that was expected named in the message.
+ *
+ * The seven observability endpoints return `null`-able measurements (`latencyMs`, `hitRate`), so a
+ * missing field and an honest `null` are easy to confuse: the guard rejects the first and the pages
+ * print "—" for the second. The message says which one the caller asked for, because a page that
+ * renders a wrong shape is worse than a page that refuses to.
+ */
+function invalidResponse(path: string, expectation: string, body: unknown): ApiError {
+  return new ApiError({
+    code: 'INVALID_RESPONSE',
+    message: `${path} 返回的结构与 docs/API.md §2.12 不一致（${expectation}）`,
+    requestId: null,
+    status: 200,
+    body,
+  });
+}
+
+async function fetchAiRuns(filters: AiRunFilters = {}): Promise<AiRunList> {
+  const data = await client.get<unknown>('/ai-runs', { query: { ...filters } });
+  if (!isAiRunList(data)) {
+    throw invalidResponse('GET /ai-runs', '缺少 items/total 或某条运行缺少 id/status', data);
+  }
+  return data;
+}
+
+async function fetchAiRun(id: string): Promise<AiRunDetail> {
+  const data = await client.get<unknown>(`/ai-runs/${id}`);
+  if (!isAiRunDetail(data)) {
+    throw invalidResponse('GET /ai-runs/{id}', '缺少步骤链 steps 或调用记录 calls', data);
+  }
+  return data;
+}
+
+async function fetchAiCosts(range: ObservabilityRange): Promise<AiCosts> {
+  const data = await client.get<unknown>('/ai-costs', { query: { range } });
+  if (!isAiCosts(data)) {
+    throw invalidResponse('GET /ai-costs', '缺少 totals 或 dailyBudgetUsd', data);
+  }
+  return data;
+}
+
+async function fetchCostsByAgent(range: ObservabilityRange): Promise<CostByAgent[]> {
+  const data = await client.get<unknown>('/ai-costs/by-agent', { query: { range } });
+  if (!isCostByAgentList(data)) {
+    throw invalidResponse('GET /ai-costs/by-agent', '某一行缺少 agent/runs/tokens', data);
+  }
+  return data;
+}
+
+async function fetchCostsByFeature(range: ObservabilityRange): Promise<CostByFeature[]> {
+  const data = await client.get<unknown>('/ai-costs/by-feature', { query: { range } });
+  if (!isCostByFeatureList(data)) {
+    throw invalidResponse('GET /ai-costs/by-feature', '某一行缺少 feature/workflows', data);
+  }
+  return data;
+}
+
+async function fetchCacheStats(): Promise<CacheStats> {
+  const data = await client.get<unknown>('/cache/stats');
+  if (!isCacheStats(data)) {
+    throw invalidResponse('GET /cache/stats', '缺少 byKind 或 process.hitRate', data);
+  }
+  return data;
+}
+
+async function fetchPrompts(): Promise<PromptVersion[]> {
+  const data = await client.get<unknown>('/prompts');
+  if (!isPromptVersionList(data)) {
+    throw invalidResponse('GET /prompts', '某一行缺少 name/version/isActive', data);
+  }
+  return data;
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
 
@@ -218,6 +310,15 @@ export const api = {
   skillCorrelation: fetchSkillCorrelation,
   categories: fetchCategories,
   timeline: fetchTimeline,
+
+  /* AI observability (API.md §2.12) */
+  aiRuns: fetchAiRuns,
+  aiRun: fetchAiRun,
+  aiCosts: fetchAiCosts,
+  costsByAgent: fetchCostsByAgent,
+  costsByFeature: fetchCostsByFeature,
+  cacheStats: fetchCacheStats,
+  prompts: fetchPrompts,
 
   /* public page — the owner's side (API.md §2.13) */
   publicSettings: () => client.get<PublicSettingsResponse>('/public/settings'),
