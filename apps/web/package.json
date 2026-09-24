@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke:api": "node --experimental-strip-types scripts/smoke-live-api.mts",
+    "capture:pages": "node --experimental-strip-types scripts/capture-pages.mts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
