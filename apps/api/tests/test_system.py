@@ -85,12 +85,23 @@ async def test_health_reports_the_provider_chain_and_its_degradation(
 async def test_health_reports_the_vector_backend_honestly(
     client: AsyncClient, envelope: EnvelopeCheck
 ) -> None:
-    """No vector index exists in PHASE 1, and the health page says so instead of `ok`."""
+    """Semantic retrieval works, from an index that does not survive a restart — and the health
+    page says exactly that.
+
+    It reported ``not_implemented`` until PHASE 11, which stopped being true in PHASE 3: the
+    hybrid retriever (BM25 + vectors, RRF-fused, ADR-0006) is what answers retrieval for the claim
+    gate and the graph query. The remaining gap is durability, and the assertion names it rather
+    than letting the old label keep standing — a health page that under-reports is wrong in the
+    same way as one that over-reports.
+    """
     data = envelope(await client.get("/api/v1/system/health"))["data"]
     vector = data["checks"]["vector"]
-    assert vector["reason"] == "not_implemented"
+    assert vector["reason"] == "in_memory_index"
     assert vector["status"] == "degraded"
     assert vector["backend"] in {"sqlite", "pgvector"}
+    # The detail must name both halves: what serves retrieval, and what is missing.
+    assert "in-process" in vector["detail"]
+    assert "durable" in vector["detail"]
 
 
 async def test_health_is_public_and_needs_no_token(

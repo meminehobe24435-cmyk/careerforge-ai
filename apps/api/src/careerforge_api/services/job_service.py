@@ -229,7 +229,11 @@ class JobService:
             why=result.why.model_dump(mode="json"),
             evidence_used=[str(item) for item in result.why.evidence_used],
             algorithm_version=result.why.algorithm_version,
-            model=None if outcome.degraded else executor.provider.name,
+            # The run record already carries what served it; asking the executor for its provider
+            # was reading a private attribute, and it only ever ran on the path where the outcome
+            # was *not* degraded — a latent crash that the metering wrapper surfaced the first
+            # time that path was taken.
+            model=None if outcome.degraded else (outcome.record.model or outcome.record.provider),
         )
         await self._session.flush()
         _ = request_id

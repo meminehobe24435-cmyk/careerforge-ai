@@ -1,4 +1,4 @@
-# ── Environment & secrets ────────────────────────────────────
+# 鈹€鈹€ Environment & secrets 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 .env
 .env.*
 !.env.example
@@ -6,7 +6,7 @@
 *.key
 secrets/
 
-# ── Node / pnpm ──────────────────────────────────────────────
+# 鈹€鈹€ Node / pnpm 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 node_modules/
 .pnpm-store/
 .turbo/
@@ -18,7 +18,7 @@ build/
 .eslintcache
 coverage/
 
-# ── Python ───────────────────────────────────────────────────
+# 鈹€鈹€ Python 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 __pycache__/
 *.py[cod]
 *$py.class
@@ -39,7 +39,7 @@ coverage.xml
 build/
 dist/
 
-# ── Local runtime data ───────────────────────────────────────
+# 鈹€鈹€ Local runtime data 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 data/
 *.db
 *.db-journal
@@ -47,20 +47,20 @@ data/
 *.sqlite3
 uploads/
 
-# ── Generated artifacts ──────────────────────────────────────
+# 鈹€鈹€ Generated artifacts 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 # Generated reports are ignored, except the evaluation report: the README quotes
 # its numbers, and a quoted number must be checkable in the repository.
 reports/*
 !reports/eval-report.json
 !reports/.gitkeep
 
-# ── Playwright ───────────────────────────────────────────────
+# 鈹€鈹€ Playwright 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 test-results/
 playwright-report/
 blob-report/
 .playwright/
 
-# ── OS / editors ─────────────────────────────────────────────
+# 鈹€鈹€ OS / editors 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -70,8 +70,14 @@ desktop.ini
 !.vscode/settings.json
 *.swp
 
-# ── Logs / temp ──────────────────────────────────────────────
+# 鈹€鈹€ Logs / temp 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 *.log
 logs/
 tmp/
 temp/
+
+# Repo-local scratch space. The suite's tmp_path lives here because this machine's C: drive
+# has been at zero bytes free, which makes pytest's own temp directory unusable and turns a disk
+# problem into a wall of test failures.
+.tmp/
+.pytest-tmp/

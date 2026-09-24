@@ -95,17 +95,25 @@ async def probe_database(engine: AsyncEngine, settings: APISettings) -> ServiceH
 
 
 def probe_vector(settings: APISettings) -> ServiceHealthEntry:
-    """Report the configured vector backend, honestly labelling the PHASE 1 gap."""
+    """Report the vector arm as it really is: implemented, in memory, not yet durable.
+
+    This used to say ``not_implemented``, which stopped being true in PHASE 3 — the hybrid
+    retriever (BM25 + vectors, RRF-fused, ADR-0006) is what answers retrieval for the claim gate
+    and the graph query. What is *still* missing is the durable index: embeddings live in the
+    process, so a restart re-embeds and a second worker would keep its own copy. Saying
+    "implemented" without that caveat would be the same mistake in the other direction.
+    """
     configured = settings.vector_backend or "sqlite"
     return ServiceHealthEntry(
         name="vector",
         status="degraded",
         backend=configured,
-        reason="not_implemented",
+        reason="in_memory_index",
         detail=(
-            f"vector backend is configured as '{configured}' but no vector index exists yet: "
-            "the embeddings table and the SqliteVectorStore/PgVectorStore pair land with the "
-            "RAG phase, so semantic retrieval is unavailable"
+            f"vector backend is configured as '{configured}'; semantic retrieval is served by the "
+            "in-process hybrid index (BM25 + vectors, RRF-fused, ADR-0006), which is rebuilt per "
+            "process — a durable embeddings table (and pgvector on the PostgreSQL path) is not "
+            "implemented yet, so a restart re-embeds and a second worker keeps its own copy"
         ),
     )
 
