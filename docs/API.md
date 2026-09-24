@@ -890,12 +890,69 @@ AI 相关响应统一携带：
 
 ### 2.13 公开候选人页与分享 `/public`
 
+> **状态：已实现（PHASE 10）** — 4 个端点，表见 `docs/DATABASE.md` §2.1（迁移 `0008`）。
+> **两个无认证端点是有意为之**：招聘方打开一个分享链接不该先注册账号，需要登录的页面不是可分享的页面。
+> 它们能返回的一切都已经在服务端过滤与脱敏 —— 端点里没有任何「仅所有者可见」的字段可以泄漏。
+>
+> **未知 slug 与未发布都返回 404**，不区分：区分它们等于告诉陌生人哪些 slug 存在。
+> slug 由服务端生成（`候选人名-<不透明后缀>`）；后缀不是装饰，它是防止「按名字枚举候选人」的唯一屏障。
+> 已存在的 slug 会保留（分享链接不能变），种子账号的 `alex` 即属此类。
+>
+> **隐私开关在读取时套用，不在发布时**：候选人关掉某个板块后，**下一次打开就是新状态**，
+> 不需要重新发布 —— 「我刚关掉」与「它真的关掉了」之间的窗口正是泄漏会发生的地方。
+> 默认关闭 `contact` 与 `resume_file`：公开证据与公开电话号码是两件事。
+>
+> **PII 扫描跑两遍**：RecruiterAgent 构建时脱敏一次，服务端在**即将返回的响应上**再扫一次。
+> 两次的理由是不对称：漏一次就是把候选人的手机号公开发布，误报一次只是多一个掩码。
+> 发布时扫到的内容记录在 `pii_findings` 里并回给候选人本人（`GET /public/settings`）——
+> 悄悄删掉一处电话与本来就没有电话，是两件不同的事。
+>
+> **公开页的每次访问不产生模型调用**：叙述部分（summary / highlights / interview topics）在
+> 发布时生成并存入 `public_payload`，读取时只做确定性过滤。招聘方刷新页面不该让候选人付费。
+> `storage_scope=local` 的账号**不能发布**（403）：公开 URL 与「数据不出本机」互相矛盾。
+> 未被解析出技能、或来源是本地文件时，技能仍会显示但引用为空——页面会说明原因，而不是显示空白。
+
 | 方法  | 路径                                          | 认证 | 说明                                          |
 | ----- | --------------------------------------------- | ---- | --------------------------------------------- |
 | GET   | `/public/candidate/{slug}`                    | —    | 公开画像（受 `sections` 控制，自动 PII 脱敏） |
-| POST  | `/public/publish`                             | ✅   | 发布/取消发布                                 |
-| PATCH | `/public/settings`                            | ✅   | 逐项可见性设置                                |
+| POST  | `/public/publish`                             | ✅   | 发布/取消发布（发布时重新生成叙述）           |
+| GET   | `/public/settings`                            | ✅   | 发布状态、分享链接、逐项开关、已脱敏清单      |
+| PATCH | `/public/settings`                            | ✅   | 逐项可见性 + 逐技能隐藏列表                   |
 | GET   | `/public/candidate/{slug}/evidence/{skillId}` | —    | 某技能的公开证据（Recruiter View 点击展开）   |
+
+```jsonc
+// GET /public/candidate/alex → 200（真机实测：简历里带邮箱，公开页里没有）
+{
+  "success": true,
+  "data": {
+    "displayName": "Alex Chen",
+    "headline": "Embedded firmware engineer",
+    "skills": [
+      {
+        "canonicalId": "stm32",
+        "displayName": "STM32",
+        "category": "embedded",
+        "confidence": 0.9,
+        "evidenceCount": 3,
+        "corroboration": 2,
+        "evidence": [],
+      },
+    ],
+    "projects": [],
+    "highlights": [],
+    "interviewTopics": [],
+    "contact": {},
+    "meta": {
+      "slug": "alex",
+      "evidenceCoverage": 1.0,
+      "profileStrength": 41.0,
+      "hiddenSections": ["contact", "resume_file"],
+      "redactions": [],
+      "viewCount": 4,
+    },
+  },
+}
+```
 
 ### 2.14 系统与搜索 `/system` `/search` `/tasks`
 

@@ -307,7 +307,7 @@ CareerForge AI is a portfolio-grade system, not a production SaaS. Known boundar
 
 See [ROADMAP.md](./docs/ROADMAP.md). Current: **PHASE 0 ✅ → PHASE 1 ✅ → PHASE 2 ✅ (incl. 2b) → PHASE 3 ✅ → PHASE 4 ✅ →
 PHASE 5 ✅ → PHASE 6 ✅ (the claim gate) → PHASE 7 ✅ (interview simulator) → PHASE 8 ✅ (application tracker)
-→ PHASE 9 (career analytics)**.
+→ PHASE 9 ✅ (career analytics) → PHASE 10 ✅ (Recruiter View) → PHASE 11 (AI observability)**.
 
 ---
 

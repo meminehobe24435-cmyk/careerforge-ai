@@ -6,6 +6,62 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 10 · Recruiter View, and two layers of redaction
+
+- `GET /public/candidate/{slug}` and `GET /public/candidate/{slug}/evidence/{skillId}` take **no
+  token**. That is the feature: a recruiter opening a shared link should not have to create an
+  account, and a page that needs a login is not a shareable page. Everything they can reach is
+  already filtered and masked by the service — there is no owner-only field left to leak.
+- `POST /public/publish`, `GET/PATCH /public/settings`, and `/app/settings` for the candidate:
+  the publish switch, the share link, eight per-section switches, the per-skill hide list, and
+  the list of what was masked at publish time.
+- `/candidate/[slug]` renders on the **server**. This is the one page whose whole purpose is to be
+  shared: it must produce its content for a stranger with no account, no token and no JavaScript
+  round-trip, and a link preview or a crawler should see the same page a person does.
+- The page's evidence is fetched on **click**, through the same anonymous endpoint, so the first
+  paint stays small and the request that expands a citation is itself the proof that no account
+  is needed.
+- `public_profiles` gains `public_payload` and `pii_findings` (migration `0008`).
+
+Four decisions that are all about consent:
+
+- **Privacy switches apply on read, not only on publish.** The stored projection is re-filtered
+  through the candidate's _current_ switches every time it is served, so unchecking a section is
+  true immediately rather than at the next republish. The window between "I turned that off" and
+  "it is off" is exactly where a leak would live.
+- **PII is scanned twice** — once while the agent builds the page, and again on the payload that
+  is about to be served. The asymmetry decides it: a false negative publishes somebody's phone
+  number, a false positive costs a masked string.
+- **The candidate is told what was removed.** Silence about a redaction is indistinguishable from
+  having had nothing to redact.
+- **A public view costs no model call.** The narrative is generated once at publish and stored; a
+  page a recruiter can refresh should not bill the candidate per view. And a `storage_scope=local`
+  account cannot publish at all (403): a public URL contradicts "my data does not leave this
+  machine".
+
+### Fixed — PHASE 10
+
+- **The one endpoint strangers can reach returned 500.** `row.user` is a lazy relationship, and
+  touching it inside an async session raises `MissingGreenlet`; nine of sixteen tests failed with
+  that error at once. Now eagerly loaded, with the reason in the docstring.
+- **The "no PII published" check was passing vacuously.** The first live run produced a public page
+  with zero skills and zero highlights — the résumé had been uploaded and analysed but never
+  _imported as a profile_, so there was no candidate material to leak and the redaction assertion
+  had nothing to prove. The live script now imports the profile and asserts the **source material
+  really carries the email** before asserting that the published page does not.
+- **The published page reported zero views forever.** The counter lives on the row; the page's meta
+  never read it, so the footer said "0 views" while the owner's panel said 3. `public_profile` now
+  returns the count alongside the projection.
+- **`ALTER TABLE` cannot put a column where the model declares it.** The migrated-vs-models guard
+  compares columns as an ordered list, and appending two columns to `public_profiles` broke it.
+  Columns are compared as a set now (name, type, nullability, primary key) while indexes, uniques,
+  foreign keys and checks are still compared in full — a deliberate narrowing, with the reason in
+  the test, because column _order_ is the one thing a migration cannot preserve and no query
+  depends on it.
+- `packages/shared/src/api/types.ts` reached 552 lines. Split by domain into
+  `types-applications.ts`, `types-analytics.ts` and `types-public.ts`, with `types.ts` keeping the
+  envelope and re-exporting the rest, so every existing import path still works.
+
 ### Added — PHASE 9 · Career analytics, and the discipline of a small sample
 
 - `careerforge_ai/analytics/` — the funnel, the rates, the correlation, the categories and the

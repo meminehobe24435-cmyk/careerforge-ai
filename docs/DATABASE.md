@@ -132,6 +132,14 @@ erDiagram
 | `interview_topics` | `jsonb`                 | 可深入讨论的技术话题                                                     |
 | `view_count`       | `integer default 0`     |                                                                          |
 | `published_at`     | `timestamptz`           |                                                                          |
+| `public_payload`   | `jsonb`                 | **PHASE 10 追加**：发布时的完整投影，公开页因此不需要每次访问都调模型 ①  |
+| `pii_findings`     | `jsonb`                 | **PHASE 10 追加**：发布时扫到的个人信息，用于告诉候选人「脱敏了什么」    |
+
+> ① 与本节原表的差异（PHASE 10，迁移 `0008`）：为了让公开页的每次访问**不产生模型调用**，
+> 发布时把 RecruiterAgent 的完整投影存进 `public_payload`；隐私开关在**读取时**重新套用，
+> 因此「我刚关掉」立刻生效，而不是等到下次发布。`pii_findings` 记录发布时脱敏了哪些内容——
+> 悄悄删掉一处电话，与本来就没有电话，对候选人是两件完全不同的事。
+> 两列都是 `NOT NULL` + server default，迁移对已存在的行安全。
 
 ### 2.2 职业实体（career）
 
