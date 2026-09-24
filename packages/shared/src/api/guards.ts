@@ -10,6 +10,9 @@ import {
   type DashboardResponse,
   type DashboardStats,
   type FunnelResponse,
+  type PublicEvidence,
+  type PublicProfileResponse,
+  type PublicSettingsResponse,
   type RatesResponse,
   type ServiceHealthStatus,
   type SkillCorrelation,
@@ -222,5 +225,47 @@ export function isCategoryPerformanceList(value: unknown): value is CategoryPerf
         isNumber(row['applications']) &&
         isNumber(row['interviews']),
     )
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Public candidate page (API.md §2.13)
+ * ------------------------------------------------------------------ */
+
+/**
+ * `GET /public/candidate/{slug}`.
+ *
+ * The guard requires `displayName` and `meta` — a public page without its meta block would hide
+ * which sections are private, which is the one piece of the payload a reader needs to interpret
+ * the rest.
+ */
+export function isPublicProfileResponse(value: unknown): value is PublicProfileResponse {
+  if (!isRecord(value)) return false;
+  if (!isString(value['displayName'])) return false;
+  const meta = value['meta'];
+  if (!isRecord(meta) || !isString(meta['slug'])) return false;
+  const skills = value['skills'];
+  return (
+    Array.isArray(skills) &&
+    skills.every(
+      (skill) =>
+        isRecord(skill) && isString(skill['canonicalId']) && isString(skill['displayName']),
+    )
+  );
+}
+
+export function isPublicEvidenceList(value: unknown): value is PublicEvidence[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => isRecord(item) && isString(item['evidenceId']) && isString(item['title']))
+  );
+}
+
+export function isPublicSettingsResponse(value: unknown): value is PublicSettingsResponse {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value['isPublished'] === 'boolean' &&
+    typeof value['canPublish'] === 'boolean' &&
+    isRecord(value['sections'])
   );
 }

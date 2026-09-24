@@ -60,6 +60,7 @@ from careerforge_api.routers import (
     evidence,
     jobs,
     profile,
+    public,
     resume,
     system,
     tasks,
@@ -217,6 +218,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     application.include_router(applications.router, prefix=resolved.api_prefix)
     application.include_router(applications.job_router, prefix=resolved.api_prefix)
     application.include_router(analytics.router, prefix=resolved.api_prefix)
+    application.include_router(public.router, prefix=resolved.api_prefix)
     application.include_router(ai.router, prefix=resolved.api_prefix)
 
     @application.get("/", include_in_schema=False)

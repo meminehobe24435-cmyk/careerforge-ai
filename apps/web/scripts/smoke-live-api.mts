@@ -29,6 +29,7 @@ import {
   isCategoryPerformanceList,
   isDashboardResponse,
   isFunnelResponse,
+  isPublicProfileResponse,
   isRatesResponse,
   isRecord,
   isSkillCorrelationList,
@@ -41,6 +42,7 @@ import {
   type ApplicationStatus,
   type CategoryPerformance,
   type FunnelResponse,
+  type PublicProfileResponse,
   type RatesResponse,
   type TimelineResponse,
 } from '../../../packages/shared/src/api/types.ts';
@@ -288,7 +290,60 @@ async function main(): Promise<void> {
     fail('applications board', error);
   }
 
-  /* 7. An error path: the envelope must still be an envelope. */
+  /* 7. The public candidate page: published, anonymous, and free of PII.
+   *
+   * The demo account is unpublished by default, so this checks the 404 first — the state a
+   * stranger actually meets — then publishes, fetches **without a token**, and scans the
+   * response with the same patterns the redactor uses. It un-publishes again at the end: a
+   * smoke test that leaves a public page behind has changed what the next run measures. */
+  try {
+    const settings = await client.get<Record<string, unknown>>('/public/settings');
+    const slug = typeof settings['slug'] === 'string' ? settings['slug'] : null;
+    if (!slug) throw new Error('the demo account has no slug to publish under');
+    if (settings['isPublished']) {
+      await client.post('/public/publish', { published: false });
+    }
+
+    const before = await client.get<unknown>(`/public/candidate/${slug}`).then(
+      () => 'reachable',
+      (error: unknown) => (error instanceof ApiError ? String(error.status) : String(error)),
+    );
+    pass('GET /public (unpublished)', `${before} — 陌生人看到的是 404，不是半成品页`);
+
+    await client.post('/public/publish', { published: true });
+    const page = await client.get<unknown>(`/public/candidate/${slug}`, { auth: false });
+    if (!isPublicProfileResponse(page)) {
+      throw new Error('GET /public/candidate/{slug} is not the documented shape');
+    }
+    const publicPage = page as PublicProfileResponse;
+    const body = JSON.stringify(publicPage);
+    if (/[\w.+-]+@[\w-]+\.[\w.]+/.test(body)) throw new Error('the public page publishes an email');
+    if (/(?<!\d)1[3-9]\d{9}(?!\d)/.test(body)) throw new Error('the public page publishes a phone');
+    pass(
+      'GET /public/candidate/:slug',
+      `anonymous ok · skills=${publicPage.skills.length} ` +
+        `coverage=${publicPage.meta.evidenceCoverage.toFixed(2)} ` +
+        `hidden=[${publicPage.meta.hiddenSections.join(',')}] · no PII`,
+    );
+
+    const hidden = await client.patch<Record<string, unknown>>('/public/settings', {
+      sections: { skills: false },
+    });
+    const afterHide = await client.get<unknown>(`/public/candidate/${slug}`, { auth: false });
+    if (!isPublicProfileResponse(afterHide)) throw new Error('the page stopped validating');
+    if ((afterHide as PublicProfileResponse).skills.length !== 0) {
+      throw new Error('switching a section off did not take effect on the next read');
+    }
+    pass('PATCH /public/settings', `skills hidden → 0 skills on the next anonymous read`);
+
+    await client.patch('/public/settings', { sections: { skills: true } });
+    await client.post('/public/publish', { published: false });
+    void hidden;
+  } catch (error) {
+    fail('public candidate page', error);
+  }
+
+  /* 8. An error path: the envelope must still be an envelope. */
   try {
     await client.get('/definitely-not-a-route');
     fail('GET unknown route', new Error('expected a 404, got a success'));

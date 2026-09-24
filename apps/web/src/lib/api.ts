@@ -22,6 +22,7 @@ import {
   type FunnelResponse,
   type LoginRequest,
   type LoginResponse,
+  type PublicSettingsResponse,
   type RatesResponse,
   type SkillCorrelation,
   type SystemHealthResponse,
@@ -217,6 +218,15 @@ export const api = {
   skillCorrelation: fetchSkillCorrelation,
   categories: fetchCategories,
   timeline: fetchTimeline,
+
+  /* public page — the owner's side (API.md §2.13) */
+  publicSettings: () => client.get<PublicSettingsResponse>('/public/settings'),
+  publishPublicProfile: (payload: { published: boolean; sections?: Record<string, boolean> }) =>
+    client.post<PublicSettingsResponse>('/public/publish', payload),
+  updatePublicSettings: (payload: {
+    sections?: Record<string, boolean>;
+    hiddenSkills?: string[];
+  }) => client.patch<PublicSettingsResponse>('/public/settings', payload),
 
   /* escape hatch for phases that have not landed yet */
   request: client.request,

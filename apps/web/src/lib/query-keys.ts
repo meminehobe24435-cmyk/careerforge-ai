@@ -26,4 +26,7 @@ export const queryKeys = {
     categories: (range: string) => ['analytics', 'categories', range] as const,
     timeline: (range: string) => ['analytics', 'timeline', range] as const,
   },
+  publicProfile: {
+    settings: () => ['public', 'settings'] as const,
+  },
 } as const;

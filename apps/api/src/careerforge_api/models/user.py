@@ -141,4 +141,13 @@ class PublicProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     view_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     published_at: Mapped[datetime | None] = mapped_column(TimestampType, nullable=True)
 
+    #: The complete projection as published, so a public view costs **no model call**: the
+    #: narrative half (summary, highlights, interview topics) is generated once here, and the
+    #: private half (section switches, hidden skills) is applied on the way out. Not in the
+    #: original column list — §2.1 records the addition and its reason.
+    public_payload: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    #: What the PII scanner found *at publish time*, kept so the owner can be told what was
+    #: masked rather than being reassured by silence.
+    pii_findings: Mapped[list[Any]] = mapped_column(JSONType, nullable=False, default=list)
+
     user: Mapped[User] = relationship(back_populates="public_profile")

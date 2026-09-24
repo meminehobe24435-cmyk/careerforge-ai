@@ -183,8 +183,9 @@ export const navGroups: NavGroup[] = [
         label: '设置',
         en: 'Settings',
         icon: ShieldCheck,
-        phase: 'PHASE 11',
-        live: false,
+        shortcut: 'g s',
+        // Live, but only the privacy half exists so far — the page itself says so.
+        live: true,
       },
     ],
   },
