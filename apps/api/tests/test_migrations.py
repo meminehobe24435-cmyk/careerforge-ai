@@ -107,13 +107,28 @@ def _declared_database(tmp_path: Path) -> Path:
 
 
 def test_alembic_baseline_matches_the_models(tmp_path: Path) -> None:
+    """The migrated schema and the ORM models must describe the same database.
+
+    Columns are compared as a **set** of `(name, type, nullable, primary_key)` tuples rather
+    than as an ordered list. Order is the one thing a migration cannot preserve: a table created
+    in one go has its columns in declaration order, while a table extended later has them
+    wherever `ALTER TABLE` appended them (``public_profiles.public_payload`` in migration `0008`
+    is the first case of this). SQLAlchemy addresses columns by name and no query depends on
+    position, so a difference in order is unobservable — whereas a difference in name, type,
+    nullability or key is exactly the drift this test exists to catch. Everything else
+    (indexes, uniques, foreign keys, checks) is still compared in full.
+    """
     migrated = _describe(_migrated_database(tmp_path))
     declared = _describe(_declared_database(tmp_path))
 
     assert set(migrated) == set(declared), "table sets differ"
     for table in sorted(declared):
         for aspect in ("columns", "indexes", "uniques", "foreign_keys", "checks"):
-            assert migrated[table][aspect] == declared[table][aspect], (
+            left = migrated[table][aspect]
+            right = declared[table][aspect]
+            if aspect == "columns":
+                left, right = set(left), set(right)
+            assert left == right, (
                 f"{table}.{aspect} differs:\n"
                 f"  migration: {migrated[table][aspect]}\n"
                 f"  models:    {declared[table][aspect]}"
@@ -135,7 +150,7 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
     """The head is a deliberate list, not a wildcard: a migration that appears without
     its phase being finished should fail this test, not silently become the head."""
     script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
-    assert script.get_heads() == ["0007"]
+    assert script.get_heads() == ["0008"]
     for revision in (
         "0001_initial",
         "0002_documents",
@@ -144,6 +159,7 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
         "0005_profile_entities",
         "0006_resume",
         "0007_applications",
+        "0008_public_profile_payload",
     ):
         assert (APPS_API / "alembic" / "versions" / f"{revision}.py").exists()
 
