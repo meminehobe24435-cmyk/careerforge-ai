@@ -36,7 +36,7 @@ from careerforge_ai.orchestrator.core import (
 from careerforge_ai.prompting.registry import PromptRegistry
 from careerforge_ai.providers.base import LLMProvider
 from careerforge_ai.schemas.common import AgentRunStatus, DegradationReason
-from careerforge_ai.schemas.observability import AgentRunRecord, StepTrace
+from careerforge_ai.schemas.observability import AgentRunRecord, Cost, StepTrace
 
 __all__ = ["ExecutorSettings", "WorkflowExecutor"]
 
@@ -226,9 +226,7 @@ class WorkflowExecutor:
         for attempt in range(1, max_retries + 2):
             try:
                 value = await asyncio.wait_for(step.fn(context, inputs), timeout=timeout_s)
-                tokens, cost = context.usage
-                trace.tokens = tokens
-                trace.cost = cost
+                _apply_usage(context, trace)
                 trace.attempts = attempt
                 trace.status = "ok"
                 trace.latency_ms = int((time.perf_counter() - step_started) * 1000)
@@ -252,9 +250,7 @@ class WorkflowExecutor:
                     await asyncio.sleep(self._settings.backoff_base_s * attempt)
 
         assert last_error is not None
-        tokens, cost = context.usage
-        trace.tokens = tokens
-        trace.cost = cost
+        _apply_usage(context, trace)
         trace.latency_ms = int((time.perf_counter() - step_started) * 1000)
         trace.error_code = _error_code(last_error)
         trace.error_message = str(last_error)[:500]
@@ -321,6 +317,29 @@ def _error_code(error: BaseException) -> str:
     if isinstance(error, CareerForgeError):
         return error.code
     return type(error).__name__.upper()
+
+
+def _apply_usage(context: RunContext, trace: StepTrace) -> None:
+    """Copy the step's accumulated usage onto its trace, in both of the two shapes.
+
+    ``tokens``/``cost`` are the counters (kept for every consumer written before PHASE 13),
+    ``usage`` is the envelope that says whether those counters are a measurement, an estimate, or an
+    absence of both. A step whose envelope is ``None`` made no model call — which is not the same as
+    a model call whose usage was never reported, and the trace now distinguishes them.
+
+    When an envelope exists its counters win, because they are the ones the provider actually
+    reported — an estimate and a measurement can legitimately differ, and the envelope is the side
+    that carries the provenance. ``usage.tokens`` collapses partial envelopes (some calls reported,
+    some did not) to the known part, which is what the counter columns are for.
+    """
+    tokens, cost = context.usage
+    trace.usage = context.usage_envelope
+    if trace.usage is not None:
+        trace.tokens = trace.usage.tokens
+        trace.cost = Cost(usd=trace.usage.cost_usd, cny=trace.usage.cost_cny)
+    else:
+        trace.tokens = tokens
+        trace.cost = cost
 
 
 def _first_prompt_ref(context: RunContext) -> str | None:

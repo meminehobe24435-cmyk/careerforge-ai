@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 import re
 
+from careerforge_ai.parsing.skill_mentions import SkillPresence, presence_of
 from careerforge_ai.parsing.tokenize import missing_technical_tokens, token_overlap
 from careerforge_ai.schemas.claim import ClaimReason, NumericMention
 from careerforge_ai.schemas.common import ClaimRuleCode
@@ -159,19 +160,53 @@ def detect_numeric_risk(
     return mentions, reasons
 
 
-def detect_missing_technical(claim: str, evidence_text: str) -> list[ClaimReason]:
-    """Flag technical nouns the claim asserts but the evidence never mentions."""
-    missing = sorted(missing_technical_tokens(claim, evidence_text))
-    if not missing:
+def detect_missing_technical(
+    claim: str, evidence_text: str, *, presence: SkillPresence | None = None
+) -> list[ClaimReason]:
+    """Flag technical nouns the claim asserts but the evidence never mentions.
+
+    **Severity is decided by the skill vocabulary, not by the tokeniser** (PHASE 13). Two different
+    facts used to look identical here, and the difference decides whether a candidate's sentence is
+    refused outright:
+
+    * a technology the *taxonomy* knows and the material does not carry (``Kafka`` claimed over a
+      repository that only mentions Redis) — the product's documented rule says a technology nothing
+      mentions makes a claim **unsupported**, so this is a ``blocker``;
+    * a technical token the taxonomy cannot normalise (``Azure Pipelines``, ``RRF``) — its absence
+      says more about the extractor than about the candidate, and hard-rejecting an honest claim
+      because a synonym was missed is the failure this rule must not cause, so this stays a
+      ``warning``.
+
+    ``docs/QUALITY.md`` §7.4 recorded the gap ("``skill_not_in_graph`` is only a warning") and named
+    the prerequisite: a false-positive audit of the extractor before raising severity. That audit is
+    ``packages/ai/tests/test_skill_presence.py``, and the escalation is limited to the half the audit
+    can support.
+    """
+    resolved = presence if presence is not None else presence_of(claim, evidence_text)
+    if not resolved.any:
         return []
+
+    confirmed = sorted(resolved.confirmed_absent.values())
+    unconfirmed = sorted(resolved.unconfirmed_tokens)
+    # Quote the candidate's own spelling where there is one: "Kafka" is what they wrote, even though
+    # the judgement rests on the canonical skill the taxonomy resolved it to.
+    named = [*confirmed, *unconfirmed[: max(1, 5 - len(confirmed))]]
+    if not confirmed:
+        message = (
+            f"证据中未出现：{'、'.join(named[:5])}。"
+            "句子里的每一项技术名词都需要在证据里出现，否则面试官一问就会露底。"
+        )
+    else:
+        message = (
+            f"证据中完全没有出现：{'、'.join(confirmed[:5])}。"
+            "产品规则是：任何证据都没有提到的技术，断言即判为不支持——"
+            "先补上能证明它的材料（代码、提交或文档），或把这句里的它删掉。"
+        )
     return [
         ClaimReason(
             rule=ClaimRuleCode.SKILL_NOT_IN_GRAPH,
-            severity="warning",
-            message=(
-                f"证据中未出现：{'、'.join(missing[:5])}。"
-                "句子里的每一项技术名词都需要在证据里出现，否则面试官一问就会露底。"
-            ),
+            severity="blocker" if resolved.blocked else "warning",
+            message=message,
         )
     ]
 
@@ -252,8 +287,12 @@ def describe_rules() -> Sequence[dict[str, str]]:
         },
         {
             "code": ClaimRuleCode.SKILL_NOT_IN_GRAPH.value,
-            "severity": "warning",
-            "description": "断言中的技术名词必须在证据中出现",
+            "severity": "blocker|warning",
+            "description": (
+                "断言中的技术名词必须在证据中出现。taxonomy 能归一化的技能（含别名/等价说法）"
+                "在证据中完全不存在时为 blocker（判 unsupported）；taxonomy 无法识别的技术名词"
+                "仅告警，避免把同义写法误判为编造"
+            ),
         },
         {
             "code": ClaimRuleCode.SUPERLATIVE_LANGUAGE.value,

@@ -25,9 +25,11 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
+    structured_output_envelope,
 )
 from careerforge_ai.schemas.common import CacheKind
-from careerforge_ai.schemas.observability import CacheStats, Cost, TokenUsage
+from careerforge_ai.schemas.observability import CacheStats, Cost, LLMUsage, TokenUsage
 
 __all__ = ["CacheStore", "InMemoryCacheStore", "CachedProvider"]
 
@@ -185,6 +187,9 @@ class CachedProvider:
                 degraded=cached.degraded,
                 degradation_reason=cached.degradation_reason,
                 finish_reason=cached.finish_reason,
+                # ``cached`` rather than ``estimated``: the tokens are not an estimate of
+                # anything, they are the absence of a call (PHASE 13).
+                usage=LLMUsage.cached(provider=cached.provider, model=cached.model),
             )
         result = await self._inner.chat(
             messages, temperature=temperature, max_tokens=max_tokens, model=model
@@ -249,4 +254,51 @@ class CachedProvider:
             messages, schema, context=context, temperature=temperature, model=model
         )
         self._store.set(key, result, self._ttl)
+        return result
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The structured path, reporting a cache hit as ``cached`` rather than as zero.
+
+        A hit costs nothing, and that is a fact — so the envelope says ``cached`` with zero
+        counts, which is different from the ``unavailable`` a provider that reported nothing
+        gets. Attributing the *original* call's tokens to the hit would bill the same tokens
+        twice in the ledger, which is why the cached value is not asked for its usage.
+
+        The lookup and the store are the same operations :meth:`structured_output` performs, in
+        the same order, against the same key: a hit recorded here is the hit that call would
+        have taken.
+        """
+        if not self._enabled:
+            return await structured_output_envelope(
+                self._inner,
+                messages,
+                schema,
+                context=context,
+                temperature=temperature,
+                model=model,
+            )
+        key = self._schema_key(messages, schema, context)
+        cached = self._store.get(key)
+        if isinstance(cached, schema):
+            return StructuredResult(
+                value=cached,
+                usage=LLMUsage.cached(provider=self.name, model=model),
+            )
+        result: StructuredResult[SchemaT] = await structured_output_envelope(
+            self._inner,
+            messages,
+            schema,
+            context=context,
+            temperature=temperature,
+            model=model,
+        )
+        self._store.set(key, result.value, self._ttl)
         return result

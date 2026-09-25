@@ -40,9 +40,12 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
+    structured_output_envelope,
 )
 from careerforge_ai.providers.caching import CacheStore, InMemoryCacheStore
-from careerforge_ai.schemas.common import CacheKind
+from careerforge_ai.schemas.common import CacheKind, UsageStatus
+from careerforge_ai.schemas.observability import LLMUsage
 from careerforge_api.db.compat import utcnow
 from careerforge_api.models.cache import AiCache
 from careerforge_api.models.observability import LlmCall
@@ -144,6 +147,11 @@ class MeteredProvider:
     was a cache hit. When a provider reports no latency (the heuristic path returns instantly and
     reports nothing), the measured wall time is used instead, because "0 ms" for a call that took
     3 ms is a number that would make the dashboard lie.
+
+    PHASE 13 changed one thing here and it was the difference between a cost page and a
+    decoration: :meth:`structured_output_envelope` records what the call actually cost. The old
+    :meth:`structured_output` wrote ``tokens=None, cost=None`` for every structured call, which is
+    every call any agent makes, so ``llm_calls`` was structurally zero on a paid deployment.
     """
 
     def __init__(
@@ -154,12 +162,16 @@ class MeteredProvider:
         agent: str,
         workflow: str,
         prompt_version: str | None = None,
+        request_id: str | None = None,
     ) -> None:
         self._inner = inner
         self._recorder = recorder
         self._agent = agent
         self._workflow = workflow
         self._prompt_version = prompt_version
+        #: The HTTP request this call belongs to. Written onto the ``llm_calls`` row so an
+        #: operator can join a model call to the log line that caused it.
+        self._request_id = request_id
 
     @property
     def name(self) -> str:
@@ -210,26 +222,54 @@ class MeteredProvider:
         temperature: float = 0.0,
         model: str | None = None,
     ) -> SchemaT:
-        started = time.perf_counter()
-        result = await self._inner.structured_output(
+        """Return the parsed schema, recording the call through the envelope path.
+
+        A direct caller gets exactly what it always got. The row is written by
+        :meth:`structured_output_envelope`, so there is one recording path rather than two that
+        could disagree about the same call.
+        """
+        result = await self.structured_output_envelope(
             messages, schema, context=context, temperature=temperature, model=model
         )
-        # A structured call returns the parsed schema, not the provider's envelope, so there is
-        # no model name to record here. The run row carries the model the router selected; this
-        # row carries the call's cost facts, and inventing a model name would be worse than
-        # leaving it empty.
+        return result.value
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The structured path with its usage envelope — the one that used to be dropped.
+
+        The row records the envelope's own numbers and, crucially, its ``usage_status``: a
+        provider that reported 150 tokens writes 150, and a provider that reported nothing writes
+        SQL ``NULL`` with ``unavailable`` rather than a ``0`` that reads like a measurement.
+        """
+        started = time.perf_counter()
+        result: StructuredResult[SchemaT] = await structured_output_envelope(
+            self._inner,
+            messages,
+            schema,
+            context=context,
+            temperature=temperature,
+            model=model,
+        )
+        envelope = result.usage.with_request(self._request_id, model)
         self._recorder.note_call(
             agent=self._agent,
             workflow=self._workflow,
             operation="structured",
-            provider=self._inner.name,
-            model="",
+            provider=envelope.provider or self._inner.name,
+            model=envelope.model or "",
             prompt_version=self._prompt_version,
             latency_ms=int((time.perf_counter() - started) * 1000),
-            tokens=None,
-            cost=None,
-            cache_hit=False,
-            status="ok",
+            usage=envelope,
+            cache_hit=envelope.usage_status is UsageStatus.CACHED,
+            status="cache_hit" if envelope.usage_status is UsageStatus.CACHED else "ok",
+            request_id=self._request_id,
         )
         return result
 
@@ -261,6 +301,7 @@ class MeteredProvider:
     async def _record(self, operation: str, result: Any, started: float) -> None:
         latency = int(getattr(result, "latency_ms", 0) or 0)
         measured = int((time.perf_counter() - started) * 1000)
+        envelope = result.envelope() if hasattr(result, "envelope") else None
         self._recorder.note_call(
             agent=self._agent,
             workflow=self._workflow,
@@ -269,10 +310,12 @@ class MeteredProvider:
             model=str(getattr(result, "model", "")) or self._inner.name,
             prompt_version=self._prompt_version,
             latency_ms=max(latency, measured),
+            usage=envelope,
             tokens=getattr(result, "tokens", None),
             cost=getattr(result, "cost", None),
             cache_hit=bool(getattr(result, "cached", False)),
             status="ok",
+            request_id=self._request_id,
         )
 
 
@@ -287,10 +330,10 @@ class _PendingCall:
     model: str
     prompt_version: str | None
     latency_ms: int
-    tokens: Any
-    cost: Any
+    usage: LLMUsage | None
     cache_hit: bool
     status: str
+    request_id: str | None = None
 
 
 class RunRecorder:
@@ -314,8 +357,23 @@ class RunRecorder:
         self._run_id = run_id
 
     def note_call(self, **fields: Any) -> None:
+        """Buffer one model call.
+
+        ``usage`` is the preferred input (an :class:`LLMUsage`, whose status decides what the row
+        says); ``tokens``/``cost`` are still accepted from callers that only have counters, and
+        are converted with :meth:`LLMUsage.from_token_usage` so a call recorded that way is
+        ``reported`` or ``estimated`` rather than silently unaccounted.
+        """
         if fields.get("cache_hit"):
             self._provider_cache_hits += 1
+        usage: LLMUsage | None = fields.get("usage")
+        if usage is None and (fields.get("tokens") is not None or fields.get("cost") is not None):
+            usage = LLMUsage.from_token_usage(
+                fields.get("tokens"),
+                fields.get("cost"),
+                provider=str(fields.get("provider") or ""),
+                model=str(fields.get("model") or "") or None,
+            )
         self._calls.append(
             _PendingCall(
                 agent=str(fields["agent"]),
@@ -325,10 +383,10 @@ class RunRecorder:
                 model=str(fields["model"]),
                 prompt_version=fields.get("prompt_version"),
                 latency_ms=int(fields.get("latency_ms") or 0),
-                tokens=fields.get("tokens"),
-                cost=fields.get("cost"),
+                usage=usage,
                 cache_hit=bool(fields.get("cache_hit")),
                 status=str(fields.get("status") or "ok"),
+                request_id=fields.get("request_id"),
             )
         )
 
@@ -336,8 +394,13 @@ class RunRecorder:
         """Write the buffered calls and cache events. Returns how many rows were touched."""
         written = 0
         for call in self._calls:
-            tokens = call.tokens
-            cost = call.cost
+            # One projection decides what every count column holds, including the ``None`` that
+            # means "the provider did not report this" (PHASE 13).
+            projection = (
+                call.usage.projection()
+                if call.usage is not None
+                else LLMUsage.unavailable(provider=call.provider).projection()
+            )
             self._session.add(
                 LlmCall(
                     user_id=self._user_id,
@@ -349,13 +412,16 @@ class RunRecorder:
                     if call.operation in {"chat", "embedding", "structured", "stream"}
                     else "chat",
                     prompt_version=call.prompt_version,
-                    prompt_tokens=int(getattr(tokens, "prompt_tokens", 0) or 0),
-                    completion_tokens=int(getattr(tokens, "completion_tokens", 0) or 0),
-                    total_tokens=int(getattr(tokens, "total_tokens", 0) or 0),
-                    cost_usd=float(getattr(cost, "usd", 0.0) or 0.0),
-                    cost_cny=float(getattr(cost, "cny", 0.0) or 0.0),
+                    prompt_tokens=projection["prompt_tokens"],
+                    completion_tokens=projection["completion_tokens"],
+                    total_tokens=projection["total_tokens"],
+                    cached_tokens=projection["cached_tokens"],
+                    cost_usd=projection["cost_usd"],
+                    cost_cny=projection["cost_cny"],
+                    usage_status=str(projection["usage_status"]),
                     latency_ms=call.latency_ms,
                     status=call.status,
+                    request_id=call.request_id,
                 )
             )
             written += 1

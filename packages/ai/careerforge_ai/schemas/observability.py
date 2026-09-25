@@ -1,8 +1,11 @@
-"""Observability schemas: step traces, agent runs, token usage and cost.
+"""Observability schemas: step traces, agent runs and cost.
 
 Observability is a first-class feature of this project, not an afterthought:
 the orchestrator emits these records for every workflow, which is what makes the
 AI Runs and Cost dashboards real rather than decorative.
+
+Token usage lives in :mod:`careerforge_ai.schemas.usage` and is re-exported here, so a caller that
+has always written ``from careerforge_ai.schemas.observability import TokenUsage`` still can.
 """
 
 from __future__ import annotations
@@ -21,52 +24,22 @@ from careerforge_ai.schemas.common import (
     StrictModel,
     utcnow,
 )
+from careerforge_ai.schemas.usage import Cost, LLMUsage, TokenUsage, usage_status_of
 
 __all__ = [
     "AgentRunRecord",
     "CacheStats",
+    # Re-exported with the other cost types: the split is internal.
     "Cost",
     "CostByGroup",
     "ExtractedRunNarrative",
+    # Re-exported from ``schemas.usage``: the split is internal, the import path is not.
+    "LLMUsage",
     "ProviderSelection",
     "StepTrace",
     "TokenUsage",
+    "usage_status_of",
 ]
-
-
-class TokenUsage(CFBaseModel):
-    prompt_tokens: int = Field(default=0, ge=0)
-    completion_tokens: int = Field(default=0, ge=0)
-    total_tokens: int = Field(default=0, ge=0)
-    estimated: bool = Field(
-        default=False,
-        description="True when tokens were estimated rather than reported by the provider",
-    )
-
-    def merged(self, other: TokenUsage) -> TokenUsage:
-        return TokenUsage(
-            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
-            completion_tokens=self.completion_tokens + other.completion_tokens,
-            total_tokens=self.total_tokens + other.total_tokens,
-            estimated=self.estimated or other.estimated,
-        )
-
-
-class Cost(CFBaseModel):
-    """Dual-currency cost so the dashboard works for both CNY and USD pricing."""
-
-    usd: float = Field(default=0.0, ge=0.0)
-    cny: float = Field(default=0.0, ge=0.0)
-    currency: str = "USD"
-    price_table_version: str = "pricing@1.0.0"
-
-    def __add__(self, other: Cost) -> Cost:
-        return Cost(
-            usd=round(self.usd + other.usd, 8),
-            cny=round(self.cny + other.cny, 8),
-            currency=self.currency,
-            price_table_version=self.price_table_version,
-        )
 
 
 class StepTrace(CFBaseModel):
@@ -77,6 +50,12 @@ class StepTrace(CFBaseModel):
     latency_ms: int = 0
     tokens: TokenUsage = Field(default_factory=TokenUsage)
     cost: Cost = Field(default_factory=Cost)
+    #: The same call's usage as an envelope, or ``None`` when the step made no model call.
+    #: ``None`` here is a statement: a pure function step has no usage *at all*, which is a
+    #: different thing from a model call whose usage the provider did not report (that is an
+    #: :class:`LLMUsage` with ``usage_status="unavailable"``). Before PHASE 13 both were
+    #: written as zero and the AI Runs page could not tell them apart.
+    usage: LLMUsage | None = None
     cache_hit: bool = False
     provider: str | None = None
     model: str | None = None
@@ -92,6 +71,10 @@ class StepTrace(CFBaseModel):
     @property
     def failed(self) -> bool:
         return self.status == "failed"
+
+    def usage_or_unavailable(self) -> LLMUsage:
+        """This step's envelope, or an ``unavailable`` one when the step made no model call."""
+        return self.usage or LLMUsage.unavailable(provider=self.provider, model=self.model)
 
 
 class ProviderSelection(CFBaseModel):
@@ -124,6 +107,10 @@ class AgentRunRecord(CFBaseModel):
 
     tokens: TokenUsage = Field(default_factory=TokenUsage)
     cost: Cost = Field(default_factory=Cost)
+    #: The run's usage as one envelope, accumulated from the steps' own envelopes. Absent
+    #: (``None``) for a run in which no model call reported anything — which includes every
+    #: run on the zero-key heuristic provider, whose calls honestly declare ``unavailable``.
+    usage: LLMUsage | None = None
     latency_ms: int = 0
     cache_hits: int = Field(default=0, ge=0)
 
@@ -143,16 +130,32 @@ class AgentRunRecord(CFBaseModel):
         return next((trace for trace in self.steps if trace.name == name), None)
 
     def recompute_totals(self) -> None:
-        """Derive run-level totals from the step traces (never hand-maintained)."""
+        """Derive run-level totals from the step traces (never hand-maintained).
+
+        Two accumulations rather than one, and they are not redundant: ``tokens``/``cost``
+        are the counters every existing consumer reads (and the seeded, hand-built traces
+        in tests still populate), while ``usage`` is the envelope that knows whether the
+        counters are a measurement, an estimate, or an absence of both.
+        """
         total = TokenUsage()
         cost = Cost()
+        envelope: LLMUsage | None = None
         for trace in self.steps:
             total = total.merged(trace.tokens)
             cost = cost + trace.cost
+            if trace.usage is not None:
+                envelope = trace.usage if envelope is None else envelope.merge(trace.usage)
         self.tokens = total
         self.cost = cost
+        self.usage = envelope
         self.latency_ms = sum(trace.latency_ms for trace in self.steps)
         self.cache_hits = sum(1 for trace in self.steps if trace.cache_hit)
+
+    def usage_or_unavailable(self) -> LLMUsage:
+        """The run's envelope, or an ``unavailable`` one when nothing reported usage."""
+        return self.usage or LLMUsage.unavailable(
+            provider=self.provider, model=self.model, request_id=self.request_id
+        )
 
     @property
     def degraded_steps(self) -> list[StepTrace]:

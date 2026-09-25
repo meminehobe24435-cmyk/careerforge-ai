@@ -34,6 +34,12 @@ from tests.observability_support import fetch_runs
 #: table disagree.
 RUN_STATUSES = {"running", "succeeded", "failed", "degraded", "cancelled"}
 
+#: The usage statuses the API may report, mirroring ``models/observability.py``'s
+#: ``usage_status_valid`` constraint and ``careerforge_ai.schemas.common.UsageStatus``.
+#: ``legacy`` is the one the API adds: rows written before PHASE 13 hold ``0`` from a writer that
+#: had no status to record, so they are labelled rather than re-interpreted.
+USAGE_STATUSES = {"reported", "estimated", "cached", "unavailable", "legacy"}
+
 
 def _instant(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
@@ -113,9 +119,14 @@ async def test_a_hard_failure_is_recorded_as_failed(
 ) -> None:
     """With nothing left to degrade to, the run is ``failed`` and the error code is kept.
 
-    Driven through the executor and the tracker directly because the HTTP path cannot show this
-    row at all: the error response rolls the request's transaction back (see
-    ``test_failure_injection.py::test_a_failed_request_leaves_no_trace_behind``).
+    Driven through the executor and the tracker directly, because that is where the record is
+    built. Since PHASE 13 the *HTTP* path leaves this row too — the tracker hands a failed run to
+    the failure journal and the middleware writes it after the request transaction has rolled back
+    (``test_failure_injection.py::test_a_failed_request_still_leaves_a_trace_behind``).
+
+    The provider here reported **nothing** — it raised before answering — so the counts are ``NULL``
+    with ``usageStatus="unavailable"``, not ``0``. ``0`` would be a claim that the call used no
+    tokens, which is a measurement nobody took.
     """
     account = await make_user(display_name="Failed")
     row, raised = await run_job_through_the_tracker(app, account, ScriptedProvider(TIMEOUT))
@@ -124,7 +135,9 @@ async def test_a_hard_failure_is_recorded_as_failed(
     assert row.status == "failed"
     assert row.status in RUN_STATUSES
     assert row.error and "PROVIDER_UNAVAILABLE" in row.error
-    assert row.total_tokens == 0 and float(row.cost_usd) == 0.0
+    assert row.error_code == "PROVIDER_UNAVAILABLE"
+    assert row.total_tokens is None and row.cost_usd is None
+    assert row.usage_status == "unavailable"
     step = next(item for item in row.steps if item["name"] == "extract")
     assert step["status"] == "failed"
     assert step["error_code"] == "PROVIDER_UNAVAILABLE"
@@ -141,32 +154,47 @@ async def test_no_run_or_call_reports_a_negative_number(
     A negative count would mean the accounting had gone wrong somewhere upstream, and a dashboard
     that prints one is worse than a dashboard that prints nothing. The scan covers every run in
     the window — including the ones other suites wrote — plus each run's individual model calls.
+
+    ``null`` is allowed and is checked for meaning too (PHASE 13): it means the provider did not
+    report the value, and the ``usageStatus`` beside it has to say so. A number and a status of
+    ``unavailable`` together would be a payload that contradicts itself.
     """
     account = await make_user(display_name="Non negative")
     await client.post("/api/v1/ai/analyze/jd", json={"text": JD_TEXT}, headers=account.headers)
     await client.post("/api/v1/ai/match", json=MATCH_PAYLOAD, headers=account.headers)
 
+    def non_negative(value: Any, what: str) -> None:
+        assert value is None or value >= 0, f"{what} is negative: {value!r}"
+
     listing = await fetch_runs(client, account, limit="200")
     assert listing["items"], "no run to check"
     for run in listing["items"]:
         assert run["status"] in RUN_STATUSES, run
-        assert run["totalTokens"] >= 0
-        assert run["promptTokens"] >= 0 and run["completionTokens"] >= 0
-        assert run["costUsd"] >= 0 and run["costCny"] >= 0
-        assert run["latencyMs"] is None or run["latencyMs"] >= 0
+        assert run["usageStatus"] in USAGE_STATUSES, run
+        non_negative(run["totalTokens"], "run.totalTokens")
+        non_negative(run["promptTokens"], "run.promptTokens")
+        non_negative(run["completionTokens"], "run.completionTokens")
+        non_negative(run["costUsd"], "run.costUsd")
+        non_negative(run["costCny"], "run.costCny")
+        non_negative(run["latencyMs"], "run.latencyMs")
         assert run["stepCount"] >= 0
+        if run["usageStatus"] == "unavailable" and run["totalTokens"] is None:
+            assert run["costUsd"] is None, "a run with unknown tokens claims a known cost"
 
     for run in listing["items"][:12]:
         detail = await _detail(client, account, run["id"])
         for step in detail["steps"]:
-            assert step["tokens"] >= 0
-            assert step["costUsd"] >= 0
+            assert step["usageStatus"] in USAGE_STATUSES, step
+            non_negative(step["tokens"], "step.tokens")
+            non_negative(step["costUsd"], "step.costUsd")
             assert step["latencyMs"] >= 0
             assert step["attempts"] >= 1
         for call in detail["calls"]:
-            assert call["totalTokens"] >= 0
-            assert call["costUsd"] >= 0 and call["costCny"] >= 0
-            assert call["latencyMs"] is None or call["latencyMs"] >= 0
+            assert call["usageStatus"] in USAGE_STATUSES, call
+            non_negative(call["totalTokens"], "call.totalTokens")
+            non_negative(call["costUsd"], "call.costUsd")
+            non_negative(call["costCny"], "call.costCny")
+            non_negative(call["latencyMs"], "call.latencyMs")
 
     costs = envelope(await client.get("/api/v1/ai-costs?range=all", headers=account.headers))[
         "data"
@@ -174,6 +202,7 @@ async def test_no_run_or_call_reports_a_negative_number(
     assert costs["totals"]["runs"] >= 0 and costs["totals"]["tokens"] >= 0
     assert costs["totals"]["costUsd"] >= 0 and costs["totals"]["costCny"] >= 0
     assert costs["totals"]["modelCalls"] >= 0
+    assert costs["unaccountedRuns"] >= 0
     for day in costs["days"]:
         assert day["tokens"] >= 0 and day["costUsd"] >= 0 and day["costCny"] >= 0
         assert day["runs"] >= 0
@@ -183,6 +212,84 @@ async def test_no_run_or_call_reports_a_negative_number(
     for kind in stats["byKind"]:
         assert kind["entries"] >= 0 and kind["hits"] >= 0 and kind["bytes"] >= 0
     assert stats["process"]["processHits"] >= 0 and stats["process"]["processMisses"] >= 0
+
+
+async def test_a_run_with_no_reported_usage_says_so_instead_of_printing_zero(
+    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
+) -> None:
+    """The zero-key heuristic path is the honest case, and the payload has to carry it.
+
+    It computes locally and spends nothing, so it has no usage to report — which is different from
+    reporting zero. Measured on the shipped chain: ``usageStatus`` is ``unavailable``, the counts
+    are ``null``, and the cost payload says the totals are a **floor** rather than a complete
+    figure. A cost page that printed ``0`` here would be describing a measurement nobody took, and
+    that is the defect PHASE 12 recorded (``docs/QUALITY.md`` §7.1).
+    """
+    account = await make_user(display_name="Unavailable usage")
+    response = await client.post(
+        "/api/v1/ai/analyze/jd", json={"text": JD_TEXT}, headers=account.headers
+    )
+    assert response.status_code == 200, response.text
+    run_id = str(envelope(response)["data"]["meta"]["run_id"])
+
+    run = await _detail(client, account, run_id)
+    assert run["provider"] == "heuristic", "this test pins the shipped zero-key deployment"
+    assert run["usageStatus"] == "unavailable"
+    assert run["totalTokens"] is None and run["promptTokens"] is None
+    assert run["costUsd"] is None and run["costCny"] is None
+
+    step = next(item for item in run["steps"] if item["name"] == "extract")
+    assert step["usageStatus"] == "unavailable"
+    assert step["tokens"] is None
+    call = next(item for item in run["calls"] if item["operation"] == "structured")
+    assert call["usageStatus"] == "unavailable"
+    assert call["totalTokens"] is None and call["costUsd"] is None
+
+    costs = envelope(await client.get("/api/v1/ai-costs?range=all", headers=account.headers))[
+        "data"
+    ]
+    assert costs["unaccountedRuns"] >= 1
+    assert any("下限" in note for note in costs["notes"]), (
+        "the totals are a floor and the payload does not say so"
+    )
+
+
+async def test_usage_reported_by_a_provider_reaches_the_run_through_the_structured_path(
+    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
+) -> None:
+    """A provider that *does* report usage has it recorded, on the path every agent uses.
+
+    This is the other half of the fix and the one a paid deployment sees: ``structured_output``
+    used to drop the provider's usage object, so ``totalTokens`` was structurally 0 no matter what
+    the vendor reported. Now the numbers, their status and the per-call row all agree.
+    """
+    account = await make_user(display_name="Reported usage")
+    install_chain(app, primary=ScriptedProvider(), fallbacks=[HeuristicProvider()])
+
+    response = await client.post(
+        "/api/v1/ai/analyze/jd", json={"text": JD_TEXT}, headers=account.headers
+    )
+    assert response.status_code == 200, response.text
+    run = await _detail(client, account, str(envelope(response)["data"]["meta"]["run_id"]))
+
+    assert run["usageStatus"] == "reported"
+    assert run["totalTokens"] == 150, "the usage the provider reported did not reach the run"
+    assert run["costUsd"] > 0 and run["costCny"] > 0
+
+    step = next(item for item in run["steps"] if item["name"] == "extract")
+    assert step["usageStatus"] == "reported"
+    assert step["tokens"] == 150
+
+    calls = [item for item in run["calls"] if item["operation"] == "structured"]
+    assert calls, "the structured call was not metered at all"
+    for call in calls:
+        assert call["usageStatus"] == "reported"
+        assert call["totalTokens"] == 150
+        assert call["provider"] == "scripted"
+        assert call["model"] == "scripted-model", (
+            "the structured row used to leave the model empty because the envelope was dropped"
+        )
+        assert call["requestId"], "the call cannot be joined to the request that caused it"
 
 
 # ── the trace's clock ────────────────────────────────────────────────────────
@@ -247,14 +354,16 @@ async def test_a_run_finishes_when_it_started(
 async def test_a_cache_hit_inside_a_run_is_visible_on_the_run_row(
     client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
 ) -> None:
-    """GAP, asserted on purpose: the run denies a cache hit the cache stats counted.
+    """The run reports the cache hit the cache layer counted — the gap is closed.
 
-    ``metering.py`` says the flag "is raised to true as soon as either kind fired", and
-    ``/cache/stats`` proves a hit really happened (the second identical request is served from the
-    first one's entry). Measured: the *structured* path — the only path any agent uses — records
-    ``cache_hit=False`` unconditionally, so ``agent_runs.cache_hit`` is false for a run whose model
-    call came from the cache, and the response's ``meta.cache_hit`` is false too. A reader
-    comparing the two pages cannot reconcile them.
+    PHASE 12 measured the opposite and wrote it down: ``metering.py`` says the run's flag "is raised
+    to true as soon as either kind fired", while the *structured* path — the only path any agent
+    uses — recorded ``cache_hit=False`` unconditionally, so the two pages could not be reconciled.
+
+    Recording the envelope is what fixed it: a cache hit comes back with
+    ``usageStatus="cached"``, the recorder counts it, and ``RunRecorder._mark_run_cached`` raises the
+    flag. The assertions below are the *fixed* behaviour, and the cache-stats check that guards them
+    still decides whether the test proves anything.
     """
     account = await make_user(display_name="Cache consistency")
 
@@ -274,12 +383,29 @@ async def test_a_cache_hit_inside_a_run_is_visible_on_the_run_row(
     )
 
     run = await _detail(client, account, str(response.json()["data"]["meta"]["run_id"]))
-    assert run["cacheHit"] is False, "the run now reports the provider cache hit; gap closed"
+    assert run["cacheHit"] is True, "the run still denies a cache hit the cache layer counted"
+    # GAP, asserted on purpose: the *response* still cannot see it. ``meta.cache_hit`` is built from
+    # the executor's step cache (``_meta(cache_hit=...)`` is not even passed by the AI routes), and
+    # the provider's hit is only known once the recorder flushes — after the response is assembled.
+    # The row is right and the payload beside it is not; reported here rather than papered over.
     assert response.json()["data"]["meta"]["cache_hit"] is False
-    # The two views the run *does* publish agree with each other …
-    assert run["cacheHit"] == any(step["cacheHit"] for step in run["steps"])
-    # … and both deny a hit that the cache layer counted.
+    # GAP, asserted on purpose: the *per-step* flags stay false. They come from the executor's
+    # own step cache, and a provider cache hit is a different mechanism — recording it per step
+    # would need the recorder to know which step was in flight when the provider answered, which it
+    # does not. So the run level is right (raised as soon as either kind fired) and the step level
+    # only ever reflects the step cache.
+    assert run["cacheHit"] is True
+    assert not any(step["cacheHit"] for step in run["steps"])
+    # … and with the cache layer's own count.
     assert llm_hits(after) > 0
+
+    # A cache hit is a fact, not a measurement: the row says ``cached`` with zero counts, rather
+    # than reporting the original call's tokens onto the hit (which would bill them twice) or
+    # claiming the usage is unknown (which it is not).
+    call = next(item for item in run["calls"] if item["operation"] == "structured")
+    assert call["usageStatus"] == "cached"
+    assert call["totalTokens"] == 0
+    assert call["costUsd"] == 0.0
 
 
 # ── correlation ──────────────────────────────────────────────────────────────

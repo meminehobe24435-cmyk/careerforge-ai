@@ -40,10 +40,16 @@ from careerforge_ai.agents import (
 from careerforge_ai.orchestrator import ExecutorSettings, WorkflowExecutor
 from careerforge_ai.prompting.registry import PromptRegistry
 from careerforge_ai.providers import LLMProvider
+from careerforge_ai.schemas.common import UsageStatus
 from careerforge_ai.schemas.interview import InterviewSession
 from careerforge_ai.schemas.observability import AgentRunRecord
 from careerforge_api.core.logging import get_logger
 from careerforge_api.models.observability import AgentRun
+from careerforge_api.services.failure_journal import (
+    JOURNALED_STATUSES,
+    FailureJournal,
+    apply_record_to_row,
+)
 from careerforge_api.services.metering import (
     DatabaseCacheStore,
     MeteredProvider,
@@ -129,15 +135,29 @@ class DatabaseRunTracker:
     Steps are accumulated in memory and written once at the end rather than on every
     step. A request-scoped run is short enough that incremental writes would only add
     round-trips, and a crash mid-run still leaves the ``running`` row that says so.
+
+    **A failed run is written through a second session** (PHASE 13). The row above lives in the
+    request's transaction, which ``get_db`` rolls back on any exception, so a 400 or a 500 used to
+    erase the trace entirely — the contradiction PHASE 12 measured. A run that ends ``failed`` is
+    therefore handed to the :class:`FailureJournal`, which writes it after the request transaction
+    has settled. Every other status keeps the old behaviour exactly: same rows, same ids, same
+    transaction.
     """
 
-    def __init__(self, session: AsyncSession, *, recorder: RunRecorder | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        recorder: RunRecorder | None = None,
+        journal: FailureJournal | None = None,
+    ) -> None:
         self._session = session
         self._rows: dict[int, _RunRow] = {}
         #: Told about the run id so the model calls made inside it can point back at it. Without
         #: this link ``llm_calls`` rows are orphans, and "which model call belonged to this run"
         #: — the question the AI Runs page exists to answer — has no answer.
         self._recorder = recorder
+        self._journal = journal
 
     async def start_run(self, record: AgentRunRecord) -> AgentRunRecord:
         row = AgentRun(
@@ -156,6 +176,16 @@ class DatabaseRunTracker:
             model=record.model,
             request_id=record.request_id,
             started_at=record.started_at,
+            parent_run_id=record.parent_run_id,
+            # No counts yet: the run has not made a call. NULL rather than 0, because "nothing has
+            # been spent so far" is not a measurement this row could have taken (PHASE 13).
+            prompt_tokens=None,
+            completion_tokens=None,
+            total_tokens=None,
+            cached_tokens=None,
+            cost_usd=None,
+            cost_cny=None,
+            usage_status=UsageStatus.UNAVAILABLE.value,
         )
         self._session.add(row)
         await self._session.flush()
@@ -175,23 +205,16 @@ class DatabaseRunTracker:
         tracked = self._rows.pop(id(run), None)
         if tracked is None:
             return
+        if run.status in JOURNALED_STATUSES and self._journal is not None:
+            # The request transaction is about to be rolled back (or has been). Handing the record
+            # to the journal is what keeps a failed request from leaving no trace at all; see
+            # ``failure_journal.py`` for the two approaches this rejected and why.
+            self._journal.record(tracked.row_id, run)
+            return
         row = await self._session.get(AgentRun, tracked.row_id)
         if row is None:  # pragma: no cover - the row is inserted in start_run
             return
-        row.status = run.status.value if hasattr(run.status, "value") else str(run.status)
-        row.steps = [step.model_dump(mode="json") for step in run.steps]
-        row.input_ref = dict(run.input_ref)
-        row.output_ref = dict(run.output_ref)
-        row.prompt_tokens = run.tokens.prompt_tokens
-        row.completion_tokens = run.tokens.completion_tokens
-        row.total_tokens = run.tokens.total_tokens
-        row.cost_usd = run.cost.usd
-        row.cost_cny = run.cost.cny
-        row.latency_ms = run.latency_ms
-        row.cache_hit = run.cache_hits > 0
-        row.prompt_version = run.prompt_version
-        row.error = run.error_message
-        row.finished_at = run.finished_at
+        apply_record_to_row(row, run)
 
 
 class InterviewSessionStore:
@@ -240,6 +263,8 @@ class AIService:
         retriever: Any | None = None,
         cache_store: DatabaseCacheStore | None = None,
         user_id: UUID | None = None,
+        request_id: str | None = None,
+        journal: FailureJournal | None = None,
     ) -> None:
         self._provider = provider
         self._prompts = prompts
@@ -250,6 +275,11 @@ class AIService:
         #: request hits the first one's cached answer — which is what makes a hit rate meaningful.
         self.cache_store = cache_store
         self._user_id = user_id
+        #: The correlation id of the HTTP request, written onto every ``llm_calls`` row this
+        #: service makes. ``X-Request-Id`` is what a support engineer has in hand.
+        self._request_id = request_id
+        #: Where a failed run goes when its transaction is about to be rolled back.
+        self._journal = journal
         self._recorder: RunRecorder | None = None
 
     @property
@@ -274,7 +304,7 @@ class AIService:
         row that cannot say which agent made the call is a row an operator cannot act on.
         """
         tracker = (
-            DatabaseRunTracker(self._session, recorder=self.recorder())
+            DatabaseRunTracker(self._session, recorder=self.recorder(), journal=self._journal)
             if self._session is not None
             else None
         )
@@ -287,6 +317,7 @@ class AIService:
                 recorder=self.recorder(),
                 agent=agent,
                 workflow=workflow,
+                request_id=self._request_id,
             )
         return WorkflowExecutor(
             provider=provider,

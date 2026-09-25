@@ -13,20 +13,20 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from uuid import UUID
 
 from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
-from sqlalchemy import func, select
 
 from careerforge_ai.errors import RetrievalError
 from careerforge_ai.providers.heuristic import HeuristicProvider
-from careerforge_api.models.observability import AgentRun
-from tests.conftest import EnvelopeCheck, Session, UserFactory
+from tests.conftest import EnvelopeCheck, UserFactory
+from tests.failure_helpers import (
+    post,
+    run_row,
+    steps_of,
+)
 from tests.failure_support import (
-    BUDGET,
-    CRASH,
     FABRICATED_ROLE,
     HANG,
     JD_TEXT,
@@ -34,46 +34,12 @@ from tests.failure_support import (
     MATCH_PAYLOAD,
     RATE_LIMITED,
     TIMEOUT,
-    WRONG_SHAPE,
     ScriptedProvider,
     install_chain,
-    run_job_through_the_tracker,
 )
 
 #: The claim the gate is driven with. Real material, so a verdict about it means something.
 CLAIM = "使用 STM32 与 FreeRTOS 开发电机控制固件"
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
-
-
-async def _post(client: AsyncClient, account: Session, path: str, payload: dict[str, Any]) -> Any:
-    return await client.post(f"/api/v1{path}", json=payload, headers=account.headers)
-
-
-async def _run_row(app: FastAPI, run_id: str) -> AgentRun:
-    """The row behind ``meta.run_id``, read from ``agent_runs`` rather than guessed from JSON."""
-    async with app.state.session_factory() as db:
-        row = await db.get(AgentRun, UUID(run_id))
-    assert row is not None, "the run the response named was never written to agent_runs"
-    return row
-
-
-async def _run_count(app: FastAPI) -> int:
-    async with app.state.session_factory() as db:
-        return int(await db.scalar(select(func.count()).select_from(AgentRun)) or 0)
-
-
-async def _steps(client: AsyncClient, account: Session, run_id: str) -> dict[str, dict[str, Any]]:
-    response = await client.get(f"/api/v1/ai-runs/{run_id}", headers=account.headers)
-    assert response.status_code == 200, response.text
-    return {step["name"]: step for step in response.json()["data"]["steps"]}
-
-
-async def _job_run_committed(
-    app: FastAPI, account: Session, provider: Any, *, max_retries: int = 0
-) -> tuple[AgentRun, BaseException | None]:
-    return await run_job_through_the_tracker(app, account, provider, max_retries=max_retries)
 
 
 # ── the model misbehaves ─────────────────────────────────────────────────────
@@ -97,7 +63,7 @@ async def test_a_transient_upstream_failure_degrades_instead_of_returning_500(
     provider = ScriptedProvider(failure)
     install_chain(app, primary=provider, fallbacks=[HeuristicProvider()])
 
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
+    response = await post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
     assert response.status_code == 200, f"a degraded run answered {response.status_code}"
     data = envelope(response)["data"]
 
@@ -107,9 +73,9 @@ async def test_a_transient_upstream_failure_degrades_instead_of_returning_500(
     assert data["analysis"]["role"], "the fallback answer carries no role at all"
     assert provider.calls == 2, "a transient failure was not retried exactly once"
 
-    run = await _run_row(app, str(data["meta"]["run_id"]))
+    run = await run_row(app, str(data["meta"]["run_id"]))
     assert run.status == "degraded"
-    steps = await _steps(client, account, str(data["meta"]["run_id"]))
+    steps = await steps_of(client, account, str(data["meta"]["run_id"]))
     assert steps["extract"]["status"] == "degraded"
     assert steps["clean"]["status"] == "ok", "a deterministic step was degraded by a model failure"
 
@@ -132,13 +98,13 @@ async def test_a_provider_that_hangs_times_out_on_the_chain_clock(
     provider = ScriptedProvider(HANG, hang_s=30.0)
     install_chain(app, primary=provider, fallbacks=[HeuristicProvider()], timeout_s=0.2)
 
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
+    response = await post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
     assert response.status_code == 200, response.text
     data = envelope(response)["data"]
     assert data["meta"]["degraded"] is True
     assert provider.calls == 1, "the hang was retried after all; this gap is closed"
 
-    run = await _run_row(app, str(data["meta"]["run_id"]))
+    run = await run_row(app, str(data["meta"]["run_id"]))
     assert run.status == "degraded"
     assert run.latency_ms is not None and run.latency_ms >= 0
 
@@ -156,7 +122,7 @@ async def test_malformed_structured_output_is_never_presented_as_a_model_answer(
     provider = ScriptedProvider(MALFORMED_JSON)
     install_chain(app, primary=provider, fallbacks=[HeuristicProvider()])
 
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
+    response = await post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
     assert response.status_code == 200, response.text
     data = envelope(response)["data"]
 
@@ -168,7 +134,7 @@ async def test_malformed_structured_output_is_never_presented_as_a_model_answer(
         "a schema violation is not transient; retrying it spends tokens on the same bad output"
     )
 
-    run = await _run_row(app, str(data["meta"]["run_id"]))
+    run = await run_row(app, str(data["meta"]["run_id"]))
     assert run.status == "degraded"
 
 
@@ -201,7 +167,7 @@ async def test_an_unwired_retriever_is_reported_and_the_gate_still_answers(
         "this test pins the shipped configuration, which wires no retriever at all"
     )
 
-    response = await _post(client, account, "/ai/validate/claim", {"claim": CLAIM})
+    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
     assert response.status_code == 200, response.text
     data = envelope(response)["data"]
     assert data["sources"] == []
@@ -234,11 +200,11 @@ async def test_the_step_chain_marks_a_retrieval_that_never_happened_as_ok(
     distinction the warning exists to make.
     """
     account = await make_user(display_name="Retrieval trace")
-    response = await _post(client, account, "/ai/validate/claim", {"claim": CLAIM})
+    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
     data = envelope(response)["data"]
     assert any("检索" in warning for warning in data["meta"]["warnings"])
 
-    steps = await _steps(client, account, str(data["meta"]["run_id"]))
+    steps = await steps_of(client, account, str(data["meta"]["run_id"]))
     assert steps["retrieve"]["status"] == "ok"  # measured; the response says otherwise
     assert not steps["retrieve"]["errorCode"] and not steps["retrieve"]["errorMessage"]
 
@@ -254,19 +220,27 @@ async def test_a_broken_retrieval_backend_degrades_instead_of_returning_500(
     unavailable must answer with the rules it still has and say that retrieval was unavailable;
     it is the one failure it cannot afford to crash on. PHASE 12 fixed ``retrieve_phase`` (it now
     catches and reports) and the three ``None``-unsafe reads in the gate.
+
+    Where the statement lives is asserted explicitly (PHASE 13). The response carries it as a
+    *warning* — evidence that could not be searched — and not in ``reasons``: this verdict is
+    reachable without retrieval (the rules blocked the claim first), so putting "the search failed"
+    in a reason would claim the verdict depended on a search that never happened. An earlier version
+    of this test looked for those words in ``reasons`` and could never find them.
     """
     account = await make_user(display_name="Broken retriever")
     app.state.retriever = _ExplodingRetriever()
 
-    response = await _post(client, account, "/ai/validate/claim", {"claim": CLAIM})
+    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
     assert response.status_code == 200, response.text
     body = envelope(response)["data"]
-    # The verdict still exists, and it is not a silent pass: the reason list says the evidence
-    # could not be searched, which is what a reader needs to discount the verdict.
+    # The verdict still exists, and it is not a silent pass: the reasons say what was found missing
+    # and the warnings say the evidence could not be searched, which is what lets a reader discount
+    # the verdict.
     assert body["status"] in {"unsupported", "partially_supported"}
     assert body["status"] != "supported", "a claim judged without retrieval must not be supported"
-    reasons = " ".join(str(reason.get("message", "")) for reason in body.get("reasons", []))
-    assert "检索" in reasons or "证据" in reasons, reasons
+    assert body["reasons"], "a verdict without reasons is indistinguishable from a bug"
+    warnings = " ".join(str(item) for item in body["meta"]["warnings"])
+    assert "检索" in warnings, warnings
 
 
 async def test_a_failed_step_does_not_take_down_what_succeeded(
@@ -283,7 +257,7 @@ async def test_a_failed_step_does_not_take_down_what_succeeded(
     # No fallback at all: the model step genuinely fails rather than degrading to another provider.
     install_chain(app, primary=provider, fallbacks=[], max_retries=0)
 
-    response = await _post(client, account, "/ai/match", MATCH_PAYLOAD)
+    response = await post(client, account, "/ai/match", MATCH_PAYLOAD)
     assert response.status_code == 200, response.text
     data = envelope(response)["data"]
     assert data["score"] > 0, "the deterministic score was lost with the model step"
@@ -291,10 +265,10 @@ async def test_a_failed_step_does_not_take_down_what_succeeded(
     assert data["narrative"] == "", "a narrative appeared although the narrator failed"
     assert data["meta"]["degraded"] is True
 
-    run = await _run_row(app, str(data["meta"]["run_id"]))
+    run = await run_row(app, str(data["meta"]["run_id"]))
     assert run.status == "degraded"
 
-    steps = await _steps(client, account, str(data["meta"]["run_id"]))
+    steps = await steps_of(client, account, str(data["meta"]["run_id"]))
     assert steps["prepare"]["status"] == "ok" and steps["score"]["status"] == "ok"
     assert steps["narrate"]["status"] == "degraded"
     assert steps["narrate"]["errorCode"] == "PROVIDER_UNAVAILABLE", steps["narrate"]
@@ -314,129 +288,8 @@ async def test_a_degraded_run_names_a_reason_that_explains_it(
     account = await make_user(display_name="Reason")
     install_chain(app, primary=ScriptedProvider(TIMEOUT), fallbacks=[], max_retries=0)
 
-    response = await _post(client, account, "/ai/match", MATCH_PAYLOAD)
+    response = await post(client, account, "/ai/match", MATCH_PAYLOAD)
     data = envelope(response)["data"]
     assert data["meta"]["degraded"] is True
     assert data["meta"]["degraded_reason"] == "none"  # measured; the run *is* degraded
     assert any("none" in warning for warning in data["meta"]["warnings"])
-
-
-# ── nothing can serve the request at all ─────────────────────────────────────
-
-
-async def test_a_total_provider_outage_is_recorded_as_a_failed_run(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
-) -> None:
-    """GAP, asserted on purpose: a provider outage is reported to the caller as a 400.
-
-    With no provider left in the chain the executor records ``failed`` / ``PROVIDER_UNAVAILABLE``
-    correctly — and then the route, finding no analysis, raises ``VALIDATION_ERROR``
-    ("岗位描述解析失败，请检查文本内容"), which blames the candidate's text for an upstream outage.
-    ``AI_PROVIDER_UNAVAILABLE`` (503) is defined in ``core/errors.py`` and raised nowhere.
-    """
-    account = await make_user(display_name="Outage")
-    install_chain(app, primary=ScriptedProvider(TIMEOUT), fallbacks=[], max_retries=0)
-
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
-    assert response.status_code == 400, response.text
-    payload = envelope(response, success=False)
-    assert payload["error"]["code"] == "VALIDATION_ERROR"
-
-    row, raised = await _job_run_committed(app, account, ScriptedProvider(TIMEOUT))
-    assert raised is None, "a CareerForgeError must not escape the executor"
-    assert row.status == "failed"
-    assert row.error and "PROVIDER_UNAVAILABLE" in row.error
-    step = next(item for item in row.steps if item["name"] == "extract")
-    assert step["status"] == "failed"
-    assert step["error_code"] == "PROVIDER_UNAVAILABLE"
-
-
-async def test_an_exhausted_budget_is_not_converted_into_a_degradation(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
-) -> None:
-    """GAP, asserted on purpose: the spend ceiling fails the run instead of degrading it.
-
-    ``routing.py`` states that "the resilience layer converts [``BudgetExceededError``] into a
-    heuristic fallback", and ``errors.py`` pairs the decision with ``AI_BUDGET_EXCEEDED`` (429).
-    Measured: ``ResilientProvider`` re-raises the budget error without consulting the fallbacks, so
-    with a heuristic tail available the run still fails — and the caller sees the same 400 as a
-    malformed request, which is indistinguishable from a typo in their own text.
-    """
-    account = await make_user(display_name="Budget")
-    provider = ScriptedProvider(BUDGET)
-    install_chain(app, primary=provider, fallbacks=[HeuristicProvider()])
-
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
-    assert response.status_code == 400, response.text
-    assert envelope(response, success=False)["error"]["code"] == "VALIDATION_ERROR"
-    assert provider.calls == 1, "a budget decision was retried"
-
-    row, _ = await _job_run_committed(app, account, ScriptedProvider(BUDGET))
-    assert row.status == "failed"
-    assert row.error and "BUDGET_EXCEEDED" in row.error
-
-
-async def test_an_unexpected_crash_inside_the_provider_is_reported_as_an_outage(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI
-) -> None:
-    """GAP, asserted on purpose: a bug in the provider layer is flattened into "outage".
-
-    ``ProviderChainInfo.errors`` records ``scripted:ValueError``, but the exception the chain raises
-    is ``ProviderUnavailableError`` — so nothing downstream (the run, the step trace, the API's
-    error code) can tell a programming error from an unreachable upstream. The only trace of the
-    real cause is the free text of the error message.
-    """
-    account = await make_user(display_name="Crash")
-    row, raised = await _job_run_committed(app, account, ScriptedProvider(CRASH))
-    assert raised is None, "a ValueError from inside the chain reached the caller"
-    assert row.status == "failed"
-    assert row.error and "PROVIDER_UNAVAILABLE" in row.error
-    assert "ValueError" in row.error, "the chain's error list is the only record of the real cause"
-    step = next(item for item in row.steps if item["name"] == "extract")
-    assert step["error_code"] == "PROVIDER_UNAVAILABLE"
-
-
-async def test_a_step_that_crashes_is_recorded_before_the_error_is_re_raised(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI
-) -> None:
-    """A non-``CareerForgeError`` is re-raised — after the trace is persisted.
-
-    The provider here answers with an object of the wrong shape, so the failure lands one step
-    later (``normalise``) rather than at the model boundary. The executor must re-raise the bug
-    (a bug is not an upstream failure) *and* leave a run that says which step died and why, which
-    is the only thing that makes such a failure diagnosable after the fact.
-    """
-    account = await make_user(display_name="Wrong shape")
-    row, raised = await _job_run_committed(app, account, ScriptedProvider(WRONG_SHAPE))
-    assert isinstance(raised, AttributeError), f"the bug was swallowed: {raised!r}"
-    assert row.status == "failed"
-
-    steps = {step["name"]: step for step in row.steps}
-    assert steps["clean"]["status"] == "ok"
-    assert steps["extract"]["status"] == "ok", "the model call itself did answer"
-    assert steps["normalise"]["status"] == "failed"
-    assert steps["normalise"]["error_code"] == "ATTRIBUTEERROR"
-    assert steps["normalise"]["error_message"]
-    assert "assess" not in steps, "the trace claims a step ran after the run had already aborted"
-
-
-async def test_a_failed_request_leaves_no_trace_behind(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
-) -> None:
-    """GAP, asserted on purpose: an error response rolls the run row back with the transaction.
-
-    ``docs/ARCHITECTURE.md`` §9 and the executor's own comment promise that observability is never
-    lost to a failure. Measured: ``get_db`` rolls back on any exception, and the tracker writes
-    inside that same transaction — so a 400 or a 500 from an AI endpoint leaves ``agent_runs`` and
-    ``llm_calls`` exactly as they were. Nothing about the outage is discoverable afterwards.
-    """
-    account = await make_user(display_name="Rollback")
-    before = await _run_count(app)
-    install_chain(app, primary=ScriptedProvider(TIMEOUT), fallbacks=[], max_retries=0)
-
-    response = await _post(client, account, "/ai/analyze/jd", {"text": JD_TEXT})
-    assert response.status_code == 400
-    assert envelope(response, success=False)["error"]["code"] == "VALIDATION_ERROR"
-    assert await _run_count(app) == before, (
-        "a run row survived the error response; if that is now true, this gap is closed"
-    )

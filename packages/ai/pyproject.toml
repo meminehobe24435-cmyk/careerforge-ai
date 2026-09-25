@@ -42,6 +42,13 @@ dev = [
   "mypy>=1.13",
   "ruff>=0.8",
 ]
+# Encoding the README artefacts (the Evidence Graph demo GIF). There is no ffmpeg on the
+# development machine, so `scripts/make_demo_gif.py` writes the GIF with Pillow. Optional, and
+# grouped separately from `dev`, because it is tooling for the documentation rather than for the
+# engine — nothing in `careerforge_ai` imports it.
+assets = [
+  "pillow>=11.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/OWNER/careerforge-ai"

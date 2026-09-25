@@ -180,14 +180,26 @@ class ObservabilityService:
             .select_from(LlmCall)
             .join(AgentRun, LlmCall.agent_run_id == AgentRun.id)
         )
+        #: Runs whose spend is genuinely unknown. ``SUM`` skips their ``NULL`` counters, so the
+        #: total is a floor rather than a complete figure — and the caller is told that instead of
+        #: being left to read a total that looks exhaustive (PHASE 13). ``legacy`` rows count too:
+        #: their ``0`` was written by a version that had no status to record, so it is a zero of
+        #: unknown provenance rather than a measurement.
+        unaccounted = (
+            select(func.count(AgentRun.id))
+            .select_from(AgentRun)
+            .where(AgentRun.usage_status.in_(("unavailable", "legacy")))
+        )
         if scope is not None:
             daily = daily.where(scope)
             totals = totals.where(scope)
             calls = calls.where(scope)
+            unaccounted = unaccounted.where(scope)
         if since is not None:
             daily = daily.where(AgentRun.started_at >= since)
             totals = totals.where(AgentRun.started_at >= since)
             calls = calls.where(AgentRun.started_at >= since)
+            unaccounted = unaccounted.where(AgentRun.started_at >= since)
 
         rows = (await self._session.execute(daily.group_by("day").order_by("day"))).all()
         run_count, tokens, usd, cny, latency = (await self._session.execute(totals)).one()
@@ -211,6 +223,7 @@ class ObservabilityService:
                 "costCny": round(float(cny or 0.0), 6),
                 "latencyMs": int(latency or 0),
             },
+            "unaccountedRuns": int(await self._session.scalar(unaccounted) or 0),
         }
 
     async def cost_by_agent(

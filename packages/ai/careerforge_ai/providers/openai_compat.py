@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from careerforge_ai.errors import (
     ProviderError,
@@ -31,9 +31,18 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
+)
+from careerforge_ai.providers.openai_responses import (
+    first_choice_content,
+    first_choice_finish,
+    first_delta,
+    loads_json_object,
+    reports_cached_tokens,
+    usage_from,
 )
 from careerforge_ai.providers.tokens import estimate_messages_tokens, estimate_tokens
-from careerforge_ai.schemas.observability import TokenUsage
+from careerforge_ai.schemas.observability import LLMUsage, TokenUsage
 
 __all__ = ["OllamaProvider", "OpenAICompatProvider"]
 
@@ -69,6 +78,15 @@ class OpenAICompatProvider:
         self._requires_api_key = requires_api_key
         self._supports_native_json_schema = supports_native_json_schema
         self._client = client
+        #: A provider that needs no key is running on this machine (Ollama), where there is no
+        #: vendor-side prompt cache to report and no bill to attribute. Derived rather than
+        #: passed, so a new local deployment cannot forget to declare it.
+        self._is_local = not requires_api_key
+
+    @property
+    def model(self) -> str:
+        """The default model this provider was configured with."""
+        return self._model
 
     # ── port surface ─────────────────────────────────────────────────────────
 
@@ -85,6 +103,11 @@ class OpenAICompatProvider:
             supports_native_json_schema=self._supports_native_json_schema,
             requires_api_key=self._requires_api_key,
             deterministic=False,
+            # OpenAI ``prompt_tokens_details.cached_tokens`` and DeepSeek's
+            # ``prompt_cache_hit_tokens`` are both read below. Ollama does not report either,
+            # which is why this is a property of the provider and not a global constant.
+            reports_cached_tokens=not self._is_local,
+            supports_usage_envelope=True,
         )
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────
@@ -161,18 +184,26 @@ class OpenAICompatProvider:
             payload["max_tokens"] = max_tokens
 
         data = await self._request("POST", "/chat/completions", payload=payload)
-        content = _first_choice_content(data)
-        usage = _usage_from(data, messages, content)
+        content = first_choice_content(data)
+        usage = usage_from(data, messages, content)
         latency_ms = int((time.perf_counter() - started) * 1000)
+        cost = price_for(self._name, resolved_model).cost_for(usage)
 
         return ChatResult(
             content=content,
             provider=self._name,
             model=resolved_model,
             tokens=usage,
-            cost=price_for(self._name, resolved_model).cost_for(usage),
+            cost=cost,
             latency_ms=latency_ms,
-            finish_reason=_first_choice_finish(data),
+            finish_reason=first_choice_finish(data),
+            usage=LLMUsage.from_token_usage(
+                usage,
+                cost,
+                provider=self._name,
+                model=resolved_model,
+                cached_tokens_reported=reports_cached_tokens(data) and not self._is_local,
+            ),
         )
 
     async def stream(
@@ -195,6 +226,7 @@ class OpenAICompatProvider:
 
         url = f"{self._base_url}/chat/completions"
         collected = ""
+        streamed_usage: TokenUsage | None = None
         try:
             async with (
                 httpx.AsyncClient(timeout=self._timeout_s) as client,
@@ -219,27 +251,46 @@ class OpenAICompatProvider:
                         chunk = json.loads(data_text)
                     except json.JSONDecodeError:
                         continue
-                    delta = _first_delta(chunk)
+                    # Some vendors (OpenAI with ``stream_options``, DeepSeek always) put the
+                    # usage object on the last data frame. When it is there, the stream reports
+                    # measured usage instead of the character-count estimate.
+                    if chunk.get("usage"):
+                        streamed_usage = usage_from(chunk, messages, collected)
+                    delta = first_delta(chunk)
                     if delta:
                         collected += delta
-                        yield StreamChunk(delta=delta, provider=self._name, model=resolved_model)
+                        yield StreamChunk(
+                            delta=delta,
+                            provider=self._name,
+                            model=resolved_model,
+                            request_id=response.headers.get("x-request-id"),
+                        )
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(f"{self._name} stream timed out") from exc
 
-        usage = TokenUsage(
+        usage = streamed_usage or TokenUsage(
             prompt_tokens=estimate_messages_tokens([message.content for message in messages]),
             completion_tokens=estimate_tokens(collected),
             total_tokens=estimate_messages_tokens([message.content for message in messages])
             + estimate_tokens(collected),
             estimated=True,
         )
+        cost = price_for(self._name, resolved_model).cost_for(usage)
         yield StreamChunk(
             delta="",
             done=True,
             provider=self._name,
             model=resolved_model,
             tokens=usage,
-            cost=price_for(self._name, resolved_model).cost_for(usage),
+            cost=cost,
+            usage=LLMUsage.from_token_usage(
+                usage,
+                cost,
+                provider=self._name,
+                model=resolved_model,
+                cached_tokens_reported=not self._is_local and streamed_usage is not None,
+            ),
+            usage_reported=True,
         )
 
     # ── embeddings ───────────────────────────────────────────────────────────
@@ -269,7 +320,7 @@ class OpenAICompatProvider:
                 vectors.append([float(value) for value in vector])
 
         dim = len(vectors[0]) if vectors else self._embedding_dim
-        usage = _usage_from(
+        usage = usage_from(
             data, [ChatMessage(role=ChatRole.USER, content=text) for text in texts], ""
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -302,10 +353,33 @@ class OpenAICompatProvider:
         raise :class:`SchemaValidationError` and let the orchestrator degrade —
         never silently coercing a malformed answer into a plausible one.
         """
+        result = await self.structured_output_envelope(
+            messages, schema, context=context, temperature=temperature, model=model
+        )
+        return result.value
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The same call as :meth:`structured_output`, carrying what it cost.
+
+        This is the method that closes ``docs/QUALITY.md`` §7.1: the parsed schema used to be
+        the only thing this path returned, so the provider's ``usage`` object was discarded on
+        the floor and every run in the product recorded zero tokens. Usage is accumulated across
+        the repair attempt as well — a second request really was sent, and pretending it was
+        free would under-report exactly the calls that are most worth watching.
+        """
         resolved_model = model or self._model
         json_schema = schema.model_json_schema()
         conversation = list(messages)
         last_error: str = ""
+        spent = LLMUsage.unavailable(provider=self._name, model=resolved_model)
 
         for attempt in range(_MAX_SCHEMA_ATTEMPTS):
             payload: dict[str, Any] = {
@@ -326,10 +400,21 @@ class OpenAICompatProvider:
                 payload["response_format"] = {"type": "json_object"}
 
             data = await self._request("POST", "/chat/completions", payload=payload)
-            content = _first_choice_content(data)
+            content = first_choice_content(data)
+            usage = usage_from(data, conversation, content)
+            cost = price_for(self._name, resolved_model).cost_for(usage)
+            spent = spent.merge(
+                LLMUsage.from_token_usage(
+                    usage,
+                    cost,
+                    provider=self._name,
+                    model=resolved_model,
+                    cached_tokens_reported=(reports_cached_tokens(data) and not self._is_local),
+                )
+            )
             try:
-                parsed = _loads_json_object(content)
-                return schema.model_validate(parsed)
+                parsed = loads_json_object(content)
+                return StructuredResult(value=schema.model_validate(parsed), usage=spent)
             except (ValidationError, ValueError) as exc:
                 last_error = str(exc)[:800]
                 if attempt + 1 >= _MAX_SCHEMA_ATTEMPTS:
@@ -383,82 +468,3 @@ class OllamaProvider(OpenAICompatProvider):
 
 
 # ── response helpers ─────────────────────────────────────────────────────────
-
-
-def _first_choice_content(data: dict[str, Any]) -> str:
-    choices = data.get("choices") or []
-    if not choices:
-        return ""
-    message = choices[0].get("message") or {}
-    content = message.get("content")
-    if isinstance(content, str):
-        return content
-    # Some vendors return content parts as a list.
-    if isinstance(content, list):
-        return "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    return ""
-
-
-def _first_choice_finish(data: dict[str, Any]) -> str | None:
-    choices = data.get("choices") or []
-    if not choices:
-        return None
-    finish = choices[0].get("finish_reason")
-    return finish if isinstance(finish, str) else None
-
-
-def _first_delta(chunk: dict[str, Any]) -> str:
-    choices = chunk.get("choices") or []
-    if not choices:
-        return ""
-    delta = choices[0].get("delta") or {}
-    content = delta.get("content")
-    return content if isinstance(content, str) else ""
-
-
-def _usage_from(data: dict[str, Any], messages: Sequence[ChatMessage], content: str) -> TokenUsage:
-    usage = data.get("usage") or {}
-    prompt_tokens = usage.get("prompt_tokens")
-    completion_tokens = usage.get("completion_tokens")
-    total = usage.get("total_tokens")
-    if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
-        return TokenUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=int(total)
-            if isinstance(total, int)
-            else prompt_tokens + completion_tokens,
-            estimated=False,
-        )
-    estimated_prompt = estimate_messages_tokens([message.content for message in messages])
-    estimated_completion = estimate_tokens(content)
-    return TokenUsage(
-        prompt_tokens=estimated_prompt,
-        completion_tokens=estimated_completion,
-        total_tokens=estimated_prompt + estimated_completion,
-        estimated=True,
-    )
-
-
-def _loads_json_object(content: str) -> dict[str, Any]:
-    """Extract a JSON object from a model response.
-
-    Handles the common deviations (fenced blocks, leading prose) without
-    accepting anything that is not a JSON object.
-    """
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.split("```", 2)[1] if text.count("```") >= 2 else text
-        text = text.removeprefix("json").strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError("response contained no JSON object")
-    parsed = json.loads(text[start : end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("response JSON was not an object")
-    return parsed
-
-
-def _model_dump(model: BaseModel) -> dict[str, Any]:
-    return model.model_dump(mode="json")

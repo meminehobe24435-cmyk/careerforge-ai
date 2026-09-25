@@ -10,7 +10,7 @@ AI Runs page. Nothing is hidden in framework internals.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -23,9 +23,17 @@ from pydantic import BaseModel
 from careerforge_ai.errors import StepFailedError
 from careerforge_ai.observability.pricing import cost_for
 from careerforge_ai.prompting.registry import PromptRegistry
-from careerforge_ai.providers.base import ChatMessage, ChatRole, LLMProvider, ProviderChainInfo
+from careerforge_ai.providers.base import (
+    ChatMessage,
+    ChatRole,
+    LLMProvider,
+    ProviderChainInfo,
+    StreamChunk,
+    StructuredResult,
+    structured_output_envelope,
+)
 from careerforge_ai.schemas.common import DegradationReason
-from careerforge_ai.schemas.observability import Cost, TokenUsage
+from careerforge_ai.schemas.observability import Cost, LLMUsage, TokenUsage
 
 __all__ = [
     "RunContext",
@@ -35,6 +43,7 @@ __all__ = [
     "Workflow",
     "WorkflowOutput",
     "digest_of",
+    "usage_for",
 ]
 
 logger = logging.getLogger("careerforge.orchestrator")
@@ -220,6 +229,11 @@ class RunContext:
     current_step: str = ""
     _tokens: TokenUsage = field(default_factory=TokenUsage)
     _cost: Cost = field(default_factory=Cost)
+    #: The usage envelope for the current step. ``None`` until a model call reports something,
+    #: which is the honest state of a pure-function step: it has no usage at all, as opposed to
+    #: a model call whose usage the provider did not report (that is an envelope with
+    #: ``usage_status="unavailable"``).
+    _usage: LLMUsage | None = None
     _chain: ProviderChainInfo | None = None
 
     # ── service access ───────────────────────────────────────────────────────
@@ -238,16 +252,63 @@ class RunContext:
     def reset_usage(self) -> None:
         self._tokens = TokenUsage()
         self._cost = Cost()
+        self._usage = None
 
     def add_usage(self, tokens: TokenUsage, cost: Cost) -> None:
+        """Accumulate counters (the pre-PHASE-13 signature, still used by callers that have them).
+
+        Counters only: an envelope added through this path is inferred from ``tokens.estimated``,
+        so a caller that knows more than the counters should call :meth:`add_envelope` instead.
+        """
         self._tokens = self._tokens.merged(tokens)
         self._cost = self._cost + cost
-        if isinstance(self.cache, Any) and self._chain is not None:
+        self.add_envelope(
+            LLMUsage.from_token_usage(
+                tokens, cost, provider=self.provider_name, model=self.model_name
+            )
+        )
+
+    def add_envelope(self, usage: LLMUsage) -> None:
+        """Accumulate a usage envelope — the shape ``chat``, ``stream`` and ``structured`` agree on.
+
+        An ``unavailable`` envelope is *recorded*, not discarded: "a model was called and we were
+        not told what it cost" is a fact the trace must carry, and dropping it is how a run ends up
+        looking fully accounted for when it is not. Recording it is what makes the merged status
+        degrade to ``unavailable`` — the sum of a known part and an unknown part is unknown.
+        """
+        attached = usage.with_request(self.request_id, self.model_name)
+        self._usage = attached if self._usage is None else self._usage.merge(attached)
+        if self._chain is not None:
+            # Surfaced on the run so a caller can report *why* an answer was degraded. The guard is
+            # on the chain, not on the cache: the old ``isinstance(self.cache, Any)`` was always
+            # true (``typing.Any`` accepts anything) and, since PHASE 13's type work, is a
+            # ``TypeError`` — the check now says what it always meant.
             self.metadata["provider_chain"] = self._chain
 
     @property
     def usage(self) -> tuple[TokenUsage, Cost]:
         return self._tokens, self._cost
+
+    @property
+    def usage_envelope(self) -> LLMUsage | None:
+        """This step's accumulated usage, or ``None`` when no model call was made."""
+        return self._usage
+
+    @property
+    def provider_name(self) -> str:
+        return str(getattr(self.provider, "name", "") or "")
+
+    @property
+    def model_name(self) -> str | None:
+        """The model this run is using, when the provider knows it.
+
+        Read from the provider's own default (``OpenAICompatProvider.model``,
+        ``HeuristicProvider``'s template) and *not* from the router: the router chooses a model per
+        call, and a run can legitimately make calls on two models. Claiming one of them for the
+        whole run would be a guess; the per-call rows carry the routing decision instead.
+        """
+        model = getattr(self.provider, "model", None)
+        return str(model) if model else None
 
     @property
     def degraded(self) -> bool:
@@ -281,11 +342,21 @@ class RunContext:
         three guarantees in one place: prompts come from the registry (never
         inline strings), output is schema-validated by the provider, and usage is
         charged to the current step's trace.
+
+        That last guarantee was the one that did not hold until PHASE 13: the parsed schema
+        was returned and the provider's usage object was dropped, so a run that made three
+        model calls recorded zero tokens — on a paid deployment as much as on the zero-key one
+        (``docs/QUALITY.md`` §7.1). Usage now arrives through
+        :func:`~careerforge_ai.providers.base.structured_output_envelope`, and a provider that
+        cannot report it contributes an ``unavailable`` envelope rather than nothing.
         """
         rendered = self.prompts.render(prompt_name, version=prompt_version, **variables)
         messages: Sequence[ChatMessage] = rendered.messages()
-        result = await self.provider.structured_output(
-            messages, schema, context=dict(context or {})
+        result: StructuredResult[SchemaT] = await structured_output_envelope(
+            self.provider,
+            messages,
+            schema,
+            context=dict(context or {}),
         )
 
         chain = getattr(self.provider, "last_chain_info", None)
@@ -295,11 +366,9 @@ class RunContext:
         if chain_info is not None:
             self.note_provider_chain(chain_info)
 
-        # Structured calls report usage through the chain; when the underlying
-        # provider does not (cached hits, heuristic), estimation already
-        # happened there, so nothing further is added here.
+        self.add_envelope(result.usage)
         self.metadata.setdefault("prompt_refs", []).append(rendered.ref)
-        return result
+        return result.value
 
     async def chat(
         self,
@@ -311,11 +380,35 @@ class RunContext:
     ) -> str:
         rendered = self.prompts.render(prompt_name, version=prompt_version, **variables)
         result = await self.provider.chat(rendered.messages(), temperature=temperature)
-        self.add_usage(result.tokens, result.cost)
+        self.add_envelope(result.envelope())
         chain = getattr(self.provider, "last_chain_info", None)
         if isinstance(chain, ProviderChainInfo):
             self.note_provider_chain(chain)
         return result.content
+
+    async def stream(
+        self,
+        prompt_name: str,
+        *,
+        prompt_version: int | None = None,
+        temperature: float = 0.2,
+        **variables: Any,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream a prompt, accumulating the same usage envelope the other two shapes report.
+
+        Streaming is the awkward one: the chunks arrive before the tokens are counted, so the
+        terminal chunk carries the envelope. It is accumulated as it passes through — the caller
+        gets its chunks, and the step's trace ends up with real usage rather than with nothing.
+        """
+        rendered = self.prompts.render(prompt_name, version=prompt_version, **variables)
+        async for chunk in self.provider.stream(rendered.messages(), temperature=temperature):
+            # The envelope arrives on the terminal chunk (a stream cannot count output tokens
+            # before they exist). The ``done`` guard is what keeps a provider that attaches usage
+            # to every chunk from being summed once per chunk.
+            if chunk.done:
+                self.add_envelope(chunk.envelope())
+            yield chunk
+        self.metadata.setdefault("prompt_refs", []).append(rendered.ref)
 
     @staticmethod
     def system(content: str) -> ChatMessage:

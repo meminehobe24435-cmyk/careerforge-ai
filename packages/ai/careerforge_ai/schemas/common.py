@@ -37,6 +37,7 @@ __all__ = [
     "SourceAuthority",
     "StrictModel",
     "Unit",
+    "UsageStatus",
     "new_id",
     "utcnow",
 ]
@@ -392,6 +393,35 @@ class AgentRunStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     DEGRADED = "degraded"
+
+
+class UsageStatus(StrEnum):
+    """Whether a call's token usage is a fact, an estimate, or simply unknown.
+
+    The three values exist because "zero tokens" and "we were not told" are different
+    facts, and the cost page is a claim about money. A provider that reports
+    ``prompt_tokens=0, completion_tokens=0`` is making a statement; a provider that
+    returns no usage object at all is making none, and rendering that as ``0`` invents a
+    measurement. So an envelope always says which of the three it is:
+
+    * ``REPORTED`` — the provider's own numbers, taken as fact;
+    * ``ESTIMATED`` — numbers computed locally (character counts, tokenised prompts)
+      because the provider did not report any; useful as an upper bound, never as spend;
+    * ``CACHED`` — served from the cache, so nothing was billed on this request. The
+      original call's numbers are not attributed to it, because doing so would bill the
+      same tokens twice in the ledger;
+    * ``UNAVAILABLE`` — nothing is known about this call's usage. Every count is ``None``.
+    """
+
+    REPORTED = "reported"
+    ESTIMATED = "estimated"
+    CACHED = "cached"
+    UNAVAILABLE = "unavailable"
+
+    @property
+    def known(self) -> bool:
+        """Whether the numbers beside this status describe something real."""
+        return self is not UsageStatus.UNAVAILABLE
 
 
 class CacheKind(StrEnum):

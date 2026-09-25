@@ -34,7 +34,18 @@ class _CamelModel(BaseModel):
 
 
 class AiRunResponse(_CamelModel):
-    """One traced run, as the list shows it."""
+    """One traced run, as the list shows it.
+
+    ``usageStatus`` is what makes the counters readable (PHASE 13):
+
+    * ``reported`` — the provider said so;
+    * ``estimated`` — computed locally, useful as a bound, not as spend;
+    * ``cached`` — served from the cache, nothing was billed;
+    * ``unavailable`` — **no usage was reported**. Every count beside it is ``null``, and a client
+      must print "unavailable" rather than ``0``;
+    * ``legacy`` — written before PHASE 13, when unknown usage was stored as ``0``. Reported as
+      itself rather than silently re-labelled: those numbers are zeros of unknown provenance.
+    """
 
     id: str
     user_id: str | None = Field(default=None, alias="userId")
@@ -45,15 +56,21 @@ class AiRunResponse(_CamelModel):
     provider: str | None = None
     model: str | None = None
     prompt_version: str | None = Field(default=None, alias="promptVersion")
-    prompt_tokens: int = Field(default=0, alias="promptTokens")
-    completion_tokens: int = Field(default=0, alias="completionTokens")
-    total_tokens: int = Field(default=0, alias="totalTokens")
-    cost_usd: float = Field(default=0.0, alias="costUsd")
-    cost_cny: float = Field(default=0.0, alias="costCny")
+    #: ``null`` means the provider did not report this count. It is not ``0``.
+    prompt_tokens: int | None = Field(default=None, alias="promptTokens")
+    completion_tokens: int | None = Field(default=None, alias="completionTokens")
+    total_tokens: int | None = Field(default=None, alias="totalTokens")
+    cached_tokens: int | None = Field(default=None, alias="cachedTokens")
+    cost_usd: float | None = Field(default=None, alias="costUsd")
+    cost_cny: float | None = Field(default=None, alias="costCny")
+    usage_status: str | None = Field(default=None, alias="usageStatus")
     latency_ms: int | None = Field(default=None, alias="latencyMs")
     cache_hit: bool = Field(default=False, alias="cacheHit")
     request_id: str | None = Field(default=None, alias="requestId")
     error: str | None = None
+    #: The machine-readable classification of ``error`` (``PROVIDER_UNAVAILABLE``, …). A reader can
+    #: act on this where the free text is only a clue.
+    error_code: str | None = Field(default=None, alias="errorCode")
     step_count: int = Field(default=0, alias="stepCount")
     started_at: datetime | None = Field(default=None, alias="startedAt")
     finished_at: datetime | None = Field(default=None, alias="finishedAt")
@@ -70,8 +87,11 @@ class AiStepResponse(_CamelModel):
     prompt_version: str | None = Field(default=None, alias="promptVersion")
     attempts: int = 1
     cache_hit: bool = Field(default=False, alias="cacheHit")
-    tokens: int = 0
-    cost_usd: float = Field(default=0.0, alias="costUsd")
+    #: ``null`` when the step made no model call *or* when the model call's usage was not reported;
+    #: ``usageStatus`` distinguishes the two, and the distinction is why both fields exist.
+    tokens: int | None = None
+    cost_usd: float | None = Field(default=None, alias="costUsd")
+    usage_status: str | None = Field(default=None, alias="usageStatus")
     #: Digests rather than payloads: the trace says *what was sent* without copying candidate
     #: material into a table an operator browses.
     input_digest: str = Field(default="", alias="inputDigest")
@@ -90,13 +110,16 @@ class LlmCallResponse(_CamelModel):
     model: str = ""
     operation: str = "chat"
     prompt_version: str | None = Field(default=None, alias="promptVersion")
-    prompt_tokens: int = Field(default=0, alias="promptTokens")
-    completion_tokens: int = Field(default=0, alias="completionTokens")
-    total_tokens: int = Field(default=0, alias="totalTokens")
-    cost_usd: float = Field(default=0.0, alias="costUsd")
-    cost_cny: float = Field(default=0.0, alias="costCny")
+    prompt_tokens: int | None = Field(default=None, alias="promptTokens")
+    completion_tokens: int | None = Field(default=None, alias="completionTokens")
+    total_tokens: int | None = Field(default=None, alias="totalTokens")
+    cached_tokens: int | None = Field(default=None, alias="cachedTokens")
+    cost_usd: float | None = Field(default=None, alias="costUsd")
+    cost_cny: float | None = Field(default=None, alias="costCny")
+    usage_status: str | None = Field(default=None, alias="usageStatus")
     latency_ms: int | None = Field(default=None, alias="latencyMs")
     status: str = "ok"
+    request_id: str | None = Field(default=None, alias="requestId")
     created_at: datetime | None = Field(default=None, alias="createdAt")
 
 
@@ -131,6 +154,10 @@ class AiCostsResponse(_CamelModel):
     days: list[DailyCost] = Field(default_factory=list)
     totals: CostTotals = Field(default_factory=CostTotals)
     daily_budget_usd: float = Field(default=0.0, alias="dailyBudgetUsd")
+    #: Runs in the window whose usage was never reported (``unavailable``/``legacy``). Their
+    #: counters are ``NULL`` and ``SUM`` skips them, so ``totals`` is a **floor** rather than a
+    #: complete figure — a fact the payload states instead of leaving to be inferred (PHASE 13).
+    unaccounted_runs: int = Field(default=0, alias="unaccountedRuns")
     notes: list[str] = Field(default_factory=list)
 
 

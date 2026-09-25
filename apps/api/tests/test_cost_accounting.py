@@ -8,10 +8,12 @@ meaningless while still looking plausible.
 
 Two kinds of rows are used, and the difference is stated rather than hidden: **endpoint-driven**
 runs (the groupings are the product's own) and **seeded** runs written through the same
-``DatabaseRunTracker``/``RunRecorder`` the product uses, carrying the usage a correctly-accounted
-step would report. The second kind is necessary because no shipped step accounts usage at all —
-see :func:`_seed_priced_run` and the gap recorded in ``test_usage_reported_by_the_provider_is_dropped``.
-Without them every total here would be zero and the arithmetic would pass whatever it did.
+``DatabaseRunTracker``/``RunRecorder`` the product uses, carrying a chosen amount of usage. The
+second kind is what lets the aggregation be checked against *known* inputs: since PHASE 13 an
+endpoint-driven run does carry the provider's usage
+(:func:`test_usage_reported_by_the_provider_reaches_the_run_and_its_calls` proves it), but the
+amount is whatever the scripted provider reported, and a test that cannot choose the numbers cannot
+tell correct arithmetic from a coincidentally-correct ``GROUP BY``.
 """
 
 from __future__ import annotations
@@ -25,13 +27,25 @@ import pytest
 from sqlalchemy import func, or_, select
 
 from careerforge_ai.providers.heuristic import HeuristicProvider
-from careerforge_ai.schemas.observability import AgentRunRecord, Cost, StepTrace, TokenUsage
+from careerforge_ai.schemas.observability import (
+    AgentRunRecord,
+    Cost,
+    LLMUsage,
+    StepTrace,
+    TokenUsage,
+)
 from careerforge_api.db.compat import utcnow
 from careerforge_api.models.observability import AgentRun, LlmCall
 from careerforge_api.services.ai_service import DatabaseRunTracker
 from careerforge_api.services.metering import RunRecorder
 from tests.conftest import EnvelopeCheck, Session, UserFactory
-from tests.failure_support import JD_TEXT, MATCH_PAYLOAD, ScriptedProvider, install_chain
+from tests.failure_support import (
+    JD_TEXT,
+    MATCH_PAYLOAD,
+    ScriptedProvider,
+    install_chain,
+    journal_of,
+)
 from tests.observability_support import fetch_runs
 
 #: The money tolerance. The columns are ``NUMERIC(10,6)`` and both sides are rounded to six
@@ -58,18 +72,23 @@ async def _seed_priced_run(
 ) -> UUID:
     """Write one run with real usage, through the production tracker and recorder.
 
-    The rows are produced by ``DatabaseRunTracker`` + ``RunRecorder`` — the same writers an
-    endpoint uses — with a step trace that carries reported usage, because **no shipped step
-    accounts any**: ``RunContext.structured`` never calls ``add_usage``, so a workflow driven
-    through the API records zero tokens and zero cost no matter what the provider reported. A
-    cost-aggregation test over endpoint-only rows could not distinguish correct arithmetic from a
-    broken ``GROUP BY``, so the priced rows are the *input* the aggregation is checked on.
+    The rows are produced by ``DatabaseRunTracker`` + ``RunRecorder`` — the same writers an endpoint
+    uses — with a step trace that carries the usage the caller chose. Two reasons for seeding rather
+    than driving an endpoint: the arithmetic has to be checked against *known* inputs (an endpoint's
+    usage is whatever its provider happened to report), and ``ANCIENT``/``stale`` rows need a
+    ``started_at`` in the past, which no request can produce.
+
+    ``record.usage`` is derived by :meth:`AgentRunRecord.recompute_totals` from the step envelope, so
+    the run row's counts and status come out of the same path production uses.
     """
     usage = TokenUsage(prompt_tokens=max(tokens - 10, 0), completion_tokens=10, total_tokens=tokens)
     cost = Cost(usd=usd, cny=cny)
+    envelope = LLMUsage.from_token_usage(
+        usage, cost, provider="seeded", model="seeded-model", request_id="seeded"
+    )
     async with app.state.session_factory() as db:
         recorder = RunRecorder(db, user_id=UUID(user_id))
-        tracker = DatabaseRunTracker(db, recorder=recorder)
+        tracker = DatabaseRunTracker(db, recorder=recorder, journal=journal_of(app))
         record = AgentRunRecord(
             id=uuid4(),
             user_id=UUID(user_id),
@@ -86,6 +105,7 @@ async def _seed_priced_run(
                 status="ok",
                 tokens=usage,
                 cost=cost,
+                usage=envelope,
                 latency_ms=41,
                 provider="seeded",
             ),
@@ -318,19 +338,18 @@ async def test_a_seeded_run_is_attributed_to_its_feature(
 # ── what the provider reported, and where it goes ────────────────────────────
 
 
-async def test_usage_reported_by_the_provider_is_dropped_before_it_reaches_a_run(
+async def test_usage_reported_by_the_provider_reaches_the_run_and_its_calls(
     client: AsyncClient, make_user: UserFactory, app: FastAPI
 ) -> None:
-    """GAP, asserted on purpose: a provider that reports 150 tokens produces a run of zero.
+    """A provider that reports 150 tokens produces a run of 150 — the gap PHASE 12 recorded.
 
-    The AI core's structured path cannot carry usage at all: ``structured_output`` returns the
-    parsed schema rather than the provider's envelope, ``RunContext.structured`` never calls
-    ``add_usage`` (nothing in the product calls ``RunContext.chat`` either), and
-    ``MeteredProvider.structured_output`` writes ``tokens=None, cost=None`` for that reason. So
-    ``agent_runs.total_tokens``/``cost_usd`` and the ``llm_calls`` rows of every AI endpoint are
-    structurally zero, and the Cost page's headline figure is zero on every deployment — including
-    one with a paid key. ``metering.py``'s promise that a model call's "tokens, cost, latency"
-    reach the row holds only for the ``chat``/``embedding`` paths, which no agent uses.
+    The AI core's structured path used to be unable to carry usage at all: ``structured_output``
+    returned the parsed schema rather than the provider's envelope, ``RunContext.structured`` never
+    called ``add_usage``, and ``MeteredProvider.structured_output`` wrote ``tokens=None, cost=None``
+    because there was nothing else it could do. So ``agent_runs.total_tokens``/``cost_usd`` and the
+    ``llm_calls`` rows of *every* AI endpoint were structurally zero — on a deployment with a paid
+    key as much as on the zero-key one — and the Cost page's headline figure was zero (see
+    ``docs/QUALITY.md`` §7.1). This test now asserts the fixed behaviour.
     """
     account = await make_user(display_name="Usage")
     provider = ScriptedProvider()
@@ -340,22 +359,55 @@ async def test_usage_reported_by_the_provider_is_dropped_before_it_reaches_a_run
         "/api/v1/ai/analyze/jd", json={"text": JD_TEXT}, headers=account.headers
     )
     assert response.status_code == 200, response.text
-    assert provider.tokens.total_tokens == 150, "the provider does report usage on the chat path"
+    assert provider.tokens.total_tokens == 150, "the provider does report usage"
 
     detail = (
         await client.get(
             f"/api/v1/ai-runs/{response.json()['data']['meta']['run_id']}", headers=account.headers
         )
     ).json()["data"]
-    assert detail["totalTokens"] == 0, "usage now reaches the run; this gap is closed"
-    assert detail["costUsd"] == 0.0 and detail["costCny"] == 0.0
+    assert detail["usageStatus"] == "reported"
+    assert detail["totalTokens"] == 150, "the reported usage did not reach the run"
+    assert detail["costUsd"] > 0 and detail["costCny"] > 0
 
     assert detail["calls"], "the model call was not metered at all"
     for call in detail["calls"]:
-        assert call["totalTokens"] == 0
-        assert call["costUsd"] == 0.0
         assert call["operation"] == "structured"
         assert call["provider"] == "scripted", "the call does name the provider that served it"
+        assert call["usageStatus"] == "reported"
+        assert call["totalTokens"] == 150
+        assert call["costUsd"] == pytest.approx(0.0012, abs=TOLERANCE)
+        assert call["model"] == "scripted-model"
+
+
+async def test_an_unreported_usage_does_not_silently_become_zero_in_the_totals(
+    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
+) -> None:
+    """The other half of the same fix: no usage reported must not read as a measured zero.
+
+    The shipped zero-key chain is the honest case — it computes locally and spends nothing — and
+    the payload has to distinguish it from "the vendor said zero". Measured: the counts are ``null``,
+    ``SUM`` skips them, and the totals carry a note saying they are a floor rather than a complete
+    figure. A cost page printing ``0`` here would be describing a measurement nobody took.
+    """
+    account = await make_user(display_name="No usage")
+    response = await client.post(
+        "/api/v1/ai/analyze/jd", json={"text": JD_TEXT}, headers=account.headers
+    )
+    assert response.status_code == 200, response.text
+    run_id = str(envelope(response)["data"]["meta"]["run_id"])
+
+    detail = (await client.get(f"/api/v1/ai-runs/{run_id}", headers=account.headers)).json()["data"]
+    assert detail["usageStatus"] == "unavailable"
+    assert detail["totalTokens"] is None and detail["costUsd"] is None
+
+    summary = await _costs(client, account, "/ai-costs", "all")
+    assert summary["unaccountedRuns"] >= 1
+    assert any("下限" in note for note in summary["notes"])
+
+    # …and the run is still counted, because a run nobody can account for is exactly the run an
+    # operator needs to see.
+    assert summary["totals"]["runs"] >= 1
 
 
 async def test_a_run_outside_the_window_is_absent_from_the_agent_breakdown(

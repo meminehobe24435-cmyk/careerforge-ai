@@ -30,7 +30,7 @@ from careerforge_ai.parsing.claim_rules import (
     detect_missing_technical,
     detect_numeric_risk,
 )
-from careerforge_ai.parsing.tokenize import missing_technical_tokens
+from careerforge_ai.parsing.skill_mentions import presence_of
 from careerforge_ai.providers.heuristic.registry import handles
 from careerforge_ai.providers.heuristic.text import token_overlap
 from careerforge_ai.schemas.claim import ClaimLLMVerdict
@@ -64,18 +64,22 @@ def validate_claim(text: str, context: Mapping[str, Any]) -> ClaimLLMVerdict:
 
     overlap = token_overlap(text, evidence_text)
     mentions, numeric_reasons = detect_numeric_risk(text, evidence_text)
-    technical_reasons = detect_missing_technical(text, evidence_text)
+    # One presence question, shared with the validator's rules phase, so the zero-key path and the
+    # traced gate can never disagree about whether a technology is in the material (PHASE 13).
+    presence = presence_of(text, evidence_text)
+    technical_reasons = detect_missing_technical(text, evidence_text, presence=presence)
 
     unsupported_numbers = [mention.raw for mention in mentions if not mention.supported]
     # `unsupported_parts` carries the *fragments* of the claim that the evidence
     # cannot carry, so a caller can highlight them in the original sentence. The
     # explanatory sentence goes into `reasoning` instead.
-    unsupported_parts: list[str] = sorted(missing_technical_tokens(text, evidence_text))
+    unsupported_parts: list[str] = sorted(presence.confirmed_absent.values())
+    unsupported_parts.extend(sorted(presence.unconfirmed_tokens))
     unsupported_parts.extend(unsupported_numbers)
     if overlap < SUPPORT_OVERLAP_THRESHOLD and not unsupported_parts:
         unsupported_parts.append(text)
 
-    blocked = bool(numeric_reasons)
+    blocked = bool(numeric_reasons) or presence.blocked
     supported = overlap >= SUPPORT_OVERLAP_THRESHOLD and not blocked and not technical_reasons
     partially = not supported and not blocked and overlap >= PARTIAL_OVERLAP_THRESHOLD
 

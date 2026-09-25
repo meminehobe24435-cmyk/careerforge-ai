@@ -34,6 +34,7 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
     messages_to_text,
 )
 from careerforge_ai.providers.heuristic.registry import HEURISTIC_HANDLERS
@@ -41,7 +42,7 @@ from careerforge_ai.providers.heuristic.synthesis import synthesize_model
 from careerforge_ai.providers.heuristic.text import heuristic_embedding
 from careerforge_ai.providers.tokens import estimate_messages_tokens, estimate_tokens
 from careerforge_ai.schemas.common import DegradationReason
-from careerforge_ai.schemas.observability import Cost, TokenUsage
+from careerforge_ai.schemas.observability import Cost, LLMUsage, TokenUsage
 
 __all__ = ["HeuristicProvider"]
 
@@ -73,6 +74,13 @@ class HeuristicProvider:
                 "Rule-based provider used when no API key is configured. Results are "
                 "schema-valid and reproducible but deliberately conservative."
             ),
+            # Nothing to report: there is no vendor-side prompt cache and no bill. ``False``
+            # means "not reported", which is what the cost page will say.
+            reports_cached_tokens=False,
+            # This provider *can* answer ``structured_output_envelope`` — with the truth, which
+            # is that the call is unavailable. Declaring it lets the envelope path be exercised
+            # on the zero-key deployment instead of only on a paid one.
+            supports_usage_envelope=True,
         )
 
     # ── chat ─────────────────────────────────────────────────────────────────
@@ -90,20 +98,27 @@ class HeuristicProvider:
         content = self._template_reply(text)
         prompt_tokens = estimate_messages_tokens([message.content for message in messages])
         completion_tokens = estimate_tokens(content)
+        estimated = TokenUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            estimated=True,
+        )
         return ChatResult(
             content=content,
             provider=self.name,
             model=model or _MODEL_NAME,
-            tokens=TokenUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-                estimated=True,
-            ),
+            tokens=estimated,
             cost=Cost(),
             latency_ms=int((time.perf_counter() - started) * 1000),
             degraded=True,
             degradation_reason=DegradationReason.NO_API_KEY,
+            # ``estimated``, not ``reported``: these are character counts, not a vendor's
+            # accounting. The structured path below declares ``unavailable`` instead, because
+            # there the provider answers from rules without imitating a model call at all.
+            usage=LLMUsage.from_token_usage(
+                estimated, Cost(), provider=self.name, model=model or _MODEL_NAME
+            ),
         )
 
     async def stream(
@@ -136,6 +151,8 @@ class HeuristicProvider:
             tokens=result.tokens,
             cost=result.cost,
             degraded=True,
+            usage=result.envelope(),
+            usage_reported=True,
         )
 
     # ── embeddings ───────────────────────────────────────────────────────────
@@ -149,17 +166,21 @@ class HeuristicProvider:
         started = time.perf_counter()
         vectors = [heuristic_embedding(text, dim=self._dim) for text in texts]
         prompt_tokens = sum(estimate_tokens(text) for text in texts)
+        estimated = TokenUsage(
+            prompt_tokens=prompt_tokens, total_tokens=prompt_tokens, estimated=True
+        )
         return EmbeddingResult(
             vectors=vectors,
             provider=self.name,
             model=model or _EMBEDDING_MODEL_NAME,
             dim=self._dim,
-            tokens=TokenUsage(
-                prompt_tokens=prompt_tokens, total_tokens=prompt_tokens, estimated=True
-            ),
+            tokens=estimated,
             cost=Cost(),
             latency_ms=int((time.perf_counter() - started) * 1000),
             degraded=True,
+            usage=LLMUsage.from_token_usage(
+                estimated, Cost(), provider=self.name, model=model or _EMBEDDING_MODEL_NAME
+            ),
         )
 
     # ── structured output ────────────────────────────────────────────────────
@@ -174,6 +195,32 @@ class HeuristicProvider:
         model: str | None = None,
     ) -> SchemaT:
         """Produce schema-valid output, using a specific handler when one exists."""
+        result = await self.structured_output_envelope(
+            messages, schema, context=context, temperature=temperature, model=model
+        )
+        return result.value
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The structured path, declaring ``usage_status: unavailable`` — honestly.
+
+        This provider is a rule engine: it spends nothing, so there is no usage to report, and
+        ``0`` would be a *claim* that the call used no tokens rather than an admission that
+        nobody counted. The distinction matters on this deployment because every zero-key run
+        takes this path, and a cost page reading ``0`` for all of them is exactly the defect
+        PHASE 12 recorded (``docs/QUALITY.md`` §7.1).
+
+        What it *can* offer is the size of the material it was handed, measured locally with the
+        same estimator the token counter uses. That is not usage and is kept in its own field
+        (``estimated_input_tokens``) so it can never be summed into a cost.
+        """
         text = self._structured_input(messages, context or {})
         handler = HEURISTIC_HANDLERS.get(schema.__name__)
         if handler is not None:
@@ -184,12 +231,19 @@ class HeuristicProvider:
                     f"heuristic handler for {schema.__name__} failed",
                     details={"schema": schema.__name__, "error": str(exc)},
                 ) from exc
-            if isinstance(candidate, schema):
-                return candidate
-            return schema.model_validate(candidate)
+            value = candidate if isinstance(candidate, schema) else schema.model_validate(candidate)
+        else:
+            synthesized = synthesize_model(schema, text)
+            value = schema.model_validate(synthesized.model_dump())
 
-        synthesized = synthesize_model(schema, text)
-        return schema.model_validate(synthesized.model_dump())
+        return StructuredResult(
+            value=value,
+            usage=LLMUsage.unavailable(
+                provider=self.name,
+                model=model,
+                estimated_input_tokens=estimate_tokens(text) if text else 0,
+            ),
+        )
 
     # ── helpers ──────────────────────────────────────────────────────────────
 

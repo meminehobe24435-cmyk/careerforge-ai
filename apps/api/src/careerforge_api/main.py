@@ -47,6 +47,7 @@ from careerforge_api.db.session import (
 )
 from careerforge_api.middleware.envelope import EnvelopeMiddleware
 from careerforge_api.middleware.errors import ErrorHandlingMiddleware, register_exception_handlers
+from careerforge_api.middleware.failures import FailureJournalMiddleware
 from careerforge_api.middleware.logging import RequestLoggingMiddleware
 from careerforge_api.middleware.ratelimit import RateLimitMiddleware, TokenBucketLimiter
 from careerforge_api.middleware.request_id import RequestIDMiddleware
@@ -69,6 +70,7 @@ from careerforge_api.routers import (
 )
 from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
+from careerforge_api.services.failure_journal import FailureJournal
 from careerforge_api.services.metering import DatabaseCacheStore
 from careerforge_api.services.seed_service import ensure_demo_user
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
@@ -90,6 +92,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     session_factory = create_session_factory(engine)
     app.state.session_factory = session_factory
+    # The journal writes failed runs through its own short-lived session, which is only safe once
+    # the request's transaction has released its write lock — hence the outer middleware.
+    app.state.failure_journal.bind(session_factory)
 
     if settings.use_sqlite:
         # The zero-dependency path has no migration step: `alembic upgrade head`
@@ -183,12 +188,19 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # Interview sessions span several requests, so the store is app-wide. It is
     # in-process, which ``GET /ai/capabilities`` reports as a limitation.
     application.state.interview_sessions = InterviewSessionStore()
+    #: Where a failed AI run goes when the request's transaction is about to be rolled back.
+    #: Bound to the session factory in the lifespan; flushed by the outermost middleware, after
+    #: the request transaction has settled (``services/failure_journal.py`` explains why).
+    application.state.failure_journal = FailureJournal()
 
     # ── middleware, innermost first ──────────────────────────────────────────
     # Starlette wraps `add_middleware` calls in reverse: the last one added ends up
     # outermost. This order therefore produces, on the way in:
-    #   RequestID → logging → TrustedHost → CORS → rate limit → error handling →
-    #   envelope → (FastAPI exception handlers) → router
+    #   FailureJournal → RequestID → logging → TrustedHost → CORS → rate limit →
+    #   error handling → envelope → (FastAPI exception handlers) → router
+    # The failure journal is outermost on purpose: it writes rows for runs whose transaction has
+    # been rolled back, which is only true once every inner layer (including the error handler)
+    # has finished.
     application.add_middleware(EnvelopeMiddleware)
     application.add_middleware(ErrorHandlingMiddleware, logger=logger, debug=resolved.debug)
     application.add_middleware(
@@ -212,6 +224,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         application.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved.trusted_host_list)
     application.add_middleware(RequestLoggingMiddleware, logger=logger)
     application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(FailureJournalMiddleware)
 
     register_exception_handlers(application)
 

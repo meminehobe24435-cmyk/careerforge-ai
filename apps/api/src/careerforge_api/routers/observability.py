@@ -45,8 +45,11 @@ _RANGE = Query(default="7d", alias="range", pattern="^(7d|30d|90d|all)$")
 #: A tuple, not a parenthesised string: ``list("abc")`` is ``['a','b','c']``, which is how the
 #: first version of this served a note spelled out one character per element.
 _NOTES = (
-    "token 与成本来自 provider 自报的用量；零 Key 的 heuristic 路径不产生 token，"
-    "因此这些运行的 token/成本为 0 而延迟仍被测量。",
+    "token 与成本来自 provider 自报的用量；零 Key 的 heuristic 路径不产生 token，延迟仍被测量。"
+    "usageStatus 说明每个数字的来源："
+    "reported=provider 上报，estimated=本地估算，cached=命中缓存（本次未计费），"
+    "unavailable=provider 未上报（此时计数为 null，不是 0），"
+    "legacy=PHASE 13 之前的旧行（0 的来源未知）。",
 )
 
 
@@ -68,12 +71,15 @@ def _run_response(row: Any) -> AiRunResponse:
         prompt_tokens=row.prompt_tokens,
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
-        cost_usd=float(row.cost_usd),
-        cost_cny=float(row.cost_cny),
+        cached_tokens=row.cached_tokens,
+        cost_usd=float(row.cost_usd) if row.cost_usd is not None else None,
+        cost_cny=float(row.cost_cny) if row.cost_cny is not None else None,
+        usage_status=row.usage_status,
         latency_ms=row.latency_ms,
         cache_hit=row.cache_hit,
         request_id=row.request_id,
         error=row.error,
+        error_code=row.error_code,
         step_count=len(row.steps or []),
         started_at=row.started_at,
         finished_at=row.finished_at,
@@ -81,6 +87,16 @@ def _run_response(row: Any) -> AiRunResponse:
 
 
 def _step_response(step: dict[str, Any]) -> AiStepResponse:
+    """One step, with its usage read from the envelope when the trace has one.
+
+    Traces written before PHASE 13 carry only the ``tokens``/``cost`` counters and no status; those
+    are reported as ``legacy`` — the numbers they contain are zeros of unknown provenance, and
+    calling them ``reported`` would invent a measurement.
+    """
+    envelope = step.get("usage") or {}
+    counters = step.get("tokens") or {}
+    status = envelope.get("usage_status")
+    unavailable = status == "unavailable"
     return AiStepResponse(
         name=str(step.get("name") or ""),
         status=str(step.get("status") or "ok"),
@@ -90,8 +106,11 @@ def _step_response(step: dict[str, Any]) -> AiStepResponse:
         prompt_version=step.get("prompt_version"),
         attempts=int(step.get("attempts") or 1),
         cache_hit=bool(step.get("cache_hit")),
-        tokens=int((step.get("tokens") or {}).get("total_tokens") or 0),
-        cost_usd=float((step.get("cost") or {}).get("usd") or 0.0),
+        tokens=None
+        if unavailable
+        else (envelope.get("total_tokens") if envelope else counters.get("total_tokens") or 0),
+        cost_usd=None if unavailable else float((step.get("cost") or {}).get("usd") or 0.0),
+        usage_status=status or ("legacy" if step.get("tokens") is not None else "unavailable"),
         input_digest=str(step.get("input_digest") or ""),
         output_digest=str(step.get("output_digest") or ""),
         error_code=step.get("error_code"),
@@ -175,10 +194,13 @@ async def get_ai_run(run_id: str, session: DbSession, user: CurrentUser) -> AiRu
                 prompt_tokens=call.prompt_tokens,
                 completion_tokens=call.completion_tokens,
                 total_tokens=call.total_tokens,
-                cost_usd=float(call.cost_usd),
-                cost_cny=float(call.cost_cny),
+                cached_tokens=call.cached_tokens,
+                cost_usd=float(call.cost_usd) if call.cost_usd is not None else None,
+                cost_cny=float(call.cost_cny) if call.cost_cny is not None else None,
+                usage_status=call.usage_status,
                 latency_ms=call.latency_ms,
                 status=call.status,
+                request_id=call.request_id,
                 created_at=call.created_at,
             )
             for call in calls
@@ -197,12 +219,23 @@ async def get_ai_costs(
 ) -> AiCostsResponse:
     summary = await ObservabilityService(session).cost_summary(range_key=range_key, user_id=user.id)
     budget = getattr(settings, "ai_daily_budget_usd", 0.0)
+    notes = list(_NOTES)
+    unaccounted = int(summary.get("unaccountedRuns") or 0)
+    if unaccounted:
+        # The totals above are a floor, not a complete figure: ``SUM`` skips the runs whose usage
+        # was never reported. Saying so is the difference between an honest total and a plausible
+        # one (PHASE 13).
+        notes.append(
+            f"本区间有 {unaccounted} 次运行的用量未被 provider 上报，"
+            "它们的 token/成本为 null 且未计入合计——因此合计是下限，不是确切值。"
+        )
     return AiCostsResponse(
         range=str(summary["range"]),
         days=[DailyCost(**day) for day in summary["days"]],
         totals=CostTotals(**summary["totals"]),
         daily_budget_usd=float(budget),
-        notes=list(_NOTES),
+        unaccounted_runs=unaccounted,
+        notes=notes,
     )
 
 

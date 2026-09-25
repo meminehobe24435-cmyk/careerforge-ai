@@ -68,6 +68,7 @@ async def get_ai_service(
     settings: SettingsDep,
     sessions: Annotated[InterviewSessionStore, Depends(get_interview_sessions)],
     user: OptionalUser,
+    request_id: Annotated[str, Depends(get_request_id)],
 ) -> AsyncIterator[AIService]:
     """Bind the agent layer to this request's provider, prompts and session.
 
@@ -92,6 +93,10 @@ async def get_ai_service(
         # first one's cache and the reported hit rate means something.
         cache_store=getattr(request.app.state, "ai_cache_store", None),
         user_id=user.id if user is not None else None,
+        request_id=request_id or None,
+        # Where a failed run goes when this request's transaction is rolled back. The journal is
+        # flushed by middleware *after* this dependency unwinds — see ``failure_journal.py``.
+        journal=getattr(request.app.state, "failure_journal", None),
     )
     try:
         yield service

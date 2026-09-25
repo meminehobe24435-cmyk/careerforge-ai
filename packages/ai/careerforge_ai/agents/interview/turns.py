@@ -171,7 +171,12 @@ async def _evaluate_turn(context: RunContext, inputs: dict[str, Any]) -> TurnEva
     raw: ExtractedTurnEvaluation = await context.structured(
         "interview_evaluator",
         ExtractedTurnEvaluation,
-        context={"source_text": answer},
+        # ``topic`` travels in BOTH places, and that is not redundancy: the prompt variable is what a
+        # language model reads, while ``context`` is what a *deterministic* handler reads. Passing it
+        # only as a prompt variable made ``handlers_interview._TOPIC_TERMS`` unreachable on the
+        # zero-key path — the same answer scored 5/7 through the API and 12/14 in a direct call,
+        # because the topic-keyed vocabulary was never applied. Found by PHASE 13's interview page.
+        context={"source_text": answer, "topic": question.topic if question else ""},
         question=question.content if question else "",
         level=(
             question.question_level.value if question and question.question_level else "concept"

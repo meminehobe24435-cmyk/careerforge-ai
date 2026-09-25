@@ -39,6 +39,7 @@ from careerforge_ai.parsing.claim_rules import (
     detect_ownership_gap,
     detect_superlatives,
 )
+from careerforge_ai.parsing.skill_mentions import presence_of
 from careerforge_ai.schemas.claim import (
     ClaimLLMVerdict,
     ClaimReason,
@@ -116,7 +117,10 @@ async def rules_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, 
     evidence_text = str(context.metadata.get("evidence_text") or "")
 
     mentions, numeric_reasons = detect_numeric_risk(claim, evidence_text)
-    technical_reasons = detect_missing_technical(claim, evidence_text)
+    # One presence question, asked once: the severity of the technical rule and the shape of the
+    # safer rewrite both rest on it, and asking twice could give two answers (PHASE 13).
+    presence = presence_of(claim, evidence_text)
+    technical_reasons = detect_missing_technical(claim, evidence_text, presence=presence)
     superlative_reasons = detect_superlatives(claim)
     ownership_gap = detect_ownership_gap(claim, evidence_text)
 
@@ -134,6 +138,11 @@ async def rules_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, 
         "status_cap": ClaimStatus.PARTIALLY_SUPPORTED if ownership_gap is not None else None,
         "unsupported_numbers": [mention.raw for mention in mentions if not mention.supported],
         "missing_technical": [reason.message for reason in technical_reasons],
+        # The skills the material provably does not carry, and the tokens whose absence only says
+        # the extractor did not recognise them. Kept separately so a reader (and the audit in
+        # ``tests/test_skill_presence.py``) can see which half produced a refusal.
+        "absent_skills": sorted(presence.confirmed_absent),
+        "unconfirmed_tokens": sorted(presence.unconfirmed_tokens),
     }
 
 
@@ -168,8 +177,17 @@ async def retrieve_phase(context: RunContext, inputs: dict[str, Any]) -> dict[st
         return {"hits": [], "degraded": True, "reason": reason}
 
     hits = list(result.hits)
-    evidence_text = "\n".join(f"{hit.title}\n{hit.snippet}" for hit in hits)
-    context.metadata["evidence_text"] = evidence_text
+    # The supplied material is kept and the hits are appended, rather than the hits replacing it.
+    # Both the verdict and the safer-rewrite phases read this, and a rules layer that now refuses a
+    # claim for naming a technology the material never mentions must be reading *all* the material:
+    # overwriting the caller's evidence with eight retrieval snippets would drop the fragment that
+    # names the very skill being judged. ``resume_service.validate`` supplies the material precisely
+    # so this rule can be trusted (PHASE 12, finding 1; PHASE 13 made it load-bearing).
+    supplied = str(context.metadata.get("evidence_text") or "")
+    retrieved = "\n".join(f"{hit.title}\n{hit.snippet}" for hit in hits)
+    context.metadata["evidence_text"] = "\n\n".join(
+        block for block in (supplied, retrieved) if block
+    )
     context.metadata["retrieval"] = {
         "semantic_candidates": result.semantic_candidates,
         "keyword_candidates": result.keyword_candidates,

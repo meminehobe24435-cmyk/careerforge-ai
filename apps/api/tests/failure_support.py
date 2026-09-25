@@ -17,8 +17,7 @@ meanings of it. Not named ``test_*`` so pytest does not collect it, the same con
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -26,39 +25,27 @@ from fastapi import FastAPI
 from sqlalchemy import select
 
 from careerforge_ai.agents import JobAgent
-from careerforge_ai.errors import (
-    BudgetExceededError,
-    ProviderRateLimitedError,
-    ProviderTimeoutError,
-    SchemaValidationError,
-)
 from careerforge_ai.orchestrator import ExecutorSettings, WorkflowExecutor
 from careerforge_ai.prompting.registry import load_prompt_registry
 from careerforge_ai.providers.base import (
-    ChatMessage,
-    ChatResult,
-    EmbeddingResult,
     LLMProvider,
-    ProviderCapabilities,
-    SchemaT,
-    StreamChunk,
-    StructuredContext,
 )
-from careerforge_ai.providers.heuristic import HeuristicProvider
 from careerforge_ai.providers.resilience import ResilientProvider
 from careerforge_ai.schemas.common import DegradationReason
-from careerforge_ai.schemas.observability import Cost, TokenUsage
 from careerforge_api.models.observability import AgentRun
 from careerforge_api.services.ai_service import DatabaseRunTracker
+from careerforge_api.services.failure_journal import FailureJournal
 from careerforge_api.services.metering import RunRecorder
 
 __all__ = [
     "BUDGET",
     "CRASH",
+    "DeclaredOutageProvider",
     "FABRICATED_ROLE",
     "GARBAGE_JSON",
     "HANG",
     "JD_TEXT",
+    "LEAKY",
     "MALFORMED_JSON",
     "MATCH_PAYLOAD",
     "RATE_LIMITED",
@@ -66,183 +53,29 @@ __all__ = [
     "TIMEOUT",
     "WRONG_SHAPE",
     "install_chain",
+    "journal_of",
     "run_job_through_the_tracker",
 ]
 
-# ── how a scripted provider fails ────────────────────────────────────────────
 
-#: An upstream that never answers within the chain's timeout (a real hang, not a raise).
-HANG = "hang"
-#: ``ProviderTimeoutError`` — what ``openai_compat`` raises for a read timeout.
-TIMEOUT = "timeout"
-#: ``ProviderRateLimitedError`` — what ``openai_compat`` raises for an HTTP 429.
-RATE_LIMITED = "rate_limited"
-#: Truncated JSON that cannot satisfy the declared schema (ADR-007's repair case).
-MALFORMED_JSON = "malformed_json"
-#: A bug inside the provider layer: not a ``CareerForgeError``, so the chain flattens it.
-CRASH = "crash"
-#: A model answer of the wrong shape: the call succeeds and the *next* step crashes on it.
-WRONG_SHAPE = "wrong_shape"
-#: The spend ceiling: ``RoutedProvider`` raises this once the budget is exhausted.
-BUDGET = "budget"
+# The document and secret fixtures live in ``tests/leak_fixtures.py`` and the scripted providers in
+# ``tests/scripted_providers.py``; both are re-exported below so a suite has one import to write. They
+# are not *defined* here, because a fixture with two homes ends up with two meanings.
 
-#: The answer the malformed provider *intended* to send. If this string ever reaches a response,
-#: a fabricated model answer has been presented as a real one and the test that watches for it
-#: failed on purpose.
-FABRICATED_ROLE = "FABRICATED-ROLE-XYZ"
-#: Truncated on purpose: one unclosed object, which no JSON parser can turn into a schema.
-GARBAGE_JSON = f'{{"role": "{FABRICATED_ROLE}", "company": "Fabricated Ltd"'
-
-
-class ScriptedProvider:
-    """A provider that reports usage when it works, and fails as told when it does not.
-
-    ``capabilities.deterministic`` is ``False``, which is the whole reason this class exists
-    beside the heuristic provider: ``ResilientProvider`` marks a *deterministic* primary as
-    ``degraded`` even when it answered, so nothing in the shipped chain can produce a
-    ``succeeded`` run. A non-deterministic primary that answers can.
-
-    The successful ``structured_output`` delegates to the real :class:`HeuristicProvider` rather
-    than returning a hand-built object: the answers a test asserts on are then the product's own,
-    produced from the request's text.
-    """
-
-    def __init__(
-        self,
-        failure: str | None = None,
-        *,
-        name: str = "scripted",
-        hang_s: float = 5.0,
-        prompt_tokens: int = 120,
-        completion_tokens: int = 30,
-        cost_usd: float = 0.0012,
-        cost_cny: float = 0.0086,
-    ) -> None:
-        self.failure = failure
-        self.hang_s = hang_s
-        self.tokens = TokenUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-        )
-        self.cost = Cost(usd=cost_usd, cny=cost_cny)
-        self._name = name
-        #: How many times the provider was asked. Proves whether the retry policy ran.
-        self.calls = 0
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(
-            name=self._name,
-            supports_streaming=False,
-            supports_embeddings=False,
-            supports_native_json_schema=True,
-            requires_api_key=True,
-            deterministic=False,
-        )
-
-    def _raise(self) -> None:
-        if self.failure == TIMEOUT:
-            raise ProviderTimeoutError("upstream did not answer within the read timeout")
-        if self.failure == RATE_LIMITED:
-            raise ProviderRateLimitedError("upstream returned HTTP 429", retry_after_seconds=30)
-        if self.failure == MALFORMED_JSON:
-            raise SchemaValidationError(
-                "model output did not satisfy the declared schema",
-                details={"raw": GARBAGE_JSON, "schema": "ExtractedJD"},
-            )
-        if self.failure == CRASH:
-            raise ValueError("bug inside the provider layer")
-        if self.failure == BUDGET:
-            raise BudgetExceededError(
-                "daily AI budget exhausted", details={"limit_usd": 1.0, "spent_usd": 1.0}
-            )
-        assert self.failure in (None, WRONG_SHAPE), f"unknown scripted failure: {self.failure!r}"
-
-    async def _fail_or_hang(self) -> None:
-        """Hang first (so the *chain's* timeout fires), then raise if the script says so."""
-        self.calls += 1
-        if self.failure == HANG:
-            await asyncio.sleep(self.hang_s)
-        self._raise()
-
-    async def chat(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        temperature: float = 0.2,
-        max_tokens: int | None = None,
-        model: str | None = None,
-    ) -> ChatResult:
-        await self._fail_or_hang()
-        return ChatResult(
-            content="ok",
-            provider=self.name,
-            model="scripted-model",
-            tokens=self.tokens,
-            cost=self.cost,
-            latency_ms=12,
-        )
-
-    async def stream(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        temperature: float = 0.2,
-        max_tokens: int | None = None,
-        model: str | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        await self._fail_or_hang()
-        yield StreamChunk(delta="ok", done=True, provider=self.name, model="scripted-model")
-
-    async def embed(self, texts: Sequence[str], *, model: str | None = None) -> EmbeddingResult:
-        await self._fail_or_hang()
-        return EmbeddingResult(
-            vectors=[[0.0, 0.1] for _ in texts],
-            provider=self.name,
-            model="scripted-embed",
-            dim=2,
-            tokens=TokenUsage(prompt_tokens=10, total_tokens=10),
-            cost=Cost(usd=0.00001, cny=0.00007),
-            latency_ms=5,
-        )
-
-    async def structured_output(
-        self,
-        messages: Sequence[ChatMessage],
-        schema: type[SchemaT],
-        *,
-        context: StructuredContext | None = None,
-        temperature: float = 0.0,
-        model: str | None = None,
-    ) -> SchemaT:
-        await self._fail_or_hang()
-        if self.failure == WRONG_SHAPE:
-            return _WrongShape()  # type: ignore[return-value]
-        # The successful path is the product's own: the same heuristic extractor the zero-key
-        # deployment runs, so the answer a test reads is derived from the request's text.
-        return await HeuristicProvider().structured_output(
-            messages, schema, context=context, temperature=temperature, model=model
-        )
-
-
-class _WrongShape:
-    """What a provider returns when it ignored the schema it was handed.
-
-    Every field the JD workflow asks for is present and of the wrong type, so the failure happens
-    one step later — inside ``normalise``, on ``item.name`` — rather than at the provider
-    boundary. That is the shape of a real "the model answered something else" incident.
-    """
-
-    role = "not a schema"
-    company = "not a schema"
-    required_skills = [object()]
-    preferred_skills = [object()]
-    bonus_skills = []
+from tests.scripted_providers import (
+    BUDGET,
+    CRASH,
+    FABRICATED_ROLE,
+    GARBAGE_JSON,
+    HANG,
+    LEAKY,
+    MALFORMED_JSON,
+    RATE_LIMITED,
+    TIMEOUT,
+    WRONG_SHAPE,
+    DeclaredOutageProvider,
+    ScriptedProvider,
+)
 
 
 def install_chain(
@@ -285,10 +118,14 @@ async def run_job_through_the_tracker(
 ) -> tuple[AgentRun, BaseException | None]:
     """Run the real JobAgent through the real executor and tracker, then **commit**.
 
-    The HTTP path cannot show a failed run at all — an error response rolls the request's
-    transaction back, taking the run row with it (see
-    ``test_a_failed_request_leaves_no_trace_behind``) — so the executor's own contract is measured
-    here, where the session decides when to commit. ``account`` is any object with an ``id``.
+    The HTTP path is what ``test_failure_injection.py`` uses to prove a failed request leaves a row
+    (the request transaction is rolled back and the failure journal writes the trace afterwards);
+    this helper drives the executor directly, where the *caller* owns the session, so a suite can
+    assert on the run the workflow itself produced.
+
+    A failed run is journaled rather than written to this session (``failure_journal.py``), so the
+    journal is flushed here — exactly what the middleware does in production, one frame after the
+    transaction settles. ``account`` is any object with an ``id``.
 
     Returns the persisted row and whatever escaped the executor (``None`` for the failures the
     executor converts into a ``CareerForgeError``-shaped outcome).
@@ -296,12 +133,13 @@ async def run_job_through_the_tracker(
     install_chain(app, primary=provider, fallbacks=[], max_retries=max_retries)
     raised: BaseException | None = None
     run_id: UUID | None = None
+    journal = journal_of(app)
     async with app.state.session_factory() as db:
         recorder = RunRecorder(db, user_id=UUID(str(account.id)))
         executor = WorkflowExecutor(
             provider=app.state.provider,
             prompts=load_prompt_registry(app.state.settings.resolved_prompts_dir),
-            tracker=DatabaseRunTracker(db, recorder=recorder),
+            tracker=DatabaseRunTracker(db, recorder=recorder, journal=journal),
             settings=ExecutorSettings(max_retries=max_retries, backoff_base_s=0.0),
         )
         try:
@@ -311,14 +149,31 @@ async def run_job_through_the_tracker(
             raised = exc
         await recorder.flush()
         await db.commit()
-        if run_id is None:
-            # The re-raised bug took the record with it; the run this call made is the newest.
+
+    # The same flush the middleware performs, for the same reason: a failed run's row lives
+    # outside this session's transaction.
+    await journal.flush()
+
+    if run_id is None:
+        # The re-raised bug took the record with it; the run this call made is the newest.
+        async with app.state.session_factory() as db:
             run_id = await db.scalar(
                 select(AgentRun.id).order_by(AgentRun.started_at.desc()).limit(1)
             )
 
     row = await db_row(app, run_id)
     return row, raised
+
+
+def journal_of(app: FastAPI) -> FailureJournal:
+    """The app's failure journal, bound to its session factory (as the lifespan does)."""
+    journal = getattr(app.state, "failure_journal", None)
+    if journal is None:  # pragma: no cover - create_app always installs one
+        journal = FailureJournal()
+        app.state.failure_journal = journal
+    if getattr(journal, "_session_factory", None) is None:
+        journal.bind(app.state.session_factory)
+    return journal
 
 
 async def db_row(app: FastAPI, run_id: UUID | None) -> AgentRun:

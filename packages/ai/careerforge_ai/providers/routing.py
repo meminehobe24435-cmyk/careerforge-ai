@@ -21,6 +21,8 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
+    structured_output_envelope,
 )
 from careerforge_ai.schemas.observability import Cost
 
@@ -166,3 +168,31 @@ class RoutedProvider:
             temperature=temperature,
             model=model or self._model_for(self._task or TaskClass.EXTRACTION),
         )
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The structured path, with the router's model choice and budget accounting.
+
+        The budget is charged here for the same reason it is charged on ``chat``: an
+        unaccounted structured call would make the spend ceiling unenforceable, and the
+        structured path is the only one any agent uses (PHASE 13).
+        """
+        self._guard()
+        resolved_model = model or self._model_for(self._task or TaskClass.EXTRACTION)
+        result: StructuredResult[SchemaT] = await structured_output_envelope(
+            self._inner,
+            messages,
+            schema,
+            context=context,
+            temperature=temperature,
+            model=resolved_model,
+        )
+        self.charge(Cost(usd=result.usage.cost_usd, cny=result.usage.cost_cny))
+        return result

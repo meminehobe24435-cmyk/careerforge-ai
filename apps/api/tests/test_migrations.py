@@ -150,7 +150,7 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
     """The head is a deliberate list, not a wildcard: a migration that appears without
     its phase being finished should fail this test, not silently become the head."""
     script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
-    assert script.get_heads() == ["0008"]
+    assert script.get_heads() == ["0009"]
     for revision in (
         "0001_initial",
         "0002_documents",
@@ -160,6 +160,9 @@ def test_alembic_revision_id_is_the_documented_head() -> None:
         "0006_resume",
         "0007_applications",
         "0008_public_profile_payload",
+        # PHASE 13: ``usage_status``, ``cached_tokens``, ``error_code``, and the count columns that
+        # became nullable so an unreported usage can be stored as NULL rather than as 0.
+        "0009_usage_observability",
     ):
         assert (APPS_API / "alembic" / "versions" / f"{revision}.py").exists()
 

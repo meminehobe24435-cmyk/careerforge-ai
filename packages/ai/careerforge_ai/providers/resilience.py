@@ -29,6 +29,8 @@ from careerforge_ai.providers.base import (
     SchemaT,
     StreamChunk,
     StructuredContext,
+    StructuredResult,
+    structured_output_envelope,
 )
 from careerforge_ai.schemas.common import DegradationReason
 
@@ -110,6 +112,15 @@ class ResilientProvider:
                 self.last_chain_info = info
                 return result
             except BudgetExceededError:
+                raise
+            except ProviderUnavailableError:
+                # An *outage* the provider itself declared, rather than one this chain inferred.
+                # It is passed through with its own message intact (PHASE 13): flattening it into
+                # "no provider in the chain could serve the request" would erase evidence — the
+                # upstream's status code, its request id, the sentence it actually said — which is
+                # exactly what an operator needs and what the executor's sanitiser is there to
+                # clean of anything sensitive before it becomes a row. Retrying is pointless: the
+                # provider already decided it is unavailable.
                 raise
             except CareerForgeError as exc:
                 last_error = exc
@@ -200,6 +211,34 @@ class ResilientProvider:
         result: SchemaT = await self._run(
             lambda p: p.structured_output(
                 messages, schema, context=context, temperature=temperature, model=model
+            )
+        )
+        return result
+
+    async def structured_output_envelope(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[SchemaT],
+        *,
+        context: StructuredContext | None = None,
+        temperature: float = 0.0,
+        model: str | None = None,
+    ) -> StructuredResult[SchemaT]:
+        """The structured path, with the serving provider's usage envelope (PHASE 13).
+
+        The envelope is produced by whichever provider actually answered, so a fallback
+        contributes *its* numbers rather than the primary's. The chain's diagnostics
+        (``last_chain_info``) are still set by :meth:`_run`, which is what tells the run whether
+        the answer came from a fallback — the two facts travel together by construction.
+        """
+        result: StructuredResult[SchemaT] = await self._run(
+            lambda p: structured_output_envelope(
+                p,
+                messages,
+                schema,
+                context=context,
+                temperature=temperature,
+                model=model,
             )
         )
         return result
