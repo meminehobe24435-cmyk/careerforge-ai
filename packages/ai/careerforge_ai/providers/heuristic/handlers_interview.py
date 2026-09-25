@@ -70,6 +70,82 @@ _QUESTION_BANK: Mapping[str, tuple[str, str, str]] = {
         "在资源受限的 MCU 上你做过哪些优化，代价是什么？",
         "如果要求你把控制周期再缩短一半，你会从哪里入手？",
     ),
+    # ── backend, data, AI application, frontend, platform ────────────────────
+    # Added in PHASE 12 after the evaluation measured required-skill coverage at 0.33: the bank
+    # held embedded topics only, so every non-embedded interview fell back to the generic project
+    # question. Each triple is still one topic's three-rung ladder, so adaptivity has somewhere to
+    # go, and each is written to be role-appropriate — an AI-application candidate is asked about
+    # chunking and hallucination control, never about register configuration.
+    "python": (
+        "Python 里可变默认参数会带来什么问题？你在代码里怎么避免？",
+        "你如何组织一个中等规模 Python 服务的模块边界与依赖方向？",
+        "线上服务出现内存持续增长，你会用哪些手段定位泄漏点？",
+    ),
+    "fastapi": (
+        "FastAPI 的依赖注入是怎么工作的？你用它解决了什么问题？",
+        "你如何设计请求校验与错误响应，让调用方拿到可诊断的错误？",
+        "接口在高并发下出现超时，你会先看哪几个指标，怎么缩小范围？",
+    ),
+    "sql_database": (
+        "关系型数据库里，索引在什么情况下不会被用到？",
+        "你怎么为一个高频查询设计索引，并确认它真的生效？",
+        "一条查询突然变慢，你会按什么顺序排查执行计划与锁等待？",
+    ),
+    "redis": (
+        "为什么用缓存而不是直接查数据库？缓存适合放什么数据？",
+        "缓存与数据库的一致性你怎么保证？过期策略是怎么定的？",
+        "缓存击穿与雪崩在生产上会造成什么现象，你怎么预防？",
+    ),
+    "messaging": (
+        "消息队列解决了什么问题，又引入了哪些新问题？",
+        "你如何保证消息不丢、不重复消费？",
+        "消费端积压持续增长，你会怎么定位是生产过快还是消费过慢？",
+    ),
+    "rag": (
+        "RAG 流程里，检索和生成各自负责什么？",
+        "文档分块你怎么切？切得太碎或太大分别会导致什么？",
+        "检索到的内容与问题不相关时，你怎么让系统拒绝回答而不是硬编？",
+    ),
+    "llm": (
+        "你在什么场景下会用大模型，什么场景下坚持用规则？",
+        "你怎么约束模型输出成结构化结果？校验失败时怎么处理？",
+        "模型偶发给出看似合理但错误的内容，你怎么在设计上降低它的影响？",
+    ),
+    "vector_search": (
+        "向量检索和关键词检索各自擅长什么？",
+        "你怎么评估一次检索的质量，而不只是看它有没有返回结果？",
+        "同一句话换个说法就检索不到，你会从哪几个环节排查？",
+    ),
+    "ml_training": (
+        "你怎么划分训练集与验证集，为什么不能只看训练指标？",
+        "模型效果不达预期时，你会先怀疑数据还是先怀疑结构？",
+        "过拟合与欠拟合的表现有什么不同，你分别怎么处理？",
+    ),
+    "frontend_react": (
+        "组件的状态应该放在哪里？你依据什么做这个决定？",
+        "列表频繁更新时你怎么避免不必要的重渲染？",
+        "页面在低端设备上卡顿，你会用哪些工具定位是哪一层的问题？",
+    ),
+    "docker": (
+        "容器和虚拟机解决的不是同一个问题，你的场景为什么要用容器？",
+        "你怎么写一个构建快、体积小的镜像？",
+        "容器启动后立刻退出，你会怎么定位原因？",
+    ),
+    "kubernetes": (
+        "Kubernetes 帮你解决了部署里的哪些具体问题？",
+        "滚动更新与就绪探针的关系是什么？探针配错会出现什么现象？",
+        "Pod 反复重启，你会按什么顺序排查？",
+    ),
+    "ci_cd": (
+        "你的流水线包含哪些阶段，为什么是这个顺序？",
+        "你怎么让流水线既快又可信？哪些检查必须卡门禁？",
+        "流水线偶发失败但本地能过，你会怎么定位这类不一致？",
+    ),
+    "testing": (
+        "什么样的测试值得写，什么样的不值得？",
+        "边界条件你怎么找？举一个你实际遇到过的边界问题。",
+        "测试偶发失败（flaky），你会怎么处理而不是重跑？",
+    ),
     "_default": (
         "请介绍一个你最有代表性的项目，重点说你负责的部分。",
         "这个项目里最难的技术问题是什么？你是怎么解决的？",
@@ -95,6 +171,22 @@ _TOPIC_TERMS: Mapping[str, frozenset[str]] = {
     "uart": frozenset({"时序", "时钟", "波形", "总线", "从机", "错误", "逻辑分析仪"}),
     "can": frozenset({"时序", "时钟", "波形", "总线", "从机", "错误", "逻辑分析仪"}),
     "pid": frozenset({"比例", "积分", "微分", "整定", "超调", "稳态误差"}),
+    # Terms an answer to a non-embedded topic is expected to touch. Kept per topic so the
+    # coverage-based evaluator has something to measure beyond generic reasoning words.
+    "python": frozenset({"可变", "默认参数", "依赖", "模块", "内存", "引用", "异常"}),
+    "fastapi": frozenset({"依赖注入", "校验", "错误", "超时", "并发", "响应"}),
+    "sql_database": frozenset({"索引", "执行计划", "扫描", "锁", "事务", "查询"}),
+    "redis": frozenset({"缓存", "过期", "一致性", "击穿", "雪崩", "命中"}),
+    "messaging": frozenset({"队列", "顺序", "幂等", "重试", "积压", "确认"}),
+    "rag": frozenset({"检索", "分块", "向量", "召回", "生成", "引用"}),
+    "llm": frozenset({"结构化", "校验", "温度", "提示", "幻觉", "降级"}),
+    "vector_search": frozenset({"向量", "相似度", "关键词", "召回", "排序", "融合"}),
+    "ml_training": frozenset({"训练", "验证", "过拟合", "欠拟合", "指标", "数据"}),
+    "frontend_react": frozenset({"状态", "渲染", "组件", "重渲染", "性能", "测量"}),
+    "docker": frozenset({"镜像", "层", "容器", "卷", "端口", "日志"}),
+    "kubernetes": frozenset({"Pod", "探针", "滚动", "副本", "调度", "重启"}),
+    "ci_cd": frozenset({"流水线", "阶段", "门禁", "缓存", "并行", "回滚"}),
+    "testing": frozenset({"边界", "断言", "覆盖", "隔离", "随机", "回归"}),
 }
 
 _BASE_TERMS: frozenset[str] = frozenset({"因为", "所以", "考虑", "权衡", "trade", "cost", "为什么"})

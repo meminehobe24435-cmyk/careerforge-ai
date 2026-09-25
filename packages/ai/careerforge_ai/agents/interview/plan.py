@@ -32,7 +32,15 @@ _RECENT_TURNS = 6
 #: Interview topic key per canonical skill. Topics without an entry fall back to the
 #: generic project question, which is honest: a tailored question needs a tailored
 #: bank.
+#:
+#: Coverage matters more than it looks. The PHASE 12 evaluation (``evals/suites/interview_relevance.py``)
+#: measured *required-skill coverage* — the share of a posting's must-have skills that become the
+#: subject of a planned topic — and found **0.33**: this map held embedded skills only, so a backend
+#: or AI-application interview fell through to the single generic project topic and asked the
+#: candidate nothing about FastAPI, PostgreSQL or RAG. The zero-key path is a first-class deployment
+#: (ADR-009), so a coverage hole here is a hole in the product, not in the provider.
 _TOPIC_BY_SKILL: dict[str, str] = {
+    # embedded
     "free_rtos": "free_rtos",
     "rtos_scheduler": "rtos_scheduler",
     "stm32": "stm32",
@@ -45,6 +53,34 @@ _TOPIC_BY_SKILL: dict[str, str] = {
     "motor_control": "pid",
     "performance_tuning": "performance_tuning",
     "embedded_linux": "rtos_scheduler",
+    # backend and data
+    "python": "python",
+    "fastapi": "fastapi",
+    "django": "python",
+    "flask": "python",
+    "postgresql": "sql_database",
+    "sql": "sql_database",
+    "mysql": "sql_database",
+    "redis": "redis",
+    "kafka": "messaging",
+    "rabbitmq": "messaging",
+    # AI application
+    "rag": "rag",
+    "llm": "llm",
+    "vector_db": "vector_search",
+    "prompt_engineering": "llm",
+    "pytorch": "ml_training",
+    "tensorflow": "ml_training",
+    # frontend
+    "react": "frontend_react",
+    "typescript": "frontend_react",
+    "javascript": "frontend_react",
+    # platform and quality
+    "docker": "docker",
+    "kubernetes": "kubernetes",
+    "ci_cd": "ci_cd",
+    "testing": "testing",
+    "pytest": "testing",
 }
 
 
