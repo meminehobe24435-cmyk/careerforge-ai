@@ -57,6 +57,7 @@ reports/*
 !reports/confidence-calibration.md
 !reports/coverage-summary.md
 !reports/README.md
+!reports/api-performance.json
 !reports/.gitkeep
 
 # 鈹€鈹€ Playwright 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

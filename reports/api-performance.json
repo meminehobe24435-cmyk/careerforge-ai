@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-25T11:41:58Z",
+  "base_url": "http://127.0.0.1:8319/api/v1",
+  "repeats": 20,
+  "warmup": 3,
+  "caveat": "Local development server (SQLite, single process, laptop hardware). These are tripwires for a local regression, not a benchmark of the product: no concurrency, no network, one machine. Model-calling endpoints are excluded because an LLM's latency is not a property of this code.",
+  "endpoints": [
+    {
+      "endpoint": "GET /system/health",
+      "samples": 20,
+      "status": 200,
+      "p50_ms": 4.77,
+      "p95_ms": 5.51,
+      "min_ms": 4.45,
+      "max_ms": 6.06
+    },
+    {
+      "endpoint": "GET /dashboard",
+      "samples": 20,
+      "status": 200,
+      "p50_ms": 14.18,
+      "p95_ms": 15.01,
+      "min_ms": 13.02,
+      "max_ms": 15.13
+    },
+    {
+      "endpoint": "GET /ai-runs?limit=50",
+      "samples": 20,
+      "status": 200,
+      "p50_ms": 7.73,
+      "p95_ms": 8.14,
+      "min_ms": 7.24,
+      "max_ms": 21.76
+    },
+    {
+      "endpoint": "GET /ai-costs?range=7d",
+      "samples": 20,
+      "status": 200,
+      "p50_ms": 8.72,
+      "p95_ms": 9.79,
+      "min_ms": 7.86,
+      "max_ms": 10.21
+    },
+    {
+      "endpoint": "GET /applications/board",
+      "samples": 20,
+      "status": 200,
+      "p50_ms": 7.14,
+      "p95_ms": 7.81,
+      "min_ms": 6.41,
+      "max_ms": 7.98
+    }
+  ]
+}

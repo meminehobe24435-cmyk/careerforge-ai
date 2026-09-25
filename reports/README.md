@@ -85,6 +85,20 @@ points, and 7 cases were wrong at a confidence of 0.75 or above.
 | **core domain** | **1649** | **1516** | **91.9%** |
 | everything measured | 17452 | 15793 | 90.5% (reported, not a target) |
 
+## Local API latency (`reports/api-performance.json`)
+
+`python scripts/perf_smoke.py --base-url http://127.0.0.1:8319/api/v1` — a tripwire, not a
+benchmark. Twenty samples each, development server, SQLite, laptop hardware; model-calling
+endpoints are excluded because an LLM's latency is not a property of this code.
+
+| endpoint | P50 | P95 |
+| --- | ---: | ---: |
+| `GET /system/health` | 4.77 ms | 5.51 ms |
+| `GET /dashboard` | 14.18 ms | 15.01 ms |
+| `GET /ai-runs?limit=50` | 7.73 ms | 8.14 ms |
+| `GET /ai-costs?range=7d` | 8.72 ms | 9.79 ms |
+| `GET /applications/board` | 7.14 ms | 7.81 ms |
+
 ## Regression policy
 
 - **Gates vs reports.** Every threshold in `evals/config.py` declares its severity. A missed *gate*
