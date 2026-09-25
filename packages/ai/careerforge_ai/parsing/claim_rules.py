@@ -39,6 +39,7 @@ __all__ = [
     "has_superlative_language",
     "detect_numeric_risk",
     "detect_missing_technical",
+    "detect_ownership_gap",
     "detect_superlatives",
     "describe_rules",
 ]
@@ -185,6 +186,60 @@ def detect_superlatives(claim: str) -> list[ClaimReason]:
         )
         for matched, explanation in has_superlative_language(claim)
     ]
+
+
+#: Phrases that assert *ownership or scope* rather than a capability. Narrower than
+#: :data:`SUPERLATIVE_PATTERNS` on purpose: this list decides a status cap, so a false positive
+#: silently downgrades an honest claim.
+_OWNERSHIP_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"主导|led the|owned the", "主导"),
+    (r"独立完成|独立负责|independently built", "独立完成/负责"),
+    (r"负责整个|负责全部|整个.{0,6}(架构|系统|平台)的设计", "负责整体范围"),
+    (r"带领\s*\d*\s*人?团队|牵头|作为技术负责人", "团队或项目主导权"),
+    (r"从\s*0\s*到\s*1|from scratch", "从零到一的起点"),
+)
+
+
+def detect_ownership_gap(claim: str, evidence_text: str) -> ClaimReason | None:
+    """An ownership claim the evidence never makes — and never should be waved through.
+
+    The deterministic layer can already reject a number nothing measures. Role language was the
+    remaining hole, and PHASE 12's evaluation walked straight into it: with a hand-authored golden
+    set, four scope-inflated sentences ("主导了后端服务的重构" over evidence that says *参与*, and
+    three more like it) came back **supported**, because token overlap between "主导了后端服务的重构"
+    and "参与后端服务重构的技术方案讨论" is high and the confidence arithmetic has no opinion about
+    who did what.
+
+    The rule is deliberately literal: if the claim asserts ownership and the *evidence text never
+    says the same thing*, the claim cannot be fully supported by that evidence. It caps the status
+    rather than blocking it, because the underlying work is usually real — the sentence overstates
+    the role, and "partially supported" is the honest answer to an overstated role, not "rejected".
+
+    A claim with no ownership language returns ``None``: this rule says nothing about ordinary
+    achievements, and pretending otherwise would make every resume bullet a suspect.
+    """
+    if not evidence_text.strip():
+        # No material to check against. The caller's contract says it supplies this; inventing a
+        # gap from an empty string would downgrade every claim in a misconfigured deployment.
+        return None
+
+    for pattern, label in _OWNERSHIP_PATTERNS:
+        match = re.search(pattern, claim, re.IGNORECASE)
+        if match is None:
+            continue
+        phrase = match.group(0)
+        if phrase.lower() in evidence_text.lower():
+            continue
+        return ClaimReason(
+            rule=ClaimRuleCode.SUPERLATIVE_LANGUAGE,
+            severity="warning",
+            message=(
+                f"「{label}」是职责范围的断言，而证据中没有出现「{phrase}」——"
+                "证据能支持你做过这件事，但支持不了「由你主导/独立完成」这个范围说法，"
+                "因此最多只能判为 partially_supported。"
+            ),
+        )
+    return None
 
 
 def describe_rules() -> Sequence[dict[str, str]]:

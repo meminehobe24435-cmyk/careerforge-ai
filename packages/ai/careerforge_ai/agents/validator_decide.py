@@ -44,6 +44,16 @@ __all__ = ["decide_phase"]
 #: and a commit are independent; two files in one repository are not.
 _MIN_INDEPENDENT_SOURCES = 2
 
+#: Ordering of the three statuses, so a rule cap can only ever lower a verdict. ``CONTRADICTED``
+#: sits below ``UNSUPPORTED`` because nothing may cap its way *up* to "refuted": being told the
+#: evidence conflicts with your sentence is a stronger statement than being told it lacks support.
+_RANK: dict[ClaimStatus, int] = {
+    ClaimStatus.SUPPORTED: 3,
+    ClaimStatus.PARTIALLY_SUPPORTED: 2,
+    ClaimStatus.UNSUPPORTED: 1,
+    ClaimStatus.CONTRADICTED: 0,
+}
+
 
 async def decide_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimValidation:
     """Turn the gathered inputs into the final verdict.
@@ -55,6 +65,11 @@ async def decide_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimVali
     """
     claim = str(context.metadata.get("claim") or "")
     rules = inputs["rules"]
+    # `or` rather than a default argument: an optional step that failed is recorded as an explicit
+    # ``None``, and ``inputs.get("retrieve", {})`` returned that None rather than the default,
+    # making the next line raise ``AttributeError`` inside the gate — a 500 for a retrieval
+    # outage, which is the one failure this product must answer rather than crash on (found by
+    # PHASE 12's failure-injection pass).
     retrieval = inputs.get("retrieve") or {"hits": [], "degraded": True}
     hits: list[RetrievalHit] = list(retrieval.get("hits") or [])
     verdict: ClaimLLMVerdict | None = inputs.get("verdict")
@@ -154,9 +169,40 @@ async def decide_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimVali
         # claims the gate exists to stop, and ``claim.numeric_rejection_rate`` targets 1.00.
         status = ClaimStatus.UNSUPPORTED
     elif not model_supported:
-        status = ClaimStatus.UNSUPPORTED if not hits else ClaimStatus.PARTIALLY_SUPPORTED
+        # The model's own three-way answer decides this, not the mere presence of retrieval hits.
+        # A hit is a document that *matched the query*; it is not a document that supports the
+        # claim. Using hits as the proxy (as this branch did until PHASE 12) meant that a claim the
+        # model explicitly called unsupported came back "partially supported" whenever the
+        # candidate's evidence base was non-empty — which is every real candidate. Thirteen of the
+        # twenty fabricated claims in the hand-authored golden set were softened this way, and the
+        # reason list beside them already said ``no_evidence_match`` with blocker severity.
+        if verdict is None:
+            # The model never spoke (rules blocked is handled above, so this is the degraded
+            # path): with no judgement at all, hits are the only signal available, and the run
+            # already carries a warning saying the conclusion rests on rules and retrieval.
+            status = ClaimStatus.PARTIALLY_SUPPORTED if hits else ClaimStatus.UNSUPPORTED
+        elif verdict.partially_supported:
+            status = ClaimStatus.PARTIALLY_SUPPORTED
+        elif verdict.unsupported_parts:
+            # The model named what it could not support. That is a *specific* objection, and it is
+            # not softened by retrieval having returned documents — those documents are what the
+            # model just read and rejected.
+            status = ClaimStatus.UNSUPPORTED
+        else:
+            # A bare negative with no specifics: the model says "not supported" but names nothing.
+            # Fall back to the deterministic arithmetic, which can still land on partially
+            # supported when the evidence is real but thin. Refusing to distinguish these two
+            # negatives cost the suite 45 points of partial recall (0.75 → 0.30) in PHASE 12.
+            status = classify_claim_status(evidence_confidence, independent_sources)
     else:
         status = classify_claim_status(evidence_confidence, independent_sources)
+
+    # The rule layer may cap the status: an ownership claim the evidence never makes ("主导了…"
+    # over evidence that says "参与…") can be supported as *work* but not as *a role*. The cap is
+    # applied after the arithmetic so it can only ever lower a verdict, never raise one.
+    cap = rules.get("status_cap")
+    if cap is not None and _RANK[status] > _RANK[cap]:
+        status = cap
 
     # Say why a claim that looks strong is still only partially supported. One source is not
     # corroboration, and without this note the status reads as an unexplained downgrade — a
@@ -220,13 +266,11 @@ def _safe_rewrite(
     assert something the evidence cannot carry; see
     :func:`careerforge_ai.parsing.claim_rules.build_safer_formulation`.
     """
-    evidence_text = str(inputs.get("retrieve", {}).get("evidence_text") or "")
+    retrieval = inputs.get("retrieve") or {}
+    evidence_text = str(retrieval.get("evidence_text") or "")
     if not evidence_text:
-        evidence_text = str(
-            "\n".join(
-                f"{hit.title}\n{hit.snippet}"
-                for hit in (inputs.get("retrieve", {}).get("hits") or [])
-            )
+        evidence_text = "\n".join(
+            f"{hit.title}\n{hit.snippet}" for hit in (retrieval.get("hits") or [])
         )
 
     if verdict is not None and verdict.safer_formulation.strip():

@@ -36,6 +36,7 @@ from careerforge_ai.orchestrator import RunContext, Step, Workflow, WorkflowExec
 from careerforge_ai.parsing.claim_rules import (
     detect_missing_technical,
     detect_numeric_risk,
+    detect_ownership_gap,
     detect_superlatives,
 )
 from careerforge_ai.schemas.claim import (
@@ -43,7 +44,7 @@ from careerforge_ai.schemas.claim import (
     ClaimReason,
     ClaimValidation,
 )
-from careerforge_ai.schemas.common import DegradationReason
+from careerforge_ai.schemas.common import ClaimStatus, DegradationReason
 from careerforge_ai.schemas.evidence import RetrievalHit
 
 __all__ = [
@@ -117,21 +118,34 @@ async def rules_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, 
     mentions, numeric_reasons = detect_numeric_risk(claim, evidence_text)
     technical_reasons = detect_missing_technical(claim, evidence_text)
     superlative_reasons = detect_superlatives(claim)
+    ownership_gap = detect_ownership_gap(claim, evidence_text)
 
     reasons: list[ClaimReason] = [*numeric_reasons, *technical_reasons, *superlative_reasons]
+    if ownership_gap is not None:
+        reasons.append(ownership_gap)
     blocked = any(reason.severity == "blocker" for reason in reasons)
 
     return {
         "mentions": mentions,
         "reasons": reasons,
         "blocked": blocked,
+        # A cap, not a block: an overstated *role* over real work is partially supported, which is
+        # a different statement from "nothing here is supported". The decide phase applies it.
+        "status_cap": ClaimStatus.PARTIALLY_SUPPORTED if ownership_gap is not None else None,
         "unsupported_numbers": [mention.raw for mention in mentions if not mention.supported],
         "missing_technical": [reason.message for reason in technical_reasons],
     }
 
 
 async def retrieve_phase(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
-    """Retrieve supporting evidence, or report honestly that we could not."""
+    """Retrieve supporting evidence, or report honestly that we could not.
+
+    A retriever that *raises* is caught here rather than allowed to fail the step. The step is
+    declared optional, and an optional step that fails is recorded as ``None`` — which then made
+    the decision phase raise ``AttributeError`` on the missing dict and turned a retrieval outage
+    into a 500 (found by PHASE 12's failure-injection pass). A gate that cannot retrieve must say
+    so and judge on the rules, not crash.
+    """
     retriever = context.maybe_service("retriever")
     claim = str(context.metadata.get("claim") or "")
     if retriever is None:
@@ -144,9 +158,14 @@ async def retrieve_phase(context: RunContext, inputs: dict[str, Any]) -> dict[st
         return {"hits": [], "degraded": True, "reason": "no user scope"}
 
     filters = context.metadata.get("retrieval_filters") or None
-    result = await retriever.retrieve(
-        claim, user_id=user_id, top_k=_RETRIEVAL_TOP_K, filters=filters
-    )
+    try:
+        result = await retriever.retrieve(
+            claim, user_id=user_id, top_k=_RETRIEVAL_TOP_K, filters=filters
+        )
+    except Exception as exc:
+        reason = f"retriever failed: {type(exc).__name__}"
+        context.metadata["retrieval_unavailable"] = reason
+        return {"hits": [], "degraded": True, "reason": reason}
 
     hits = list(result.hits)
     evidence_text = "\n".join(f"{hit.title}\n{hit.snippet}" for hit in hits)
@@ -167,7 +186,7 @@ async def verdict_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimLLM
     if rules["blocked"]:
         return None
 
-    hits: list[RetrievalHit] = inputs.get("retrieve", {}).get("hits") or []
+    hits: list[RetrievalHit] = (inputs.get("retrieve") or {}).get("hits") or []
     claim = str(context.metadata.get("claim") or "")
 
     evidence_payload = [{"title": hit.title, "snippet": hit.snippet} for hit in hits]
@@ -235,8 +254,9 @@ class ValidatorAgent:
         warnings = merge_workflow_warnings(output)
         warnings.extend(str(item) for item in output.metadata.get("warnings", []))
 
-        if validation is not None and output.get("retrieve", {}).get("degraded"):
-            reason = output.get("retrieve", {}).get("reason") or "检索不可用"
+        retrieval = output.get("retrieve") or {}
+        if validation is not None and retrieval.get("degraded"):
+            reason = retrieval.get("reason") or "检索不可用"
             warnings.append(f"证据检索降级：{reason}")
 
         return AgentOutcome(
