@@ -84,17 +84,24 @@ test.describe('Dashboard', () => {
   test('a route that has not shipped is not presented as clickable', async ({
     signedInPage: page,
   }) => {
-    // `nav-config.ts` marks PHASE 5–8 routes `live: false` on purpose: a scaffold must not pretend
-    // a page exists. This test pins that honesty down, because the specs below depend on it.
+    // `nav-config.ts` marks the routes PHASE 5–7 will ship `live: false` on purpose: a scaffold
+    // must not pretend a page exists. This test pins that honesty down, because the specs below
+    // depend on it — and it moved off the PHASE 13 routes (`证据图谱`, `断言验证`, `模拟面试`) the
+    // moment those shipped, since they are links now.
     await page.goto('/app/dashboard');
     const nav = await sidebarNav(page);
 
-    await expect(nav.getByRole('link', { name: '证据图谱' })).toHaveCount(0);
-    await expect(nav.getByRole('link', { name: '模拟面试' })).toHaveCount(0);
-    await expect(nav.getByRole('link', { name: '断言验证' })).toHaveCount(0);
+    for (const label of ['职业画像', '证据库', 'GitHub', '简历 Copilot']) {
+      await expect(nav.getByRole('link', { name: label })).toHaveCount(0);
+      await expect(nav.locator('[aria-disabled="true"]', { hasText: label })).toBeVisible();
+    }
 
-    const badge = nav.locator('[aria-disabled="true"]', { hasText: '证据图谱' });
-    await expect(badge).toBeVisible();
+    const badge = nav.locator('[aria-disabled="true"]', { hasText: '证据库' });
     await expect(badge).toContainText('PHASE 6');
+
+    // And the four pages this phase shipped are real links, not badged placeholders.
+    for (const label of ['证据图谱', '岗位与匹配', '断言验证', '模拟面试']) {
+      await expect(nav.getByRole('link', { name: label })).toHaveCount(1);
+    }
   });
 });

@@ -240,6 +240,14 @@ export interface InterviewQuestion {
 
 export interface InterviewTurn extends InterviewQuestion {
   role: string;
+  /**
+   * Per-answer score. `null` on interviewer turns and on turns that were never scored.
+   *
+   * `GET /ai/interview/{id}` returns only the score per turn (see `_session_payload`); the full
+   * evaluation of a turn comes from the `answer` response and is not persisted, which is why the
+   * page's evaluation panel says so after a refresh.
+   */
+  score: number | null;
 }
 
 export interface InterviewEvaluation {
@@ -372,4 +380,50 @@ export interface EvidenceSetup {
   documentId: string;
   deduplicated: boolean;
   analysis: DocumentAnalysis;
+}
+
+/**
+ * `POST /evidence/validate` — the *stored-evidence* gate behind `/app/validator`.
+ *
+ * Deliberately spelled out separately from {@link ClaimValidation} above rather than reusing it:
+ * that one is the shape of `/ai/validate/claim`, which takes the material in the request body and
+ * has no retriever. This one retrieves over the account's own evidence, which is why it can reach
+ * `supported`, and it reports camelCase fields plus the five-factor `sources` the page renders.
+ */
+export interface ValidatorReason {
+  rule: string;
+  severity: string;
+  message: string;
+  evidenceIds: string[];
+}
+
+export interface ValidatorSource {
+  evidenceId: string;
+  title: string;
+  kind: string;
+  relevance: number;
+  channel: string;
+  locator: string;
+  url: string | null;
+  snippet: string;
+}
+
+export interface ValidatorClaim {
+  claim: string;
+  status: 'supported' | 'partially_supported' | 'unsupported' | 'contradicted';
+  confidence: number;
+  reasons: ValidatorReason[];
+  sources: ValidatorSource[];
+  safeRewrite: { text: string; removedClaims: string[]; rationale: string } | null;
+  unknowns: string[];
+  hasQuantifiedClaim: boolean;
+  independentSourceCount: number;
+  ruleVersion: string;
+  model: string | null;
+}
+
+/** The envelope of `POST /evidence/validate`: the stored claim id plus the verdict. */
+export interface ValidatedClaim {
+  claimId: string;
+  claim: ValidatorClaim;
 }

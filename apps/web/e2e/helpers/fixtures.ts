@@ -1,6 +1,13 @@
-import { request as playwrightRequest, test as base, expect, type Page } from '@playwright/test';
+import {
+  request as playwrightRequest,
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 import { API_BASE_URL, Api, signIn, type SessionPayload } from './api';
+import { ensureEvidenceBase, ensureJob, type EvidenceBase } from './pages';
 import { installSession, toBrowserSession } from './session';
 
 /**
@@ -10,11 +17,14 @@ import { installSession, toBrowserSession } from './session';
  * `localStorage`, which is what makes the specs read like a user's session rather than like a test
  * harness: `await page.goto('/app/dashboard')` lands on the authenticated dashboard.
  *
- * The API context and the sign-in are **worker**-scoped, and that is a correctness fix rather than
- * an optimisation: `POST /auth/demo` is rate limited to 10 requests per minute per IP
- * (`middleware/ratelimit.py`, `docs/API.md` §1.7), so signing in once per test pushed a second
- * consecutive run over the limit and turned every spec into a `429`. One sign-in per worker is also
- * what a real browser does — the app persists one session and reuses it.
+ * The API context, the sign-in, the evidence base and the posting are all *worker*-scoped, and that
+ * is a correctness fix rather than an optimisation. `POST /auth/demo` is limited to 10 requests per
+ * minute per IP (`middleware/ratelimit.py`, `docs/API.md` §1.7), so signing in once per test pushed
+ * a second consecutive run over the limit and turned every spec into a `429`. The evidence base is
+ * worse: `POST /profile/import` and `POST /documents/{id}/analyze` both draw on the `upload` bucket,
+ * which is **20 requests per hour per user** — so a suite where ten specs each prepared their own
+ * evidence spent its entire hourly budget in one run and failed with `429` from then on. One setup
+ * per worker is also what a real user does: they import their material once, then use the product.
  */
 export interface TestFixtures {
   /** A page with the session installed and nothing loaded yet. */
@@ -28,6 +38,16 @@ export interface WorkerFixtures {
   session: SessionPayload;
   /** The same API, used for setup and for the flows whose UI is not shipped. */
   api: Api;
+  /**
+   * The account's evidence: a résumé chunk plus one manual row, prepared **once per worker**.
+   *
+   * Every PHASE 13 page reads it — the graph draws it, the validator retrieves over it, the jobs
+   * match scores against it — and the specs assert against what it returned, so they cannot pass on
+   * an empty account.
+   */
+  evidenceBase: EvidenceBase;
+  /** A stored posting: the jobs result, the interview target and one application all need one. */
+  jobId: string;
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -61,6 +81,20 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     },
     { scope: 'worker' },
   ],
+  // Once per worker: see the note on `upload` above. With `workers: 1` this is one import and one
+  // analysis for an entire run, which is what keeps the suite inside the hourly budget.
+  evidenceBase: [
+    async ({ api }, provide) => {
+      await provide(await ensureEvidenceBase(api));
+    },
+    { scope: 'worker' },
+  ],
+  jobId: [
+    async ({ api }, provide) => {
+      await provide(await ensureJob(api));
+    },
+    { scope: 'worker' },
+  ],
   signedInPage: async ({ page, session }, provide) => {
     await installSession(page, toBrowserSession(session));
     await provide(page);
@@ -68,6 +102,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 });
 
 export { expect };
+export type { Locator };
 
 /**
  * The sidebar, whichever of its three layouts is currently visible.

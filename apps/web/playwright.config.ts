@@ -17,22 +17,45 @@ import { defineConfig, devices } from '@playwright/test';
  *    written to be independent in *setup* (each one creates what it needs through the API) but
  *    they must not race each other's writes.
  *
- * The mobile project is declared unconditionally but selected only when asked for, so a default
- * run stays fast. `E2E_MOBILE=1 pnpm test:e2e` and `pnpm test:e2e:mobile` both work — the second
- * one is why the project is also enabled when `--project=mobile` is on the command line.
+ * ## Both projects run by default
+ *
+ * Until PHASE 13 the mobile project existed but was inert unless `E2E_MOBILE=1` was set, so the one
+ * regression it was written to catch — the PHASE 12 z-index bug where the drawer's backdrop sat
+ * above the drawer panel and swallowed every tap on a nav link — only fired when somebody
+ * remembered the flag. `pnpm test:e2e` now runs both projects: the guard runs by default or it is
+ * not a guard.
+ *
+ * The two projects do **not** run the same file list, and the split is deliberate:
+ *
+ * * `desktop` runs everything except the drawer spec, which asserts against an element that is
+ *   `md:hidden` and therefore cannot be exercised at 1440px;
+ * * `mobile` runs the specs whose *layout* differs at 375px — the four PHASE 13 pages, the
+ *   dashboard, the drawer and the axe gate — so the mobile run is a real second look at those
+ *   pages rather than the same 1440px assertions with a smaller viewport. The specs that pin
+ *   transport rather than layout (`cors.spec.ts`, `ai-runs.spec.ts`) run once, on the desktop
+ *   project, because a second identical run adds minutes and no information.
+ *
+ * `E2E_MOBILE=1 pnpm test:e2e` is still honoured for compatibility, and `pnpm test:e2e:mobile`
+ * (`--project=mobile`) still selects the mobile project alone.
  */
 const baseURL = process.env.E2E_BASE_URL?.trim() || 'http://127.0.0.1:3318';
 
-function wantsMobileProject(): boolean {
-  if (process.env.E2E_MOBILE === '1') return true;
-  const argv = process.argv.slice(2);
-  return argv.some(
-    (arg, index) =>
-      arg === '--project=mobile' || (arg === '--project' && argv[index + 1] === 'mobile'),
-  );
-}
+/** Specs that only mean something below the `md` breakpoint (768px). */
+const MOBILE_ONLY_SPECS = ['**/navigation-drawer.spec.ts'];
 
-const mobileEnabled = wantsMobileProject();
+/**
+ * The specs the mobile project runs: the pages whose layout is different at 375px, plus the gate
+ * specs that are re-run at the narrow width on purpose (axe, and the navigation drawer).
+ */
+const MOBILE_SPECS = [
+  '**/dashboard.spec.ts',
+  '**/jd-analysis.spec.ts',
+  '**/evidence-graph.spec.ts',
+  '**/claim-validation.spec.ts',
+  '**/interview.spec.ts',
+  '**/navigation-drawer.spec.ts',
+  '**/a11y.spec.ts',
+];
 
 export default defineConfig({
   testDir: './e2e',
@@ -65,6 +88,9 @@ export default defineConfig({
         channel: 'chrome',
         viewport: { width: 1440, height: 900 },
       },
+      // The drawer does not exist at 1440px: the top bar's open button is `md:hidden` and the
+      // sidebar is a static rail, so running the drawer spec here would assert on nothing.
+      testIgnore: MOBILE_ONLY_SPECS,
     },
     {
       name: 'mobile',
@@ -75,9 +101,7 @@ export default defineConfig({
         isMobile: true,
         hasTouch: true,
       },
-      // `testIgnore` rather than omitting the project: a project that does not exist makes
-      // `--project=mobile` an error, and a project that exists but matches nothing is a no-op.
-      ...(mobileEnabled ? {} : { testIgnore: '**/*' }),
+      testMatch: MOBILE_SPECS,
     },
   ],
 });

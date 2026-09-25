@@ -21,6 +21,7 @@ import type {
   SessionPayload,
   SkillTree,
   TaskStatus,
+  ValidatedClaim,
 } from './api-types';
 
 /**
@@ -65,13 +66,42 @@ export class Api {
     });
   }
 
+  /**
+   * `POST`/`PATCH` that waits out a rate limit instead of failing on it.
+   *
+   * Three buckets bound this suite and they are all per *user*, not per test: `upload` is 20 per
+   * **hour** (`POST /profile/import`, `POST /documents`), `ai` is a handful per **minute**
+   * (`_AI_MARKERS` in `middleware/ratelimit.py`: `/analyze`, `/match`, `/interview`, …), and
+   * `write` is 60 per minute. A browser suite legitimately fires several `/jobs/analyze` and
+   * `/jobs/{id}/match` calls in a few seconds, and the API's answer is a precise `429` that says
+   * how long to wait — so the honest client behaviour is to wait and retry, not to make the spec
+   * flaky or to lower what it asks for.
+   *
+   * The wait is read from the API's own message (`retry in 3s`), capped at 10s, and attempted at
+   * most twice; anything that is still `429` after that is a real failure and is reported as one.
+   */
+  private async requestWithBackoff(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    data?: unknown,
+  ): Promise<APIResponse> {
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.response(method, path, data);
+      if (response.status() !== 429 || attempt >= 2) return response;
+      const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
+      const hint = /retry in (\d+)s/.exec(body?.error?.message ?? '')?.[1];
+      const waitMs = Math.min(10, Math.max(1, Number(hint ?? 2))) * 1000;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+
   /** Unwrap the envelope, failing with the API's own error code rather than `undefined`. */
   async json<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     data?: unknown,
   ): Promise<T> {
-    const response = await this.response(method, path, data);
+    const response = await this.requestWithBackoff(method, path, data);
     const body = (await response.json()) as Envelope<T>;
     if (!response.ok() || body.success !== true || body.data === null) {
       throw new Error(
@@ -219,6 +249,41 @@ export class Api {
     return this.json<JobDetail>('POST', '/jobs/analyze', { text, source: 'paste' });
   }
 
+  /**
+   * `POST /evidence` — add evidence by hand (`kind: 'manual'`).
+   *
+   * The claim gate needs **two independent evidence kinds** before it will call a sentence
+   * `supported`, and a locally uploaded résumé only produces `document_chunk`. So the specs that
+   * exercise the validator's highest verdict store one manual row as well; the confidence of that
+   * row is computed by the server from the same five factors as everything else and is never
+   * supplied here.
+   */
+  addManualEvidence(input: {
+    title: string;
+    snippet: string;
+    evidenceLocator?: { path?: string | null; line?: number | null };
+  }): Promise<{ id: string; kind: string; confidence: number; title: string }> {
+    return this.json('POST', '/evidence', {
+      title: input.title,
+      snippet: input.snippet,
+      ...(input.evidenceLocator ? { locator: input.evidenceLocator } : {}),
+    });
+  }
+
+  /**
+   * `POST /evidence/validate` — the same gate the `/app/validator` page runs.
+   *
+   * Note the field names: this endpoint takes `text`, where `/ai/validate/claim` takes `claim`.
+   * The two are different services over the same rules (`lib/validator-api.ts` explains why), and
+   * a spec that mixed them up would be asserting against the other one's answer.
+   */
+  validateClaim(
+    text: string,
+    section: 'summary' | 'experience' | 'project' | 'skill' | 'education' = 'summary',
+  ): Promise<ValidatedClaim> {
+    return this.json('POST', '/evidence/validate', { text, section });
+  }
+
   matchJob(jobId: string): Promise<MatchResult> {
     return this.json<MatchResult>('POST', `/jobs/${jobId}/match`);
   }
@@ -276,4 +341,5 @@ export type {
   PublicEvidence,
   SessionPayload,
   SkillTree,
+  ValidatedClaim,
 };
