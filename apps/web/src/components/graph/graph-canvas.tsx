@@ -109,6 +109,16 @@ interface CardData extends Record<string, unknown> {
   searchTerm: string;
   dimmed: boolean;
   roving: boolean;
+  /**
+   * The **application's** selection — the `?skill=` / `?node=` the page keeps in the URL.
+   *
+   * Deliberately not xyflow's own `selected`: the canvas is rendered with
+   * `elementsSelectable={false}` (selection is URL state, and a canvas click must not fight the
+   * node index for it), so xyflow's `selected` is `false` on every node forever. Binding
+   * `aria-pressed` to it announced "not pressed" for the one node the reader had open — see
+   * `PHASE 14` below.
+   */
+  selected: boolean;
 }
 
 interface BandData extends Record<string, unknown> {
@@ -125,8 +135,12 @@ const nodeTypes = { [NODE_TYPE]: NodeCard, [BAND_TYPE]: BandHeader };
  * The card carries `role="button"` and a roving `tabIndex`, so the canvas is one tab stop with
  * arrow-key movement inside it — the pattern a composite widget is supposed to use — instead of
  * thirty-two stops a keyboard user has to walk through to get past the graph.
+ *
+ * `aria-pressed` follows the application's selection (`data.selected`), not xyflow's `selected`
+ * prop: the canvas sets `elementsSelectable={false}`, so xyflow's own selection is permanently
+ * empty and the attribute used to read `"false"` on the selected card as well.
  */
-function NodeCard({ data, selected }: NodeProps) {
+function NodeCard({ data }: NodeProps) {
   const card = data as CardData;
   const style = nodeStyle(card.type);
   const Icon = style.icon;
@@ -139,9 +153,10 @@ function NodeCard({ data, selected }: NodeProps) {
       data-node-kind={style.group}
       data-dimmed={card.dimmed ? 'true' : 'false'}
       data-searched={card.searchTerm ? 'true' : 'false'}
+      data-selected={card.selected ? 'true' : 'false'}
       tabIndex={card.roving ? 0 : -1}
       role="button"
-      aria-pressed={selected}
+      aria-pressed={card.selected}
       aria-label={`${style.label} ${card.label}. ${card.readout.label}.`}
       title={`${style.label} · ${card.label} — ${card.readout.label}`}
       className={cn(
@@ -150,7 +165,7 @@ function NodeCard({ data, selected }: NodeProps) {
         BORDER_CLASS[style.border],
         SURFACE_CLASS[style.surface],
         card.dimmed ? 'opacity-25' : 'opacity-100',
-        selected ? 'border-brand ring-brand ring-2' : '',
+        card.selected ? 'border-brand ring-brand ring-2' : '',
       )}
     >
       <Handle
@@ -233,6 +248,9 @@ function CanvasInner(props: GraphCanvasProps) {
       focusable: false,
       connectable: false,
       style: { width: band.width, height: BAND_HEADER_HEIGHT },
+      // See the note on the cards below: without `measured`, xyflow renders the band
+      // `visibility: hidden` for one frame after every re-render.
+      measured: { width: band.width, height: BAND_HEADER_HEIGHT },
       zIndex: 0,
     }));
 
@@ -257,20 +275,50 @@ function CanvasInner(props: GraphCanvasProps) {
           searchTerm: searching ? 'active' : '',
           dimmed: dimmedNodeIds.has(node.id),
           roving: node.id === activeId,
+          selected: node.id === selectedId,
         },
+        /**
+         * `nopan` is load-bearing, not cosmetic. A card is not draggable here
+         * (`nodesDraggable={false}` and `draggable: false` per node), but xyflow only adds the
+         * default `noPanClassName` to a node when that node is draggable — so without this class
+         * a `mousedown` on a card starts the **pane's** d3-zoom pan gesture. That gesture calls
+         * `stopImmediatePropagation()` on the `mousedown` and gives the pane the `dragging`
+         * class, so React never sees the press either. A `role="button"` card must not double as
+         * a drag surface: panning starts on the canvas background.
+         */
+        className: 'nopan',
         draggable: false,
         selectable: false,
         focusable: false,
         connectable: false,
-        // Explicit geometry: the canvas must be placeable before a browser measures it.
+        /**
+         * Explicit geometry, declared **twice on purpose**: `style` sizes the element, and
+         * `measured` tells xyflow the size is already known.
+         *
+         * `measured` is what makes a card a reliable click target, and leaving it out was the
+         * PHASE 13 defect. xyflow renders a node `visibility: hidden` whenever it cannot find a
+         * size (`nodeHasDimensions`: `measured?.width ?? width ?? initialWidth`), and it takes
+         * `measured` from the node object it is handed. Every re-render of this memo hands it
+         * fresh objects with no `measured`, so each re-render hides every node until the
+         * ResizeObserver answers — measured on the live stack as a **22 ms** window
+         * (`style="… visibility: hidden …"` → `visibility: visible`, timestamps 1896 ms → 1918 ms).
+         *
+         * A pointer released inside that window is not over the card any more: the browser
+         * hit-tests `visibility: hidden` elements as absent, so `pointerup` retargets to the pane
+         * and the `click` goes to the nearest common ancestor of the two targets — the pane. The
+         * node's `onNodeClick` never ran and the pane's own click handler cleared the URL, which
+         * is exactly the PHASE 13 symptom (`locator.click()` leaves `/app/evidence-graph`).
+         * Declaring the size removes the window entirely.
+         */
         style: { width: NODE_WIDTH, height: NODE_HEIGHT },
+        measured: { width: NODE_WIDTH, height: NODE_HEIGHT },
         zIndex: 1,
         ariaLabel: `${nodeStyle(node.type).label} ${node.label}`,
       };
     });
 
     return [...bands, ...cards];
-  }, [graphNodes, layout, readouts, dimmedNodeIds, searching, activeId]);
+  }, [graphNodes, layout, readouts, dimmedNodeIds, searching, activeId, selectedId]);
 
   const reactFlowEdges = useMemo<Edge[]>(
     () =>

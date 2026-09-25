@@ -1,4 +1,4 @@
-import { clickCanvasNode, ensureEvidenceBase } from './helpers/pages';
+import { ensureEvidenceBase } from './helpers/pages';
 import { expect, test } from './helpers/fixtures';
 
 /**
@@ -80,7 +80,10 @@ test.describe('Evidence graph', () => {
       // At 375px the canvas is `hidden lg:block` and the list is the primary view, so driving the
       // list keeps the flow identical to what a phone user actually does.
       await expect(page.getByTestId('graph-canvas')).toBeHidden();
-      await page.locator(`[data-testid="node-index-row"][data-node-id="${skill.id}"]`).click();
+      const row = page.locator(`[data-testid="node-index-row"][data-node-id="${skill.id}"]`);
+      await row.click();
+      // The list announces the selection the same way the canvas announces it on a card.
+      await expect(row).toHaveAttribute('aria-current', 'true');
     } else {
       // The two surfaces have to agree: one drawn card per listed row, or one of them is lying.
       await expect(page.getByTestId('graph-node')).toHaveCount(graph.nodes.length);
@@ -89,7 +92,33 @@ test.describe('Evidence graph', () => {
       const canvasNode = page.locator(`[data-testid="graph-node"][data-node-id="${skill.id}"]`);
       await expect(canvasNode).toHaveAttribute('role', 'button');
       await expect(canvasNode).toHaveAttribute('aria-label', new RegExp(skill.label));
-      await clickCanvasNode(page, skill.id);
+
+      // Nothing is selected yet, so **every** card announces "not pressed" — this is the state the
+      // regression is about, and asserting only the pressed side would not catch a card that is
+      // stuck reporting `true`.
+      await expect(canvasNode).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('[data-testid="graph-node"][aria-pressed="true"]')).toHaveCount(0);
+
+      /**
+       * **PHASE 14 acceptance criterion.** `locator.click()` on the drawn card must select the
+       * node and open the drawer.
+       *
+       * PHASE 13 could only make this work with a raw `page.mouse.move → down → up` sequence at
+       * the card's centre (`clickCanvasNode` in `helpers/pages.ts`), because the card's
+       * `mousedown` started the canvas pane's d3-zoom pan gesture: the pane took the pointer and
+       * the browser then dispatched `mouseup`/`click` to the *pane*, so the node's `onNodeClick`
+       * never ran and the pane's own click handler cleared the URL. That workaround is gone — the
+       * cards carry xyflow's `nopan` class, so a card is a click target and panning starts on the
+       * background. A raw mouse sequence is no longer used anywhere in the suite.
+       */
+      await canvasNode.click();
+
+      // The selection is now announced, on that card and on no other.
+      await expect(canvasNode).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('[data-testid="graph-node"][aria-pressed="true"]')).toHaveCount(1);
+      await expect(page.locator('[data-testid="graph-node"][aria-pressed="false"]')).toHaveCount(
+        graph.nodes.length - 1,
+      );
     }
 
     const drawer = page.getByTestId('node-drawer');

@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import type { Api, DocumentAnalysis } from './api';
 import { INTERVIEW_ANSWER, JOB_DESCRIPTION, RESUME, SUPPORTED_CLAIM } from './dataset';
@@ -272,27 +272,23 @@ export async function openPopulatedPage(
 }
 
 /**
- * Click a node **on the graph canvas**, the way a finger or a mouse actually does it.
+ * Click a node **on the graph canvas**.
  *
- * `locator.click()` does not select a canvas node on this page. Measured, twice per run, on the
- * live stack: `locator.click()` on `[data-testid="graph-node"][data-node-id="…"]` leaves the URL at
- * `/app/evidence-graph` and no drawer opens, while the identical pointer sequence
- * (`mouse.move` → `down` → `up` at the same centre point) sets `?skill=…` and opens the drawer
- * every time. The node is not covered — `document.elementFromPoint` at that centre resolves to the
- * node's own subtree, and Playwright's actionability check passes — so this is not an intercepted
- * click. The two remaining candidates are Playwright's `scrollIntoViewIfNeeded` (which xyflow
- * answers by re-running its layout, moving the node between the measurement and the click) and the
- * extra `mousemove` Playwright synthesizes during a locator click. The raw sequence is what a
- * device sends, so the spec uses that and the discrepancy is reported rather than hidden.
+ * This used to be a raw `page.mouse.move → down → up` sequence, because PHASE 13 measured that
+ * `locator.click()` on a card cleared the selection instead of setting it. PHASE 14 found the
+ * cause and fixed it in the component (`graph-canvas.tsx`): the cards were not marked with
+ * xyflow's `nopan` class, so a `mousedown` on a card started the *pane's* d3-zoom pan gesture —
+ * the pane swallowed the event, the browser then dispatched `mouseup`/`click` to the pane (the
+ * common ancestor of the two pointer targets), the node's `onNodeClick` never ran, and the pane's
+ * own click handler cleared the URL.
+ *
+ * With the fix a card is an ordinary click target, so there is no case left for a coordinate
+ * workaround and this helper is gone. The specs click the card directly:
+ * `page.locator('[data-testid="graph-node"][data-node-id="…"]').click()`.
+ *
+ * What remains here is the note, so that the next person who sees a canvas click fail does not
+ * reach for `page.mouse` again: if a drawn node stops responding to `locator.click()`, the
+ * pointer is being claimed by something above it, and that is the bug to fix.
  */
-export async function clickCanvasNode(page: Page, nodeId: string): Promise<void> {
-  const card = page.locator(`[data-testid="graph-node"][data-node-id="${nodeId}"]`);
-  await expect(card).toBeVisible();
-  const box = await card.boundingBox();
-  if (!box) throw new Error(`canvas node ${nodeId} has no box to click`);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.up();
-}
 
 export { RESUME };

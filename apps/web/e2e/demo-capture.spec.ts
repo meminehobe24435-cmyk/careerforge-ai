@@ -1,7 +1,6 @@
 import { mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
-import { clickCanvasNode } from './helpers/pages';
 import { expect, test, type Locator } from './helpers/fixtures';
 
 /**
@@ -84,12 +83,14 @@ test.describe('Demo frames', () => {
     await shoot('graph-loaded');
 
     // ── focus a skill node: the drawer opens on it ─────────────────────────────────────────────
-    // The card's `aria-pressed` is *not* asserted here: it is wired to xyflow's `selected` prop,
-    // and the canvas sets `elementsSelectable={false}`, so xyflow never marks a node selected and
-    // the attribute stays `false` even while the node is the current selection. That is a real
-    // (small) accessibility gap in `components/graph/graph-canvas.tsx` and it is reported rather
-    // than asserted as if it were correct.
-    await clickCanvasNode(page, skill.id);
+    // A plain `locator.click()` on the drawn card, which is what a reader does — PHASE 14 fixed the
+    // event-handling defect that made this work only through a raw mouse sequence (the pane's
+    // d3-zoom pan gesture used to claim the card's `mousedown`; see `graph-canvas.tsx`).
+    await page.locator(`[data-testid="graph-node"][data-node-id="${skill.id}"]`).click();
+    // The selection is announced to a screen reader, on the card that is open and no other.
+    await expect(
+      page.locator(`[data-testid="graph-node"][data-node-id="${skill.id}"]`),
+    ).toHaveAttribute('aria-pressed', 'true');
 
     // ── the drawer opens on that node ─────────────────────────────────────────────────────────
     const drawer = page.getByTestId('node-drawer');
