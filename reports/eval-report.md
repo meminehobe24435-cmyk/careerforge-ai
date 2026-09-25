@@ -1,7 +1,7 @@
 # Evaluation report
 
-- schema `1.0` · generated `2026-09-25T18:02:08.416018+00:00`
-- commit `2d201ae` (working tree dirty)
+- schema `1.0` · generated `2026-09-25T19:13:28.956106+00:00`
+- commit `86e8c16` (working tree dirty)
 - provider `heuristic` × chain heuristic
 - suites 4/4 executed · cases **242** · gated pass **4** / fail **0** · reported misses 0
 
@@ -9,14 +9,14 @@
 
 | suite | cases | gated | reported misses | duration |
 | --- | ---: | --- | --- | ---: |
-| `jd_extraction` | 120 | PASS | — | 477 ms |
-| `evidence_validation` | 60 | PASS | — | 321 ms |
+| `jd_extraction` | 120 | PASS | — | 481 ms |
+| `evidence_validation` | 60 | PASS | — | 329 ms |
 | `rag_retrieval` | 59 | PASS | — | 50 ms |
-| `interview_relevance` | 3 | PASS | — | 33 ms |
+| `interview_relevance` | 3 | PASS | — | 32 ms |
 
 ## jd_extraction
 
-Dataset `jd_extraction` @ `jd1.0` · 120 cases · 477 ms
+Dataset `jd_extraction` @ `jd1.0` · 120 cases · 481 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -56,7 +56,7 @@ Counters: `company_hits`=120, `distractor_cases`=72, `distractor_leaks`=0, `educ
 
 ## evidence_validation
 
-Dataset `evidence_validation` @ `ev2.1` · 60 cases · 321 ms
+Dataset `evidence_validation` @ `ev2.1` · 60 cases · 329 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -164,7 +164,7 @@ Counters: `dense_arm_available`=1, `dense_top5_hits`=53, `documents`=20, `fusion
 
 ## interview_relevance
 
-Dataset `interview_relevance` @ `iv1.0` · 3 cases · 33 ms
+Dataset `interview_relevance` @ `iv1.0` · 3 cases · 32 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |

@@ -11,6 +11,8 @@ export const queryKeys = {
   },
   system: {
     health: () => ['system', 'health'] as const,
+    /** `GET /system/version` — the build identity of the process answering right now. */
+    version: () => ['system', 'version'] as const,
   },
   applications: {
     /** Everything under this prefix is invalidated when a card changes. */

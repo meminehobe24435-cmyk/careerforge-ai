@@ -42,6 +42,7 @@ import {
   type RatesResponse,
   type SkillCorrelation,
   type SystemHealthResponse,
+  type SystemVersionResponse,
   type TimelineResponse,
   type User,
 } from '@careerforge/shared';
@@ -88,6 +89,17 @@ async function fetchDashboard(): Promise<DashboardResponse> {
  */
 async function fetchSystemHealth(): Promise<SystemHealthResponse> {
   return client.get<SystemHealthResponse>('/system/health', { auth: false });
+}
+
+/**
+ * `GET /system/version` (API.md §2.13) — the build identity the public `/system` page prints.
+ *
+ * No shape guard: the payload is fixed by the response model on the server and has no union or
+ * optional block that a guard could meaningfully tighten, and the page renders a missing value as
+ * "unavailable" rather than substituting one.
+ */
+async function fetchSystemVersion(): Promise<SystemVersionResponse> {
+  return client.get<SystemVersionResponse>('/system/version', { auth: false });
 }
 
 /**
@@ -293,6 +305,7 @@ export const api = {
   /* dashboards */
   dashboard: fetchDashboard,
   systemHealth: fetchSystemHealth,
+  systemVersion: fetchSystemVersion,
 
   /* application tracker (API.md §2.9) */
   applicationBoard: fetchApplicationBoard,
