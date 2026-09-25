@@ -19,6 +19,8 @@
  * drift from it.
  */
 
+import { isNullableNumber } from '@careerforge/shared';
+
 import { ApiError, api } from '@/lib/api';
 
 /* ------------------------------------------------------------------ *
@@ -86,8 +88,8 @@ export interface MatchDimension {
   /** `score × weight` — the dimension's contribution to the match score. */
   weighted: number;
   formula: string;
-  notes: string[];
-  evidenceIds: string[];
+  notes: string[] | null;
+  evidenceIds: string[] | null;
 }
 
 /** A requirement the engine counts as met, and what is behind it. */
@@ -97,7 +99,7 @@ export interface MatchStrength {
   requirement: string;
   userLevel: string;
   evidenceCount: number;
-  confidence: number;
+  confidence: number | null;
   reason: string;
 }
 
@@ -136,11 +138,11 @@ export interface JobMatch {
   unknowns: MatchUnknown[];
   why: MatchWhy;
   /** 0–1. See `job-match-view.ts`: the stored-match read does not populate this. */
-  evidenceCoverage: number;
+  evidenceCoverage: number | null;
   confidence: number;
   degraded: boolean;
   narrative: string;
-  warnings: string[];
+  warnings: string[] | null;
 }
 
 export interface AnalyzeJobInput {
@@ -173,6 +175,13 @@ function isNumber(value: unknown): value is number {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || isString(value);
+}
+
+/** A list of strings, or 
+ull/absent when the stage that would produce it never ran. */
+function isNullableStringArray(value: unknown): value is string[] | null | undefined {
+  if (value === null || value === undefined) return true;
+  return isStringArray(value);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -291,9 +300,14 @@ function isJobMatch(value: unknown): value is JobMatch {
   if (!Array.isArray(value['unknowns']) || !value['unknowns'].every(isMatchUnknown)) return false;
   const why = value['why'];
   if (!isRecord(why) || !isString(why['formula'])) return false;
-  if (!isNumber(value['evidenceCoverage'])) return false;
-  if (!isNumber(value['confidence'])) return false;
-  return isStringArray(value['warnings']);
+  // `null` is a legal answer for these three and means *the stage did not run*, which is a different
+  // fact from a measured zero. `GET /jobs/{id}/match` returns them as null while `POST` fills them in,
+  // so requiring a number here made the stored-match path throw and the Match figures panel never
+  // mount — a guard that was already inconsistent with the component that prints `—` for this case.
+  // A wrong *type* is still refused: `undefined` would be a missing key, not an unavailable value.
+  if (!isNullableNumber(value['evidenceCoverage'])) return false;
+  if (!isNullableNumber(value['confidence'])) return false;
+  return isNullableStringArray(value['warnings']);
 }
 
 /* ------------------------------------------------------------------ *

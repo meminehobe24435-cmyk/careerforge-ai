@@ -74,7 +74,9 @@ export function MatchConclusions({ match }: MatchConclusionsProps) {
                     <span className="text-tertiary font-mono text-[11px]">{item.canonicalId}</span>
                     <Badge variant="outline">level {item.userLevel}</Badge>
                     <span className="text-tertiary font-mono text-[11px] tabular-nums">
-                      evidence {item.evidenceCount} · conf {item.confidence.toFixed(2)}
+                      evidence {item.evidenceCount} · conf{' '}
+                      {/* `null` is a skill the engine did not score, which is not confidence 0. */}
+                      {item.confidence === null ? '—' : item.confidence.toFixed(2)}
                     </span>
                   </div>
                   <p className="text-secondary text-[11px] leading-relaxed">{item.reason}</p>

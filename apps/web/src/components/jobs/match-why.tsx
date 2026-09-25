@@ -195,12 +195,17 @@ function DimensionTable({
               <td className="text-tertiary max-w-md px-3 py-2 font-mono">
                 {row.formula || '—'}
                 {/* The engine's own notes: the inputs behind the number, e.g. "要求年限 3，
-                    候选人 0". Shown with the formula rather than only in the narrow layout. */}
-                {row.notes.map((note, index) => (
+                    候选人 0". Shown with the formula rather than only in the narrow layout.
+                    A stored match does not carry them, and "no notes" would read as "no inputs" —
+                    so the absence is stated instead. */}
+                {(row.notes ?? []).map((note, index) => (
                   <span key={`${index}-${note}`} className="mt-1 block">
                     · {note}
                   </span>
                 ))}
+                {row.notes === null ? (
+                  <span className="mt-1 block opacity-70">得分依据未随存储结果返回</span>
+                ) : null}
               </td>
               <td className="text-tertiary px-3 py-2 font-mono tabular-nums">
                 {row.evidenceCount}
@@ -229,14 +234,16 @@ function DimensionCards({ rows }: DimensionRenderProps) {
             </span>
           </div>
           <p className="text-tertiary font-mono text-[11px] tabular-nums">
-            {`${row.key} · 权重 ${formatWeightPercent(row.weight)} · 得分 ${formatPoints(row.score)} · 证据 ${row.evidenceCount}`}
+            {`${row.key} · 权重 ${formatWeightPercent(row.weight)} · 得分 ${formatPoints(row.score)} · 证据 ${
+              row.evidenceCount === null ? '—' : row.evidenceCount
+            }`}
           </p>
           {row.formula ? (
             <p className="text-tertiary font-mono text-[11px] leading-relaxed">{row.formula}</p>
           ) : null}
-          {row.notes.length > 0 ? (
+          {(row.notes ?? []).length > 0 ? (
             <ul className="flex flex-col gap-0.5">
-              {row.notes.map((note, index) => (
+              {(row.notes ?? []).map((note, index) => (
                 <li key={`${index}-${note}`} className="text-tertiary text-[11px] leading-relaxed">
                   · {note}
                 </li>

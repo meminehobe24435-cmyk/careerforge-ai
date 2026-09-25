@@ -259,7 +259,12 @@ export interface DimensionRow {
   weight: number;
   weighted: number;
   formula: string;
-  notes: string[];
+  /**
+   * `null` on a stored match: the row keeps the score, the weight and the formula, but not the
+   * per-skill notes or citations. Rendering that as "0 evidence" would claim the dimension is
+   * unsupported when the API simply does not carry the detail — so the panel says unavailable.
+   */
+  notes: string[] | null;
   /**
    * Distinct evidence ids this dimension cites.
    *
@@ -268,9 +273,9 @@ export interface DimensionRow {
    * `why.evidenceUsed` figure of 3 would read as a contradiction, so the deduplicated count is
    * what the panel shows and the column header says "unique".
    */
-  evidenceCount: number;
-  /** The list exactly as returned, repeats included. */
-  evidenceIdCount: number;
+  evidenceCount: number | null;
+  /** The list exactly as returned, repeats included; `null` when the read did not carry it. */
+  evidenceIdCount: number | null;
   /** The weight as a percentage of the total, for the bar's label. */
   share: number;
 }
@@ -307,8 +312,11 @@ export function buildDimensionRows(match: JobMatch): DimensionRow[] {
       weighted: dimension.weighted,
       formula: dimension.formula,
       notes: dimension.notes,
-      evidenceCount: new Set(dimension.evidenceIds).size,
-      evidenceIdCount: dimension.evidenceIds.length,
+      // `evidenceIds` is `null` on a stored match: the row keeps the score and the weights but not
+      // the per-skill citations, so counting them here would report "0 pieces of evidence" for a
+      // dimension that has some. The panel renders "unavailable" for that case instead.
+      evidenceCount: dimension.evidenceIds === null ? null : new Set(dimension.evidenceIds).size,
+      evidenceIdCount: dimension.evidenceIds?.length ?? null,
       share: Math.round(dimension.weight * 100),
     }));
 }
@@ -355,7 +363,9 @@ export function buildMatchFigures(match: JobMatch, source: MatchSource): MatchFi
     evidenceCoverage: match.evidenceCoverage,
     confidence: match.confidence,
     degraded: match.degraded,
-    warnings: match.warnings,
+    // The API now reports `null` for a stage that did not run, so the panel cannot assume a list;
+    // an absent list is rendered as "not recorded" rather than as "no warnings".
+    warnings: match.warnings ?? [],
   };
 }
 
