@@ -77,7 +77,7 @@ export const navGroups: NavGroup[] = [
         icon: Network,
         shortcut: 'g e',
         phase: 'PHASE 6',
-        live: false,
+        live: true,
       },
       {
         href: '/app/evidence',
@@ -107,8 +107,7 @@ export const navGroups: NavGroup[] = [
         en: 'Jobs & Match',
         icon: Briefcase,
         shortcut: 'g j',
-        phase: 'PHASE 4',
-        live: false,
+        live: true,
       },
       {
         href: '/app/resume',
@@ -124,7 +123,7 @@ export const navGroups: NavGroup[] = [
         en: 'Claim Validator',
         icon: Zap,
         phase: 'PHASE 6',
-        live: false,
+        live: true,
       },
       {
         href: '/app/analytics',
@@ -146,7 +145,7 @@ export const navGroups: NavGroup[] = [
         en: 'Interview Simulator',
         icon: Bot,
         phase: 'PHASE 8',
-        live: false,
+        live: true,
       },
     ],
   },

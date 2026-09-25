@@ -15,7 +15,8 @@ import {
 } from '@careerforge/ui';
 import { isApiError } from '@careerforge/shared';
 import type { DashboardResponse, DashboardStats } from '@careerforge/shared';
-import { Inbox, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react';
+import { Inbox, Network, RefreshCw, ShieldAlert, Sparkles, Target } from 'lucide-react';
+import Link from 'next/link';
 
 import { DashboardSkeleton } from '@/components/dashboard/dashboard-skeleton';
 import { ProfileStrengthRing } from '@/components/dashboard/profile-strength-ring';
@@ -205,6 +206,29 @@ export function DashboardView() {
           </Button>
         </div>
       </header>
+
+      {/*
+        The two things this product is for, above the fold and above the numbers. A dashboard whose
+        primary action is "refresh" is a report; this one has to lead somewhere, and the somewhere is
+        analyse a job (which fills the graph) or go look at the evidence you already have.
+      */}
+      <nav aria-label="主要操作" className="flex flex-wrap items-center gap-2">
+        <Button asChild>
+          <Link href="/app/jobs?focus=input">
+            <Target className="size-3.5" aria-hidden="true" />
+            分析一个岗位
+          </Link>
+        </Button>
+        <Button variant="secondary" asChild>
+          <Link href="/app/evidence-graph">
+            <Network className="size-3.5" aria-hidden="true" />
+            查看证据图谱
+          </Link>
+        </Button>
+        <span className="text-tertiary text-[11px]">
+          匹配分、面试题与简历改写都建立在这张证据图谱之上
+        </span>
+      </nav>
 
       {allZero ? (
         <EmptyState

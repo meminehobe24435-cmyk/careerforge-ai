@@ -1,5 +1,5 @@
 import { Button } from '@careerforge/ui';
-import { ArrowRight, Github } from 'lucide-react';
+import { ArrowRight, Github, Network } from 'lucide-react';
 import Link from 'next/link';
 
 import { ScreenshotPlaceholder } from './screenshot-placeholder';
@@ -14,8 +14,13 @@ const TRUST_BADGES = [
 /**
  * Landing hero — docs/UI.md §5.1.
  *
- * Copy is fixed by the spec: the H1, the subtitle and the three CTAs must stay exactly as
- * documented. At 375px the H1 drops to 32px and the CTAs stack vertically.
+ * The H1 states the product's *thesis* rather than a benefit: every AI résumé tool promises better
+ * wording, and this one is making a different claim — that the wording is checkable. At 375px the
+ * H1 drops to 32px and the CTAs stack vertically.
+ *
+ * The second CTA says "Explore the Evidence Graph" and goes to the demo login, because the graph is
+ * behind a session: linking straight at `/app/evidence-graph` would be a redirect that silently
+ * loses the intent, and a link that lies about where it goes is worse than one extra click.
  */
 export function LandingHero() {
   return (
@@ -30,22 +35,28 @@ export function LandingHero() {
         </p>
 
         <h1 className="text-primary mt-5 max-w-3xl text-[32px] font-semibold leading-[1.12] tracking-tight sm:text-5xl lg:text-[56px]">
-          Your career deserves better infrastructure.
+          Most resumes describe what you claim to know.
+          <span className="text-secondary block">CareerForge shows the evidence.</span>
         </h1>
 
         <p className="text-secondary mt-5 max-w-2xl text-sm leading-relaxed sm:text-base">
-          Build a verifiable career profile from your resume, GitHub, projects and experience.
+          Your resume, projects and repositories become an evidence graph. Job matching, claim
+          validation and interviews are built on it — and every sentence it helps you write stays
+          traceable to something you actually did.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button asChild size="lg">
-            <Link href="/login">
-              Start Building
+            <Link href="/login?demo=1">
+              Try the demo
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </Button>
           <Button asChild size="lg" variant="secondary">
-            <Link href="/login?demo=1">View Demo</Link>
+            <Link href="/login?demo=1">
+              <Network className="size-4" aria-hidden="true" />
+              Explore the Evidence Graph
+            </Link>
           </Button>
           {/* TODO(phase-14): replace `#` with the real public repository URL. */}
           <Button asChild size="lg" variant="outline">
@@ -57,7 +68,7 @@ export function LandingHero() {
         </div>
 
         <p className="text-tertiary mt-6 font-mono text-[11px] tracking-wide">
-          Evidence &gt; Hallucination
+          Evidence &gt; Hallucination · 零 Key 可运行 · 评测基线公开
         </p>
 
         <div className="mt-12">

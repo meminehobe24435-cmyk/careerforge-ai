@@ -21,48 +21,56 @@ interface PaletteEntry {
   href?: string;
 }
 
-/** Actions from docs/UI.md §7. All of them land in later phases, so all are `live: false`. */
+/**
+ * The things a user comes here to *do*, each pointing at the page that does it.
+ *
+ * These were `live: false` PHASE-1 placeholders. Now that the pages exist, an entry that merely
+ * navigates to the same route as the sidebar item beside it would be duplicate weight — so this
+ * group is reserved for actions that land **with the work already started**: the input focused, the
+ * session ready. Everything else moved to the navigation group, which is generated from
+ * `nav-config.ts` and therefore cannot go stale.
+ */
 const quickActions: PaletteEntry[] = [
   {
-    id: 'analyze-jd',
+    id: 'action-analyze-jd',
     label: '分析 JD',
-    hint: 'Analyze a job',
+    hint: 'Analyze a job description',
     shortcut: '⌘↵',
     group: '动作',
-    live: false,
-    phase: 'PHASE 4',
+    live: true,
+    href: '/app/jobs?focus=input',
   },
   {
-    id: 'add-application',
-    label: '添加投递',
-    hint: 'Add application',
+    id: 'action-validate-claim',
+    label: '验证一句话',
+    hint: 'Validate a resume claim',
     group: '动作',
-    live: false,
-    phase: 'PHASE 9',
+    live: true,
+    href: '/app/validator?focus=input',
   },
   {
-    id: 'start-interview',
+    id: 'action-start-interview',
     label: '开始模拟面试',
-    hint: 'Start interview',
+    hint: 'Start an interview session',
     group: '动作',
-    live: false,
-    phase: 'PHASE 8',
+    live: true,
+    href: '/app/interview',
   },
   {
-    id: 'upload-resume',
-    label: '上传简历',
-    hint: 'Upload resume',
+    id: 'action-evidence-graph',
+    label: '查看证据图谱',
+    hint: 'Open the Evidence Graph',
     group: '动作',
-    live: false,
-    phase: 'PHASE 3',
+    live: true,
+    href: '/app/evidence-graph',
   },
   {
-    id: 'analyze-github',
-    label: '绑定 GitHub',
-    hint: 'Analyze GitHub',
+    id: 'action-ai-runs',
+    label: '查看 AI 运行记录',
+    hint: 'AI runs, cost and prompts',
     group: '动作',
-    live: false,
-    phase: 'PHASE 5',
+    live: true,
+    href: '/app/ai-runs',
   },
 ];
 

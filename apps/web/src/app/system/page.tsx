@@ -2,6 +2,7 @@ import { Badge } from '@careerforge/ui';
 import type { Metadata } from 'next';
 
 import { SiteHeader } from '@/components/landing/site-header';
+import { QualitySnapshotPanel } from '@/components/system/quality-snapshot-panel';
 import { SystemHealthGrid } from '@/components/system/system-health-grid';
 import { API_BASE_URL } from '@/lib/api';
 
@@ -38,6 +39,13 @@ export default function SystemPage() {
             服务健康
           </h2>
           <SystemHealthGrid />
+
+          {/* The health card title renders as h3, so the snapshot heading is an h2 too: the
+              outline must not jump from h3 back to a sibling h2 without a section boundary. */}
+          <h2 id="quality-snapshot-heading" className="sr-only">
+            评测快照
+          </h2>
+          <QualitySnapshotPanel />
 
           <section className="border-default bg-surface flex flex-col gap-3 rounded-lg border p-4">
             <h2 className="text-primary text-sm font-medium">尚未接入</h2>
