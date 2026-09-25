@@ -85,8 +85,14 @@ test.describe('CORS', () => {
     expect((JSON.parse(authenticated.body) as { success: boolean }).success).toBe(true);
   });
 
-  test('a non-allowed origin is not granted, and the allowed one still is', async ({ request }) => {
-    const allowedOrigin = 'http://127.0.0.1:3318';
+  test('a non-allowed origin is not granted, and the allowed one still is', async ({
+    request,
+    baseURL,
+  }) => {
+    // Derived from the app URL under test rather than hardcoded: with a literal origin the spec
+    // failed on every port except one, for a reason that had nothing to do with CORS. CI runs on
+    // 3318; a local run uses whatever port is free.
+    const allowedOrigin = new URL(baseURL ?? 'http://127.0.0.1:3318').origin;
     const foreignOrigin = 'http://evil.example';
     const preflight = async (origin: string) =>
       request.fetch(`${API_BASE_URL}/jobs/analyze`, {
