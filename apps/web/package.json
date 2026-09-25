@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:mobile": "playwright test --project=mobile"
+    "test:e2e:mobile": "playwright test --project=mobile",
+    "capture:gif": "playwright test demo-capture.spec.ts --project=desktop"
   },
   "dependencies": {
     "@careerforge/shared": "workspace:*",
@@ -24,6 +25,7 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@tanstack/react-query": "^5.103.2",
+    "@xyflow/react": "^12.12.0",
     "lucide-react": "^0.544.0",
     "next": "15.5.26",
     "next-themes": "^0.4.6",
@@ -33,6 +35,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@careerforge/config": "workspace:*",
     "@eslint/eslintrc": "^3.3.7",
     "@playwright/test": "^1.63.0",
