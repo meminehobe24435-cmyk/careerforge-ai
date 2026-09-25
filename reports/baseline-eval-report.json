@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-09-25T11:37:14.132563+00:00",
+  "generated_at": "2026-09-25T11:32:00.644404+00:00",
   "git_commit": "c147180",
   "git_dirty": true,
   "provider": "heuristic",
@@ -81,14 +81,14 @@
     "gated_passed": 4,
     "gated_failed": 0,
     "reported_misses": 0,
-    "duration_ms": 667
+    "duration_ms": 763
   },
   "suites": {
     "jd_extraction": {
       "dataset": "jd_extraction",
       "dataset_version": "jd1.0",
       "cases": 120,
-      "duration_ms": 430,
+      "duration_ms": 492,
       "skipped": null,
       "passed": true,
       "metrics": {
@@ -218,7 +218,7 @@
       "dataset": "evidence_validation",
       "dataset_version": "ev2.1",
       "cases": 60,
-      "duration_ms": 157,
+      "duration_ms": 176,
       "skipped": null,
       "passed": true,
       "metrics": {
@@ -1218,7 +1218,7 @@
       "dataset": "rag_retrieval",
       "dataset_version": "rag1.0",
       "cases": 59,
-      "duration_ms": 42,
+      "duration_ms": 48,
       "skipped": null,
       "passed": true,
       "metrics": {
@@ -1348,7 +1348,7 @@
       "dataset": "interview_relevance",
       "dataset_version": "iv1.0",
       "cases": 3,
-      "duration_ms": 28,
+      "duration_ms": 32,
       "skipped": null,
       "passed": true,
       "metrics": {

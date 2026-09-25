@@ -6,6 +6,75 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — PHASE 12 · Measurement: evaluation, calibration, end-to-end and coverage
+
+The phase was not "write more tests"; it was "find out what the system gets wrong". It did.
+
+- **A real evaluation framework** (`evals/`): `run.py` (CLI, exit code 2 on a missed gate),
+  `config.py` (every threshold typed, with its rationale and a `gate`/`report` severity),
+  `metrics.py` (classification, retrieval, calibration — each with hand-checked unit tests),
+  `report.py` (one `schema_version 1.0` document → `eval-report.{json,md}` +
+  `confidence-calibration.{json,md}`), `compare.py` (baseline diff with per-metric direction).
+- **Four suites, 242 cases**: `jd_extraction` (120), `evidence_validation` (60, hand-authored),
+  `rag_retrieval` (59 queries over three arms), `interview_relevance` (3 roles).
+- **Confidence calibration**: reliability buckets, **ECE 0.0166**, **Brier 0.1034** — the answer to
+  "does 0.8 mean 80%", computed from the same run rather than asserted.
+- **Failure injection**: a scripted provider that times out, hangs, returns 429, malformed JSON, a
+  wrong shape, a crash or budget exhaustion, driven through real endpoints; 30 new tests.
+- **End-to-end in a real browser** (Playwright, `channel: 'chrome'`, nothing downloaded): the five
+  product flows plus the AI Runs drill-down and a CORS regression verified to fail on a bad origin.
+- **Core-domain coverage 91.9%** of 1,649 statements, scope declared in
+  `scripts/coverage_report.py`, with `reports/coverage.xml` and a markdown summary.
+- **`docs/QUALITY.md`** (strategy, thresholds, findings, limitations) and **`docs/INTERVIEW.md`**
+  (the story, with the numbers), plus `reports/README.md` as the quality hub.
+
+### Fixed — PHASE 12 (defects the evaluation found)
+
+- **Scope-inflated claims were granted `supported`.** "主导了后端服务的重构" over evidence that says
+  _participated_ — token overlap is high and the arithmetic has no opinion about who did what. A new
+  rule detects ownership language the evidence never uses and **caps** the verdict at
+  `partially_supported`; a cap can only lower a status, never raise one.
+- **A model-reported blocker was softened by retrieval hits.** `decide_phase` used "were there any
+  hits" as a proxy for "is this partially supported", so a claim the model explicitly called
+  unsupported came back partially supported whenever the evidence base was non-empty — which is
+  every real candidate. Thirteen of twenty fabricated cases were softened; the model's own
+  three-way answer now decides. `unsupported_recall 0.3500 → 0.9032`, `unsafe_support_rate 0.1000 → 0.0500`.
+- **The interview planner only knew embedded skills.** A backend or AI-application posting fell
+  through to one generic project topic (nothing about FastAPI, PostgreSQL or RAG) and repeated the
+  same question. Topic map and question bank extended with per-topic answer terms:
+  `required_skill_coverage 0.3333 → 0.8333`, `duplicate_rate 0.2222 → 0.0000`.
+- **`/ai-runs` and `/ai-costs` leaked across accounts** — a second user could list and fetch
+  another's runs, and the cost aggregates summed the whole deployment. Both reads are now scoped to
+  the caller plus the deployment's own ownerless runs; a foreign id is a 404.
+- **A raising retriever returned 500** (the optional step wrote `None` into the slot the decision
+  phase then read). Retrieval now degrades and says so; three `None`-unsafe reads removed.
+- **`sinceHours` compared local time against a UTC column**, so on a UTC+8 host a run created
+  seconds earlier fell outside a one-hour window. Now `utcnow()`, and the `xfail` became an assertion.
+- **The mobile drawer rendered below its own overlay** (`--z-drawer` 50 under `--z-modal` 60), so
+  every tap below 768 px was intercepted by the backdrop. `DialogContent` gained
+  `overlayClassName`/`overlayStyle`; the drawer moves both layers.
+- **A metric implementation was wrong**: the confusion matrix incremented once per declared label,
+  triple-counting every cell of a three-label matrix. Caught by the test that sums the matrix, before
+  any number was published.
+
+### Removed — PHASE 12
+
+- **The generated claim corpus** (120 rows, 22 distinct claim/kind pairs, one evidence snippet each)
+  and its generator. Its metrics were statements about a template, and its labels tracked the rule
+  layer's own logic — `support_recall 1.0000` proved the gate agreed with itself. Replaced by 60
+  hand-authored cases with a written rubric and a committed `fixture_version` (ev2.1).
+
+### Known limitations — PHASE 12
+
+- `unsafe_support_rate` is **0.0500**, not the 0.02 ambition: two scope-inflation cases
+  (`吞吐提升明显`, `整机调试`) have no keyword a deterministic rule can act on.
+- **The hybrid retriever is slightly worse than BM25 alone** on the 59-query corpus (Hit@5 0.9661 vs
+  0.9831, one fusion loss, zero wins). Reported rather than tuned — fitting RRF weights to 59
+  queries would be overfitting with extra steps.
+- `structured_output` still records no tokens, and a failed request still leaves no run row (the
+  tracker writes inside the request transaction). Both need changes outside this phase.
+- The E2E suite asserts four of five flows at the API level, because those pages are not shipped yet.
+
 ### Added — PHASE 11b · The AI Runs table and the cost dashboard
 
 PHASE 11a wrote the rows; this phase puts them on screen, and refuses to dress up what they say.

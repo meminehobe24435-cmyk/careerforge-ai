@@ -52,6 +52,11 @@ uploads/
 # its numbers, and a quoted number must be checkable in the repository.
 reports/*
 !reports/eval-report.json
+!reports/eval-report.md
+!reports/baseline-eval-report.json
+!reports/confidence-calibration.md
+!reports/coverage-summary.md
+!reports/README.md
 !reports/.gitkeep
 
 # 鈹€鈹€ Playwright 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

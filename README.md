@@ -214,67 +214,80 @@ honest empty state rather than placeholder rows.
 ## Testing & evaluation
 
 ```bash
-pytest packages/ai/tests -q     # AI core (currently 201 tests)
-python evals/run.py             # labeled suites → reports/eval-report.json
-pnpm typecheck && pnpm lint     # TypeScript strict + ESLint
-python scripts/check_layering.py        # architecture guard
-python scripts/check_file_length.py     # the 500-line rule
-python scripts/check_design_tokens.py   # no raw colours in components
+pytest packages/ai/tests apps/api/tests evals/tests -q   # 871 Python tests
+pnpm --filter @careerforge/web test                      # 143 component & guard tests
+pnpm --filter @careerforge/web test:e2e                  # 11 Playwright flows (installed Chrome)
+python evals/run.py                                      # 4 labelled suites → reports/
+python scripts/coverage_report.py                        # core-domain coverage
+python evals/compare.py reports/baseline-eval-report.json reports/eval-report.json
+pnpm typecheck && pnpm lint                              # TypeScript strict + ESLint
+python scripts/check_layering.py                         # architecture guard
+python scripts/check_file_length.py                      # the 500-line rule
+python scripts/check_design_tokens.py                    # no raw colours in components
 ```
 
-### Measured results
+**1,025 tests, and none of them need an API key** — the default provider is a deterministic rule
+engine, so CI, every suite and every end-to-end flow run for free.
 
-Produced by `python evals/run.py` on the current commit and committed to
-[`reports/eval-report.json`](reports/eval-report.json), so these numbers can be
-checked rather than trusted. Provider: **heuristic** (the zero-API-key path).
+### Quality & Evaluation
 
-| Suite            | Metric                                       | Result                                    | Target |
-| ---------------- | -------------------------------------------- | ----------------------------------------- | ------ |
-| JD extraction    | required-skill F1                            | **0.883**                                 | ≥ 0.85 |
-| JD extraction    | required-skill precision / recall            | 0.791 / **1.000**                         | —      |
-| JD extraction    | company-blurb distractor leakage             | **0.000**                                 | ≤ 0.05 |
-| JD extraction    | quoted-evidence grounding                    | **1.000**                                 | = 1.00 |
-| JD extraction    | role / location / education / years accuracy | **1.000** / **1.000** / **1.000** / 0.950 | ≥ 0.90 |
-| JD extraction    | requirement-level accuracy                   | 0.946                                     | —      |
-| Claim validation | fabricated-metric rejection                  | **1.000**                                 | = 1.00 |
-| Claim validation | false "supported" rate                       | **0.000**                                 | ≤ 0.05 |
-| Claim validation | supported-claim recall                       | **1.000**                                 | ≥ 0.85 |
-| Claim validation | safer-rewrite offered                        | 0.489                                     | —      |
-| Retrieval        | Recall@5                                     | **0.966** (57/59)                         | ≥ 0.95 |
-| Retrieval        | Recall@1                                     | 0.847                                     | —      |
-| Retrieval        | MRR                                          | 0.901                                     | ≥ 0.85 |
+Traditional AI apps stop at "it seems to work". CareerForge evaluates retrieval quality, evidence
+grounding, confidence calibration, interview relevance, and the deterministic application flows —
+and publishes the numbers with the gaps still visible.
 
-**The datasets are generated with exact ground truth, not scraped** — real job ads
-carry no labels, so precision and recall would be unmeasurable. They should be
-read as indicators on a controlled corpus, not as market-representative accuracy.
+|                                          | measured (commit `c147180`, zero-key provider)                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| API / AI core / web / E2E / metric tests | 348 · 504 · 143 · 11 · 19                                                                             |
+| JD extraction                            | required-skill **F1 0.883** · quoted-evidence grounding **1.000** · distractor leakage **0.000**      |
+| Evidence validation                      | accuracy **0.883** · macro F1 **0.831** · unsupported recall **0.903**                                |
+| **Unsafe support rate**                  | **0.050** — the share of unsupported claims wrongly accepted · fabricated-number acceptance **0.000** |
+| RAG retrieval                            | **Hit@1 0.848 · Hit@3 0.966 · Hit@5 0.966 · MRR 0.901** (59 queries, 3 arms)                          |
+| Interview relevance                      | required-skill coverage **0.833** · duplicate questions **0.000** · cross-role leakage **0.000**      |
+| Confidence calibration                   | **ECE 0.017** · Brier **0.103** (0.8–0.9 bucket calibrated to ±0.001)                                 |
+| Coverage                                 | core domain **91.9%** of 1,649 statements                                                             |
+
+**Why `unsafe_support_rate` gets its own row.** For a résumé system the two error directions are
+not symmetric: refusing to confirm an honest bullet costs the candidate a review, while accepting
+an invented achievement writes fiction onto their CV in their own voice. So the report carries a
+full confusion matrix, and the fabricated-measurement rate is gated at exactly zero.
+
+**Measuring it changed the product.** The first run of the hand-authored claim corpus reported
+`support_recall 0.0000`; the investigation found the evaluation was driving a caller contract the
+product never uses, and — after fixing that — that the gate was accepting **10%** of unsupported
+claims. Two real defects came out of it (scope-inflated claims were granted _supported_; a
+model-reported blocker was softened by the mere presence of retrieval hits) and both are fixed:
+unsupported recall went 0.350 → 0.903 and unsafe support 0.100 → 0.050. The same suite drove the
+interview planner's skill coverage from 0.333 to 0.833. The story is written up in
+[`docs/QUALITY.md`](docs/QUALITY.md) §5.
+
+Numbers live in [`reports/README.md`](reports/README.md) and are regenerated by the commands above;
+the datasets are versioned (`fixture_version`) so a benchmark change is traceable to the cases that
+caused it, and a committed baseline makes regressions diffable rather than arguable.
 
 ### Known weaknesses, measured rather than omitted
 
-| Weakness                    | Value         | Cause                                                                                                                                                                                                                                                         |
-| --------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bonus-skill F1              | 0.776         | Bonus skills are sparse and their phrasing is the most varied of the three levels                                                                                                                                                                             |
-| Required-skill precision    | 0.791         | Residual over-extraction when a technology appears outside any recognised section                                                                                                                                                                             |
-| Safer-rewrite rate          | 0.489         | A rewrite is only offered when a clause can actually be dropped; many claims are single-clause                                                                                                                                                                |
-| Claim threshold margin      | 0.011 / 0.009 | Character-level overlap cannot see paraphrase, so the supported/unsupported separation is narrow (unsupported tops out at 0.404, supported bottoms out at 0.424). Widening it needs semantic matching — which is exactly what `--provider deepseek` measures. |
-| Retrieval paraphrase misses | 2 / 59        | The zero-key character-n-gram embedding misses two intent-style queries; both are recorded in the report with the ids returned instead                                                                                                                        |
+| Weakness                          | Value          | Cause                                                                                                                                               |
+| --------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unsafe support rate               | 0.050          | Two scope-inflation cases (`吞吐提升明显`, `整机调试`) with no keyword to hang a rule on; fixing them needs entailment on the action, not the nouns |
+| Required-skill precision          | 0.791          | Residual over-extraction when a technology appears outside any recognised section                                                                   |
+| Bonus-skill F1                    | 0.776          | Bonus skills are sparse and their phrasing is the most varied of the three levels                                                                   |
+| Hybrid vs keyword retrieval       | 0.966 vs 0.983 | Equal RRF weights lose one query the lexical arm finds; tuning on 59 queries would be overfitting                                                   |
+| Safer-rewrite rate                | 0.375          | A rewrite is only offered when a clause can be dropped without leaving an unsupported noun behind                                                   |
+| Interview coverage                | 0.833          | Two required skills in the fixtures still have no topic mapping                                                                                     |
+| Top-bucket calibration            | +0.063         | Above 0.9 the gate is over-confident by six points (7 cases wrong at ≥ 0.75)                                                                        |
+| Run tokens on the structured path | 0              | The core returns the parsed schema and drops the usage envelope, so a paid deployment would not see real spend                                      |
 
-The measurement loop is the point. The first run of these suites reported
-**100% distractor leakage**, a **13.3% false-support rate**, and a **0.675
-Recall@5**. All three were investigated; the first two were fixed in response to
-the number and now sit at zero, while the third turned out to be partly a bug in
-my own dataset — the query `vTaskDelayUntil` did not appear anywhere in the
-corpus. After fixing it the same suite reads 0.966.
+The measurement loop is the point. Earlier runs of these suites reported **100% distractor
+leakage**, a **13.3% false-support rate** and a **0.675 Recall@5**; each was investigated, and two
+were found to be bugs in the code rather than in the corpus (the third was a bug in my dataset —
+the query `vTaskDelayUntil` did not appear anywhere in it).
 
 ### Not yet measured
 
-`interview_relevance` (PHASE 7), an end-to-end pipeline suite (PHASE 6) and
-confidence calibration (needs hand-labelled evidence). A suite is added when the
-component it measures exists — shipping a metric for something that has not been
-built is the failure mode this project is about.
-
-> The frontend has **no automated tests yet** (PHASE 12). Its dashboard success
-> path has not been exercised against a running API, and responsive behaviour was
-> reasoned from the styles written rather than measured in a browser.
+A real-provider evaluation (`python evals/run.py --provider deepseek`) needs a key and is therefore
+manual: calibration currently describes the zero-key path. PostgreSQL-specific behaviour is covered
+by the CI matrix but not locally. There is no load test — the API's limits are reasoned from the
+rate-limit middleware, not measured.
 
 ---
 
