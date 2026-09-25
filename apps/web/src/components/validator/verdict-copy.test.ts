@@ -4,6 +4,7 @@ import {
   CONFIDENCE_TOOLTIP,
   MIN_INDEPENDENT_SOURCES,
   VERDICT_COPY,
+  affirmativeExplanation,
   allowsResumeInclusion,
   channelLabel,
   evidenceGraphHref,
@@ -11,8 +12,9 @@ import {
   overallSeverity,
   readConfidence,
   riskItems,
+  rulePanelTitle,
 } from '@/components/validator/verdict-copy';
-import type { ClaimReason } from '@/lib/validator-api';
+import type { ClaimReason, ClaimSource, ClaimStatus } from '@/lib/validator-api';
 
 /**
  * The page's vocabulary, asserted against the code it was copied from.
@@ -222,5 +224,94 @@ describe('source provenance copy', () => {
       snippet: '',
     });
     expect(href).toBe('/app/evidence-graph?node=11111111-2222-3333-4444-555555555555');
+  });
+});
+
+describe('the rule panel asks the question the verdict raises', () => {
+  it('phrases the heading for each verdict instead of asking about a rejection every time', () => {
+    expect(rulePanelTitle('supported')).toBe('Why is this supported?');
+    expect(rulePanelTitle('partially_supported')).toBe('Why is this only partially supported?');
+    expect(rulePanelTitle('unsupported')).toBe('Why was this rejected?');
+    expect(rulePanelTitle('contradicted')).toBe('Why was this rejected?');
+  });
+
+  it('never asks why a supported sentence was rejected', () => {
+    for (const status of ['supported', 'partially_supported'] as const) {
+      expect(rulePanelTitle(status).toLowerCase()).not.toContain('rejected');
+    }
+  });
+
+  it('stays neutral for a verdict it has no phrasing for', () => {
+    // `pending` is a real status: no gate decision has been made, so there is nothing to reject.
+    expect(rulePanelTitle('pending')).toBe('Why this verdict?');
+    // …and so is a status a newer backend added, which must not be read as a rejection.
+    expect(rulePanelTitle('needs_review' as ClaimStatus)).toBe('Why this verdict?');
+  });
+});
+
+describe('the explanation that replaces an empty rule list', () => {
+  function source(overrides: Partial<ClaimSource> = {}): ClaimSource {
+    return {
+      evidenceId: 'ev-1',
+      title: 'resume.md',
+      kind: 'document_chunk',
+      relevance: 1,
+      channel: 'keyword',
+      locator: '—',
+      url: null,
+      snippet: '使用 STM32 与 FreeRTOS 编写任务调度',
+      ...overrides,
+    };
+  }
+
+  const evidence = {
+    sources: [source(), source({ evidenceId: 'ev-2', kind: 'manual', channel: 'manual' })],
+    independentSourceCount: 2,
+    confidence: 0.81,
+  };
+
+  it('states what carried a supported sentence, in the API’s own figures', () => {
+    const copy = affirmativeExplanation('supported', evidence);
+    expect(copy.title).toBe('What carries this sentence');
+    expect(copy.body).toContain('No rule fired');
+    // The count and the kinds are the payload's, not a re-derivation.
+    expect(copy.body).toContain('2 independent evidence kinds');
+    expect(copy.body).toContain('document_chunk / manual');
+    expect(copy.body).toContain(`minimum of ${MIN_INDEPENDENT_SOURCES}`);
+    expect(copy.body).toContain('High · 81%');
+  });
+
+  it('uses the singular for a single independent source and omits kinds it was not given', () => {
+    const copy = affirmativeExplanation('supported', {
+      sources: [],
+      independentSourceCount: 1,
+      confidence: 0.5,
+    });
+    expect(copy.body).toContain('1 independent evidence kind');
+    expect(copy.body).not.toContain('across');
+  });
+
+  it('does not claim a rejection for a verdict that is not one', () => {
+    for (const status of ['supported', 'partially_supported', 'unsupported'] as const) {
+      expect(affirmativeExplanation(status, evidence).title.toLowerCase()).not.toContain('reject');
+    }
+  });
+
+  it('explains a partial verdict without rule codes as arithmetic, not as an objection', () => {
+    const copy = affirmativeExplanation('partially_supported', evidence);
+    expect(copy.title).toBe('What this verdict rests on');
+    expect(copy.body).toContain('below the 0.75');
+    expect(copy.body).toContain('unknowns');
+  });
+
+  it('says plainly that no rule is listed rather than rendering an empty section', () => {
+    const copy = affirmativeExplanation('unsupported', {
+      ...evidence,
+      independentSourceCount: 0,
+      sources: [],
+    });
+    expect(copy.title).toBe('Why no rule is listed');
+    expect(copy.body).toContain('no rule objection to show you');
+    expect(copy.body).toContain('0 independent evidence kinds');
   });
 });

@@ -3,20 +3,11 @@
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '@careerforge/ui';
 import type { SkillCorrelation } from '@careerforge/shared';
 
-import { correlationVerdict, formatLift, formatRate } from '@/lib/analytics-format';
+import { correlationReading, formatRate } from '@/lib/analytics-format';
 
 interface CorrelationTableProps {
   rows: SkillCorrelation[];
 }
-
-const VERDICT: Record<
-  ReturnType<typeof correlationVerdict>,
-  { label: string; variant: 'signal' | 'outline' | 'danger' }
-> = {
-  notable: { label: '值得注意', variant: 'signal' },
-  flat: { label: '无显著差异', variant: 'outline' },
-  insufficient: { label: '样本不足', variant: 'danger' },
-};
 
 /**
  * "Which skills did the interviews actually happen with?" (FR-14.3)
@@ -25,6 +16,19 @@ const VERDICT: Record<
  * asked for tells you nothing — and the table would look identical either way if only the
  * "with" column were rendered, which is exactly the trap. `notable` is only true when both
  * groups clear the sample minimum and their 95% intervals do not overlap.
+ *
+ * **What changed, and why.** The verdict badge used to be the `danger` variant and the 差值 column
+ * printed a signed number for every row, so a table of two-application samples read as a wall of
+ * red `-100pt` declines — while the footnote underneath said the sample was insufficient. The
+ * visual was making a claim the text denied, and it was the wrong claim: too little data is not a
+ * decline, and a candidate should not be shown a downward trend they do not have. So the render is
+ * derived from {@link correlationReading}:
+ *
+ * * the only `signal`-toned row is a difference that cleared the sample minimum;
+ * * an insufficient row prints its (real, API-supplied) difference in muted text with **no sign
+ *   emphasis**, labelled `Insufficient sample`, and says in words that it is not a conclusion;
+ * * no row on this page is red. Danger is reserved for a *measured* decline, and this page cannot
+ *   measure one from a sample below the minimum.
  */
 export function CorrelationTable({ rows }: CorrelationTableProps) {
   if (rows.length === 0) {
@@ -43,10 +47,19 @@ export function CorrelationTable({ rows }: CorrelationTableProps) {
     );
   }
 
+  const readings = rows.map((row) => ({ row, reading: correlationReading(row) }));
+  const insufficient = readings.filter((entry) => !entry.reading.actionable);
+  const notes = [...new Set(readings.map((entry) => entry.reading.note).filter(Boolean))];
+
   return (
     <Card className="min-w-0">
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between gap-2">
         <CardTitle>技能与面试成功率</CardTitle>
+        {insufficient.length > 0 ? (
+          <Badge variant="outline" data-testid="insufficient-rows">
+            {insufficient.length} 行样本不足
+          </Badge>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="overflow-x-auto">
@@ -72,31 +85,52 @@ export function CorrelationTable({ rows }: CorrelationTableProps) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const verdict = VERDICT[correlationVerdict(row)];
-                return (
-                  <tr key={row.skillId} className="border-subtle border-t align-top">
-                    <td className="text-primary py-2 pr-3 font-medium">{row.displayName}</td>
-                    <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
-                      {formatRate(row.withSkillRate, 0)} ({row.withSkillSuccesses}/
-                      {row.withSkillTotal})
-                    </td>
-                    <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
-                      {formatRate(row.withoutSkillRate, 0)} ({row.withoutSkillSuccesses}/
-                      {row.withoutSkillTotal})
-                    </td>
-                    <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
-                      {formatLift(row.lift)}
-                    </td>
-                    <td className="py-2">
-                      <Badge variant={verdict.variant}>{verdict.label}</Badge>
-                    </td>
-                  </tr>
-                );
-              })}
+              {readings.map(({ row, reading }) => (
+                <tr
+                  key={row.skillId}
+                  data-correlation={row.skillId}
+                  data-actionable={reading.actionable ? 'true' : 'false'}
+                  className="border-subtle border-t align-top"
+                >
+                  <td className="text-primary py-2 pr-3 font-medium">{row.displayName}</td>
+                  <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
+                    {formatRate(row.withSkillRate, 0)} ({row.withSkillSuccesses}/
+                    {row.withSkillTotal})
+                  </td>
+                  <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
+                    {formatRate(row.withoutSkillRate, 0)} ({row.withoutSkillSuccesses}/
+                    {row.withoutSkillTotal})
+                  </td>
+                  {/*
+                    An unmeasured difference is printed in tertiary text and without the sign
+                    emphasis `formatLift` gives it elsewhere: the number is the API's, but it is
+                    not a trend, and a bold `-100pt` is how a trend reads.
+                  */}
+                  <td
+                    className={
+                      reading.lift.measured
+                        ? 'text-secondary py-2 pr-3 font-mono tabular-nums'
+                        : 'text-tertiary py-2 pr-3 font-mono tabular-nums'
+                    }
+                    data-lift-measured={reading.lift.measured ? 'true' : 'false'}
+                  >
+                    {reading.lift.text}
+                  </td>
+                  <td className="py-2">
+                    <Badge variant={reading.tone}>{reading.label}</Badge>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+
+        {notes.map((note) => (
+          <p key={note} className="text-secondary text-[11px] leading-relaxed" data-sample-note>
+            {note}
+          </p>
+        ))}
+
         {rows[0]?.note ? (
           <p className="text-tertiary text-[11px] leading-relaxed">
             判定说明：{rows[0].note}。相关不等于因果 —— 技能与面试率同时变化，也可能是因为

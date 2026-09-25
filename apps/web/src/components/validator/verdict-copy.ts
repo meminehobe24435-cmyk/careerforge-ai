@@ -320,6 +320,90 @@ export function noRewriteCopy(reasons: ClaimReason[]): { title: string; body: st
 /** `POST /evidence/validate` request path, printed in the header in mono. */
 export const VALIDATOR_ENDPOINT = 'POST /evidence/validate';
 
+/**
+ * The rule-detail panel's heading, phrased for the verdict it belongs to.
+ *
+ * The panel used to ask **"Why was this rejected?"** over every verdict — including `supported`,
+ * where it told the reader the opposite of what the gate had just said, directly under a headline
+ * reading "Verified by evidence". The heading is the reader's first question and it has to be the
+ * question the verdict actually raises, so it is derived from the status rather than fixed.
+ *
+ * `pending` and anything this build does not know get a neutral heading: asking why a *rejection*
+ * happened when no rejection is on record would be a claim the payload does not support.
+ */
+export function rulePanelTitle(status: ClaimStatus): string {
+  switch (status) {
+    case 'supported':
+      return 'Why is this supported?';
+    case 'partially_supported':
+      return 'Why is this only partially supported?';
+    case 'unsupported':
+    case 'contradicted':
+      return 'Why was this rejected?';
+    default:
+      return 'Why this verdict?';
+  }
+}
+
+/** What replaces the rule list when no rule fired: the reason the verdict came out as it did. */
+export interface AffirmativeExplanation {
+  title: string;
+  body: string;
+}
+
+/**
+ * The explanation for a verdict that carries **no rule codes**.
+ *
+ * An empty rejection section is worse than no section: it renders a heading, a `0 rule codes`
+ * badge and, once expanded, a sentence apologising for having nothing to say. When no rule fired
+ * there is no objection to list, so the panel is not a rejection panel at all — it states what the
+ * verdict actually rested on, in the API's own figures (`independentSourceCount`, the evidence
+ * kinds behind the retrieved sources, and the gate's `confidence`).
+ *
+ * Every number here comes from the payload. Nothing is inferred from the fact that a verdict came
+ * out a particular way.
+ */
+export function affirmativeExplanation(
+  status: ClaimStatus,
+  evidence: { sources: ClaimSource[]; independentSourceCount: number; confidence: number },
+): AffirmativeExplanation {
+  const reading = readConfidence(evidence.confidence);
+  const kinds = [...new Set(evidence.sources.map((source) => source.kind))].sort();
+  const kindText = kinds.length > 0 ? ` across ${kinds.join(' / ')}` : '';
+  const plural = evidence.independentSourceCount === 1 ? 'kind' : 'kinds';
+
+  if (status === 'supported') {
+    return {
+      title: 'What carries this sentence',
+      body:
+        `No rule fired for this claim, so there is no objection to expand and none is shown. ` +
+        `The verdict comes from the evidence arithmetic instead: ${evidence.independentSourceCount} independent evidence ${plural}${kindText}, ` +
+        `which clears the gate's own minimum of ${MIN_INDEPENDENT_SOURCES} before it will call a sentence supported, ` +
+        `at a confidence of ${reading.text}. The sources listed above are the rows that carried it — ` +
+        `each one shows the channel it was retrieved on and the confidence stored on the evidence itself.`,
+    };
+  }
+
+  if (status === 'partially_supported') {
+    return {
+      title: 'What this verdict rests on',
+      body:
+        `No rule fired for this claim: the partial verdict comes from the evidence arithmetic rather than from a rule objection. ` +
+        `${evidence.independentSourceCount} independent evidence ${plural}${kindText} were retrieved at a confidence of ${reading.text}, ` +
+        `which is below the ${SUPPORTED_THRESHOLD} a supported verdict requires. ` +
+        `The sources above are what the gate did find; the parts of the sentence it could not place are listed under "unknowns".`,
+    };
+  }
+
+  return {
+    title: 'Why no rule is listed',
+    body:
+      `No rule fired for this claim — the verdict came from the evidence arithmetic alone. ` +
+      `${evidence.independentSourceCount} independent evidence ${plural}${kindText} were retrieved at a confidence of ${reading.text}. ` +
+      `The gate reports this rather than a rule code because that is what it decided on; there is no rule objection to show you.`,
+  };
+}
+
 /** Where one cited source can be inspected. The graph highlights the node. */
 export function evidenceGraphHref(source: ClaimSource): string {
   return `/app/evidence-graph?node=${encodeURIComponent(source.evidenceId)}`;

@@ -250,7 +250,7 @@ export function DashboardView() {
         <h2 id="dash-strength-heading" className="sr-only">
           Profile Strength 与核心指标
         </h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
           <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Profile Strength</CardTitle>
@@ -263,7 +263,16 @@ export function DashboardView() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {/*
+            Three columns, not six, and the label wraps instead of being clipped.
+
+            Measured at 1440px: the six-across grid left ~116px per card, of which the label had
+            ~84px after padding — five of the six metric names were cut to `EVIDEN…`, `RESUME…`.
+            A truncated metric name is a card that cannot say what it measures, so the count came
+            down (3 × 2) rather than the type size. At `lg` the right-hand column is beside a 300px
+            ring card and only fits two; below `lg` the grid is full width.
+          */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {STAT_DEFINITIONS.map((definition) => (
               <StatCard
                 key={definition.key}

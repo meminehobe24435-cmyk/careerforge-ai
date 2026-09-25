@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -280,10 +280,72 @@ describe('the analytics page', () => {
 
     expect(screen.getByText('STM32')).toBeInTheDocument();
     expect(screen.getByText('无显著差异')).toBeInTheDocument();
-    expect(screen.getByText('样本不足')).toBeInTheDocument();
+    // The vocabulary is the brief's, and it is not a verdict word: too little data is a state, not
+    // a finding about the candidate.
+    expect(screen.getByText('Insufficient sample')).toBeInTheDocument();
     // Both sides of each comparison are on screen: a rate with no comparison group is not one.
     expect(screen.getByText(/17% \(1\/6\)/)).toBeInTheDocument();
     expect(screen.getByText(/25% \(1\/4\)/)).toBeInTheDocument();
+  });
+
+  /**
+   * The visual must not contradict the footnote.
+   *
+   * The table used to print a red `样本不足` badge and a signed difference on every under-sampled
+   * row while the note beneath it said the sample was insufficient — a wall of declines next to a
+   * sentence denying one. Now an insufficient row is neutral, its difference is not marked as
+   * measured, and no row on the page is toned as danger.
+   */
+  it('does not tone an insufficient row as a decline', async () => {
+    renderView();
+    await screen.findByText('技能与面试成功率');
+
+    const underSampled = document.querySelector('[data-correlation="can"]');
+    expect(underSampled).not.toBeNull();
+    expect(underSampled?.getAttribute('data-actionable')).toBe('false');
+    // The difference is shown (it is the API's real arithmetic) but flagged as not a measurement…
+    expect(underSampled?.querySelector('[data-lift-measured="false"]')).not.toBeNull();
+    expect(within(underSampled as HTMLElement).getByText('+38pt')).toBeInTheDocument();
+    // …and the badge carries no danger styling.
+    expect(underSampled?.querySelector('.bg-danger')).toBeNull();
+    expect(
+      within(underSampled as HTMLElement).getByText('Insufficient sample'),
+    ).toBeInTheDocument();
+
+    // The measured row keeps its own treatment.
+    const measured = document.querySelector('[data-correlation="stm32"]');
+    expect(measured?.getAttribute('data-actionable')).toBe('true');
+    expect(measured?.querySelector('[data-lift-measured="true"]')).not.toBeNull();
+    // Nothing on the page is rendered in the danger tone.
+    expect(document.querySelectorAll('.text-danger, .bg-danger, .border-danger').length).toBe(0);
+  });
+
+  it('states the cohort policy in the funnel instead of drawing an empty shape', async () => {
+    renderView();
+    await screen.findByText('投递漏斗');
+
+    // The cohort (6) clears the minimum (5), so the notice is absent rather than reassuring.
+    expect(document.querySelector('[data-sample-notice]')).toBeNull();
+    // Every stage has a label row beside its band, including the two empty ones.
+    const labels = Array.from(document.querySelectorAll('[data-stage-label]')).map((node) =>
+      node.getAttribute('data-stage-label'),
+    );
+    expect(labels).toEqual(['applications', 'replies', 'interviews', 'finals', 'offers']);
+    // An empty stage is a labelled gap, not blank space.
+    expect(document.querySelector('[data-gap="offers"]')).not.toBeNull();
+    expect(screen.getAllByText('没有卡片到达这一阶段').length).toBe(2);
+  });
+
+  it('says an insufficient cohort is not a decline, in neutral wording', async () => {
+    mocked.funnel.mockResolvedValue(funnelOf(2));
+    renderView();
+    await screen.findByText('投递漏斗');
+
+    const notice = document.querySelector('[data-sample-notice]');
+    expect(notice).not.toBeNull();
+    expect(notice?.getAttribute('data-sample-notice')).toBe('insufficient');
+    expect(notice?.textContent).toContain('Insufficient sample');
+    expect(notice?.textContent).toContain('不是「变差了」');
   });
 
   it('switches the window and refetches every panel', async () => {

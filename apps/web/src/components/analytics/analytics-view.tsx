@@ -111,7 +111,13 @@ export function AnalyticsView() {
             <CardTitle>投递漏斗</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <FunnelChart stages={funnel.data.stages} />
+            <FunnelChart
+              stages={funnel.data.stages}
+              sample={{
+                cohortSize: meta.cohortSize,
+                minimumSample: meta.minimumSample,
+              }}
+            />
             <p className="text-tertiary text-[11px] leading-relaxed">{meta.notes.join(' ')}</p>
           </CardContent>
         </Card>

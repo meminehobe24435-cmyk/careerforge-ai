@@ -187,7 +187,13 @@ export function ValidatorView() {
               reasons={result.claim.reasons}
             />
 
-            <RejectedPanel reasons={result.claim.reasons} />
+            <RejectedPanel
+              status={result.claim.status}
+              reasons={result.claim.reasons}
+              sources={result.claim.sources}
+              independentSourceCount={result.claim.independentSourceCount}
+              confidence={result.claim.confidence}
+            />
           </div>
         ) : null}
       </section>

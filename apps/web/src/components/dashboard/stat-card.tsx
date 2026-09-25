@@ -37,7 +37,12 @@ export function StatCard({ label, value, kind, definition, delta, unavailable }:
     <Card className="min-w-0">
       <CardContent className="flex flex-col gap-2 p-4 pt-4">
         <div className="flex items-start gap-1.5">
-          <p className="text-tertiary min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-wide">
+          {/*
+            `break-words`, not `truncate`: the metric name is the only thing that says what the
+            number below it measures, and `EVIDEN…` measures nothing. It wraps instead of being
+            clipped, whatever the column width turns out to be.
+          */}
+          <p className="text-tertiary min-w-0 flex-1 break-words font-mono text-[11px] uppercase leading-tight tracking-wide">
             {label}
           </p>
           <Tooltip content={definition}>

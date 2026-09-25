@@ -351,4 +351,87 @@ describe('the claim validator page', () => {
 
     expect(await screen.findByText('Your evidence base is empty')).toBeInTheDocument();
   });
+
+  /**
+   * The rule panel's heading is the reader's first question, and it has to be the question the
+   * verdict raises. It used to read "Why was this rejected?" over every verdict — including
+   * `supported`, where the page asked why a sentence it had just verified had been rejected.
+   */
+  it.each([
+    ['supported', 'Why is this supported?'],
+    ['partially_supported', 'Why is this only partially supported?'],
+    ['unsupported', 'Why was this rejected?'],
+    ['contradicted', 'Why was this rejected?'],
+  ] as const)('asks the %s verdict’s own question in the rule panel', async (status, heading) => {
+    await renderResult(
+      resultOf(status, {
+        reasons: [
+          {
+            rule: 'superlative_language',
+            severity: 'warning',
+            message: '「主导」是职责范围的断言，而证据中没有出现「主导」。',
+            evidenceIds: [],
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+  });
+
+  it('never asks why a supported sentence was rejected', async () => {
+    await renderResult(resultOf('supported'));
+
+    expect(screen.queryByText('Why was this rejected?')).toBeNull();
+  });
+
+  /**
+   * No rule codes means there is no objection to list, so the section is not rendered at all and
+   * the explanation that takes its place states what the verdict actually rested on.
+   */
+  it('replaces an empty rejection section with what carried the claim', async () => {
+    await renderResult(resultOf('supported'));
+
+    // The empty panel is gone — heading, `0 rule codes` badge and toggle included.
+    expect(screen.queryByTestId('why-rejected')).toBeNull();
+    expect(screen.queryByText('0 rule codes')).toBeNull();
+    expect(screen.queryByText('Why was this rejected?')).toBeNull();
+
+    const affirmative = within(screen.getByTestId('affirmative-explanation'));
+    expect(affirmative.getByText('What carries this sentence')).toBeInTheDocument();
+    // The API's own figures, not a re-derivation: the claim fixture reports 2 independent kinds.
+    expect(affirmative.getByText(/2 independent evidence kinds/)).toBeInTheDocument();
+    expect(affirmative.getByText(/document_chunk/)).toBeInTheDocument();
+    expect(affirmative.getByText(/High · 78%/)).toBeInTheDocument();
+  });
+
+  it('explains a code-free rejection as arithmetic rather than showing an empty list', async () => {
+    await renderResult(resultOf('unsupported'));
+
+    expect(screen.queryByTestId('why-rejected')).toBeNull();
+    const affirmative = within(screen.getByTestId('affirmative-explanation'));
+    expect(affirmative.getByText('Why no rule is listed')).toBeInTheDocument();
+    expect(affirmative.getByText(/no rule objection to show you/)).toBeInTheDocument();
+  });
+
+  it('keeps the rule detail panel, with its own heading, once a rule has fired', async () => {
+    await renderResult(
+      resultOf('partially_supported', {
+        reasons: [
+          {
+            rule: 'single_source_only',
+            severity: 'warning',
+            message: '目前只有 1 条独立来源。',
+            evidenceIds: [],
+          },
+        ],
+      }),
+    );
+
+    expect(screen.queryByTestId('affirmative-explanation')).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Why is this only partially supported?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('why-rejected')).toBeInTheDocument();
+  });
 });
