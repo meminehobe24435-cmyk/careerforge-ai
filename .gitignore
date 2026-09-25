@@ -57,6 +57,9 @@ reports/*
 !reports/confidence-calibration.md
 !reports/coverage-summary.md
 !reports/README.md
+!reports/release-proof.json
+!reports/release-proof.md
+!reports/release-readiness.md
 !reports/api-performance.json
 !reports/.gitkeep
 
