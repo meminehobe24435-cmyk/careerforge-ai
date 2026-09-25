@@ -201,7 +201,12 @@ export function SidebarNav({ mobileOpen, onMobileOpenChange }: SidebarNavProps) 
         <DialogContent
           hideClose
           className="data-[state=open]:animate-drawer-in left-0 top-0 h-dvh max-h-dvh w-[var(--sidebar-width)] max-w-[85vw] translate-x-0 translate-y-0 rounded-none border-0 p-0 shadow-lg"
+          // Both layers move to the drawer's z-index. Moving only the content left the overlay
+          // (--z-modal, 60) above the panel (--z-drawer, 50), so the backdrop intercepted every tap
+          // on the drawer — found by the mobile end-to-end run at 375px, and invisible to any
+          // DOM-level test, because jsdom has no stacking order.
           style={{ zIndex: 'var(--z-drawer)' }}
+          overlayStyle={{ zIndex: 'var(--z-drawer)' }}
           aria-describedby={undefined}
         >
           <DialogTitle className="sr-only">导航菜单</DialogTitle>

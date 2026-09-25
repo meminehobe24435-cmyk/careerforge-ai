@@ -13,7 +13,9 @@
     "smoke:api": "node --experimental-strip-types scripts/smoke-live-api.mts",
     "capture:pages": "node --experimental-strip-types scripts/capture-pages.mts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:mobile": "playwright test --project=mobile"
   },
   "dependencies": {
     "@careerforge/shared": "workspace:*",
@@ -33,6 +35,7 @@
   "devDependencies": {
     "@careerforge/config": "workspace:*",
     "@eslint/eslintrc": "^3.3.7",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",

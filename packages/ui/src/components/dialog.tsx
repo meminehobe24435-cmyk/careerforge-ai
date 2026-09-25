@@ -30,15 +30,26 @@ export interface DialogContentProps extends React.ComponentPropsWithoutRef<
 > {
   /** Hide the built-in close button (e.g. for a command palette with its own footer). */
   hideClose?: boolean;
+  /**
+   * Styling for the backdrop. Needed when the content is not a modal but a *drawer*: a drawer lives
+   * on a lower layer than a dialog (`--z-drawer` < `--z-modal`), and if only the content is moved
+   * down, the overlay is left on top of it — swallowing every tap. PHASE 12's mobile end-to-end run
+   * is what caught that (`apps/web/e2e/dashboard.spec.ts`, 375 px: the drawer was unclickable).
+   */
+  overlayClassName?: string;
+  overlayStyle?: React.CSSProperties;
 }
 
 export const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(function DialogContent({ className, children, hideClose = false, ...props }, ref) {
+>(function DialogContent(
+  { className, children, hideClose = false, overlayClassName, overlayStyle, ...props },
+  ref,
+) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} style={overlayStyle} />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
