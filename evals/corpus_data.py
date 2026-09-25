@@ -1,12 +1,14 @@
 """Corpus data for the evaluation suites.
 
-Pure data: role families with their skill pools, phrasing templates and the
-controlled claim cases. Split out from the generator so the logic that consumes
-it stays readable, and so a change to the corpus is obvious in review — these
-literals are the ground truth every metric is computed against.
+Pure data: role families with their skill pools and phrasing templates. Split out from
+the generator so the logic that consumes it stays readable, and so a change to the corpus
+is obvious in review — these literals are the ground truth every metric is computed
+against.
 
-The claim templates are named by the verdict they are *supposed* to produce, so a
-mislabel is visible at the definition site rather than buried in a metric.
+The claim corpus that used to live here was **retired in PHASE 12**: it was generated from
+a handful of templates (120 rows, 22 distinct claim/kind pairs), so every claim metric was a
+statement about a template rather than about the gate. Claims are now hand-authored in
+``evals/corpus_evidence.py``.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from dataclasses import dataclass
 __all__ = [
     "BLURBS_EN",
     "BLURBS_ZH",
-    "CLAIM_SAMPLE_COUNT",
     "COMPANIES_EN",
     "COMPANIES_ZH",
     "DISTRACTOR_RATE",
@@ -26,18 +27,13 @@ __all__ = [
     "LOCATIONS_EN",
     "LOCATIONS_ZH",
     "MIXED_RATE",
-    "NUMERIC_CLAIM_TEMPLATES",
-    "NO_EVIDENCE_CLAIM_TEMPLATES",
-    "PARTIAL_CLAIM_TEMPLATES",
     "RoleFamily",
     "SEED",
-    "SUPPORTED_CLAIM_TEMPLATES",
 ]
 
 
 SEED = 20260211
 JD_SAMPLE_COUNT = 120
-CLAIM_SAMPLE_COUNT = 120
 
 #: Fraction of JDs that include deliberately misleading boilerplate: a company
 #: blurb naming technologies the role does not require. Measuring precision
@@ -173,85 +169,4 @@ BLURBS_EN = (
     "We build industrial software for manufacturing customers. Our internal tooling is built on {tech}.",
     "Founded in 2016, we serve enterprise clients across several industries. Our stack includes {tech}.",
     "We deliver end-to-end solutions for industrial customers. The team works with {tech} daily.",
-)
-
-
-SUPPORTED_CLAIM_TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    (
-        "基于 FreeRTOS 开发多任务实时控制系统",
-        "freertos.c",
-        "项目基于 FreeRTOS 实现多任务实时控制，任务按优先级划分并周期调度，"
-        "任务间通过队列通信，关键共享资源使用互斥量保护。",
-    ),
-    (
-        "使用 STM32 HAL 库完成 UART DMA 不定长接收",
-        "uart_dma.c",
-        "在 STM32 上使用 HAL 库配置 UART DMA 接收，采用空闲中断加环形缓冲区的方式"
-        "处理不定长数据帧，接收过程不占用 CPU 轮询。",
-    ),
-    (
-        "实现基于编码器反馈的 PID 闭环电机控制",
-        "motor_control.c",
-        "通过编码器读取转速，使用 PID 控制器计算占空比并输出到电机驱动，"
-        "完成闭环调速，积分项做了抗饱和处理。",
-    ),
-    (
-        "使用 Docker Compose 编排后端服务与数据库",
-        "docker-compose.yml",
-        "使用 Docker Compose 编排 FastAPI 服务、PostgreSQL 与 Redis，"
-        "通过 healthcheck 控制启动顺序，数据卷持久化数据库文件。",
-    ),
-    (
-        "基于 pgvector 实现证据片段的语义检索",
-        "retrieval.py",
-        "使用 pgvector 存储证据向量，查询时按余弦相似度检索 Top-K 片段，"
-        "并与关键词检索结果做 RRF 融合。",
-    ),
-    (
-        "使用 pytest 编写后端单元测试与集成测试",
-        "tests/test_match.py",
-        "使用 pytest 覆盖匹配评分与证据验证逻辑，包含确定性断言与边界用例，"
-        "集成测试基于 httpx ASGI transport 直接调用应用。",
-    ),
-)
-
-#: Cases where only part of the claim is backed. Gold: partially supported.
-PARTIAL_CLAIM_TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    (
-        "基于 FreeRTOS 开发多任务实时控制系统，并完成 CAN 总线节点通信",
-        "freertos.c",
-        "项目基于 FreeRTOS 实现多任务实时控制，任务按优先级划分并周期调度。",
-    ),
-    (
-        "使用 STM32 完成 SPI 传感器驱动与 I2C EEPROM 读写",
-        "spi_sensor.c",
-        "在 STM32 上完成 SPI 传感器驱动的读写与寄存器配置。",
-    ),
-    (
-        "设计并实现整站后端架构，负责数据库、缓存与消息队列选型",
-        "notes.md",
-        "负责后端服务开发与数据库表结构设计。",
-    ),
-)
-
-#: Cases with a hard number that no evidence supports. Gold: unsupported.
-#: These are the ones the gate must reject, so they dominate the suite.
-NUMERIC_CLAIM_TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    ("优化算法性能，提升 70%", "notes.md", "对控制回路做了重构，减少了单周期内的重复计算。"),
-    ("重构后端接口，响应时间降低 3 倍", "refactor.md", "重构了接口的参数校验与数据库查询逻辑。"),
-    ("支撑 10 万 QPS 的高并发架构设计", "arch.md", "参与后端服务架构讨论与接口设计。"),
-    ("将系统内存占用降低 45%", "opt.md", "调整了缓冲区大小与任务栈配置。"),
-    ("测试覆盖率提升至 90%", "ci.md", "补充了部分单元测试并接入 CI。"),
-    ("负责的系统日均处理 500 万次请求", "ops.md", "负责线上服务的日常维护与问题排查。"),
-    ("把固件启动时间从 800ms 优化到 120ms", "boot.md", "调整了外设初始化顺序，简化了启动流程。"),
-    ("带领 8 人团队完成平台重构", "team.md", "参与平台重构的技术方案讨论。"),
-)
-
-#: Cases with no evidence at all. Gold: unsupported.
-NO_EVIDENCE_CLAIM_TEMPLATES: tuple[tuple[str, str], ...] = (
-    ("熟练使用 Redis 与 Kafka 构建高并发架构", "项目材料中未涉及任何消息队列或缓存组件。"),
-    ("精通 Kubernetes 集群运维与故障排查", "候选材料中只有单机 Docker 使用记录。"),
-    ("主导 AUTOSAR 架构设计与集成", "候选材料中未出现 AUTOSAR 相关内容。"),
-    ("独立完成芯片级驱动开发与流片验证", "候选材料中未涉及芯片设计或流片。"),
-    ("作为技术负责人管理 20 人研发团队", "候选材料中无团队管理经历。"),
 )

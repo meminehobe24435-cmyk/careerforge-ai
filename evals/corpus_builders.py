@@ -22,7 +22,6 @@ from uuid import NAMESPACE_URL, uuid5
 from corpus_data import (
     BLURBS_EN,
     BLURBS_ZH,
-    CLAIM_SAMPLE_COUNT,
     COMPANIES_EN,
     COMPANIES_ZH,
     DISTRACTOR_RATE,
@@ -32,11 +31,7 @@ from corpus_data import (
     LOCATIONS_EN,
     LOCATIONS_ZH,
     MIXED_RATE,
-    NO_EVIDENCE_CLAIM_TEMPLATES,
-    NUMERIC_CLAIM_TEMPLATES,
-    PARTIAL_CLAIM_TEMPLATES,
     SEED,
-    SUPPORTED_CLAIM_TEMPLATES,
     RoleFamily,
 )
 from corpus_retrieval import RETRIEVAL_TOPICS
@@ -326,95 +321,6 @@ _PARTIAL_TEMPLATES: tuple[tuple[str, str, str], ...] = (
         "负责后端服务开发与数据库表结构设计。",
     ),
 )
-
-#: Cases with a hard number that no evidence supports. Gold: unsupported.
-#: These are the ones the gate must reject, so they dominate the suite.
-_NUMERIC_TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    ("优化算法性能，提升 70%", "notes.md", "对控制回路做了重构，减少了单周期内的重复计算。"),
-    ("重构后端接口，响应时间降低 3 倍", "refactor.md", "重构了接口的参数校验与数据库查询逻辑。"),
-    ("支撑 10 万 QPS 的高并发架构设计", "arch.md", "参与后端服务架构讨论与接口设计。"),
-    ("将系统内存占用降低 45%", "opt.md", "调整了缓冲区大小与任务栈配置。"),
-    ("测试覆盖率提升至 90%", "ci.md", "补充了部分单元测试并接入 CI。"),
-    ("负责的系统日均处理 500 万次请求", "ops.md", "负责线上服务的日常维护与问题排查。"),
-    ("把固件启动时间从 800ms 优化到 120ms", "boot.md", "调整了外设初始化顺序，简化了启动流程。"),
-    ("带领 8 人团队完成平台重构", "team.md", "参与平台重构的技术方案讨论。"),
-)
-
-#: Cases with no evidence at all. Gold: unsupported.
-_NO_EVIDENCE_TEMPLATES: tuple[tuple[str, str], ...] = (
-    ("熟练使用 Redis 与 Kafka 构建高并发架构", "项目材料中未涉及任何消息队列或缓存组件。"),
-    ("精通 Kubernetes 集群运维与故障排查", "候选材料中只有单机 Docker 使用记录。"),
-    ("主导 AUTOSAR 架构设计与集成", "候选材料中未出现 AUTOSAR 相关内容。"),
-    ("独立完成芯片级驱动开发与流片验证", "候选材料中未涉及芯片设计或流片。"),
-    ("作为技术负责人管理 20 人研发团队", "候选材料中无团队管理经历。"),
-)
-
-
-# ── Claim validation dataset ────────────────────────────────────────────────
-
-
-def build_claim_dataset() -> list[dict[str, Any]]:
-    """Build claim cases with explicit gold labels.
-
-    Labels describe *intent*, not the engine's rules: a claim is ``supported``
-    because the evidence genuinely backs all of it, ``partially_supported``
-    because it backs only part, and ``unsupported`` because it does not.
-    """
-    rng = random.Random(SEED + 1)
-    rows: list[dict[str, Any]] = []
-    index = 0
-
-    def add(
-        claim: str,
-        evidence: list[dict[str, str]],
-        gold_supported: bool,
-        gold_kind: str,
-        *,
-        has_unsupported_number: bool = False,
-    ) -> None:
-        nonlocal index
-        rows.append(
-            {
-                "id": f"claim-{index:04d}",
-                "claim": claim,
-                "evidence": evidence,
-                "gold": {
-                    "supported": gold_supported,
-                    "kind": gold_kind,
-                    "has_unsupported_number": has_unsupported_number,
-                },
-            }
-        )
-        index += 1
-
-    # Repeat the core templates with light variation to reach a usable sample
-    # size without inventing new semantics.
-    target_per_kind = CLAIM_SAMPLE_COUNT // 4
-
-    for _ in range(target_per_kind):
-        claim, title, snippet = rng.choice(SUPPORTED_CLAIM_TEMPLATES)
-        add(claim, [{"title": title, "snippet": snippet}], True, "supported")
-
-    for _ in range(target_per_kind):
-        claim, title, snippet = rng.choice(PARTIAL_CLAIM_TEMPLATES)
-        add(claim, [{"title": title, "snippet": snippet}], False, "partially_supported")
-
-    for _ in range(target_per_kind):
-        claim, title, snippet = rng.choice(NUMERIC_CLAIM_TEMPLATES)
-        add(
-            claim,
-            [{"title": title, "snippet": snippet}],
-            False,
-            "unsupported",
-            has_unsupported_number=True,
-        )
-
-    for _ in range(CLAIM_SAMPLE_COUNT - 3 * target_per_kind):
-        claim, note = rng.choice(NO_EVIDENCE_CLAIM_TEMPLATES)
-        add(claim, [{"title": "resume.md", "snippet": note}], False, "unsupported")
-
-    return rows
-
 
 # ── Retrieval corpus ─────────────────────────────────────────────────────────
 

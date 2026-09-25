@@ -1,10 +1,12 @@
 {
   "seed": 20260211,
   "generator": "evals/generate_datasets.py",
-  "note": "Controlled benchmark with exact ground truth. Generated, not scraped: real postings carry no labels. Treat these numbers as upper-bound indicators of extraction quality, not as market-representative accuracy.",
+  "note": "Controlled benchmark with exact ground truth. The JD and retrieval corpora are generated (real postings carry no labels); the evidence and interview cases are hand-authored. Treat these numbers as indicators of behaviour on this corpus, not as market-representative accuracy.",
   "datasets": {
     "jd_extraction": {
       "path": "evals/datasets/jd_extraction.jsonl",
+      "fixture_version": "jd1.0",
+      "origin": "generated",
       "samples": 120,
       "sha256": "31653d217916dd8f7b25dc9f3439de458b10a1b16bbb518520b45202c7d9b2e8",
       "families": [
@@ -21,22 +23,40 @@
       ],
       "with_distractor": 74
     },
-    "claim_validation": {
-      "path": "evals/datasets/claim_validation.jsonl",
-      "samples": 120,
-      "sha256": "103c78458e08fab2097015b6f70befba16de9523edc2d6b890b4631501488615",
-      "kinds": [
-        "partially_supported",
-        "supported",
-        "unsupported"
-      ]
-    },
-    "retrieval": {
-      "path": "evals/datasets/retrieval.jsonl",
+    "rag_retrieval": {
+      "path": "evals/datasets/rag_retrieval.jsonl",
+      "fixture_version": "rag1.0",
+      "origin": "generated",
       "samples": 59,
       "sha256": "16dcd7db9b6655a7ca0f75bf3b036d6b343dd176305f450c5fe1a274e51a2977",
       "documents": 20,
       "note": "samples counts queries; documents counts indexed evidence fragments"
+    },
+    "evidence_validation": {
+      "path": "evals/datasets/evidence_validation.jsonl",
+      "fixture_version": "ev2.1",
+      "origin": "hand-authored",
+      "samples": 60,
+      "sha256": "e6e19f4c0c5f82dad48c79035775f92a7731cd27c53cbfe239d678bc217eeb41",
+      "labels": {
+        "partially_supported": 9,
+        "supported": 20,
+        "unsupported": 31
+      },
+      "rubric": "supported = every substantive element carried by >=2 independent evidence kinds; partially_supported = core action evidenced but one element weaker; unsupported = a substantive element has no support anywhere",
+      "note": "Replaced the generated claim corpus, which held 22 distinct claim/kind pairs across 120 rows and therefore measured a template rather than the gate."
+    },
+    "interview_relevance": {
+      "path": "evals/datasets/interview_relevance.jsonl",
+      "fixture_version": "iv1.0",
+      "origin": "hand-authored",
+      "samples": 3,
+      "sha256": "82030affaed58b0a68c5d27019ea795226ac64dcef20c408fc5872f7b74d2a72",
+      "roles": [
+        "嵌入式软件工程师",
+        "后端工程师",
+        "AI 应用工程师"
+      ]
     }
   }
 }
