@@ -9,13 +9,14 @@ says so via ``provider`` and ``notes`` instead of showing an invented number.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 
 from careerforge_api.core.errors import NotFoundError
+from careerforge_api.db.compat import utcnow
 from careerforge_api.deps import CurrentUser, DbSession, SettingsDep
 from careerforge_api.schemas.observability import (
     AiCostsResponse,
@@ -112,14 +113,19 @@ async def list_ai_runs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
-    """Every AI operation the system performed, with its tokens, cost and latency.
+    """Every AI operation this account performed, with its tokens, cost and latency.
 
     Runs with no owner (a seed, a scheduled job) are included: an operator asking "what has this
-    deployment spent" wants the whole picture, and pretending those runs do not exist would
-    understate it.
+    deployment spent" wants the whole picture. Runs owned by *another* account are not, and
+    PHASE 12's failure-injection pass is what found they were — see
+    :meth:`ObservabilityService.list_runs`.
     """
-    since = datetime.now(tz=None) - timedelta(hours=since_hours) if since_hours else None
+    # `utcnow()`, not `datetime.now()`: the column holds naive UTC, so comparing it against local
+    # time excludes a run created seconds ago on any host east of Greenwich. Measured on this
+    # UTC+8 host during PHASE 12: `sinceHours=1` reported 0 runs where the unfiltered list had 6.
+    since = utcnow() - timedelta(hours=since_hours) if since_hours else None
     rows, total = await ObservabilityService(session).list_runs(
+        user_id=user.id,
         agent=agent,
         workflow=workflow,
         status=status,
@@ -149,7 +155,7 @@ async def get_ai_run(run_id: str, session: DbSession, user: CurrentUser) -> AiRu
         raise NotFoundError("Run not found") from exc
 
     service = ObservabilityService(session)
-    row = await service.get_run(parsed)
+    row = await service.get_run(parsed, user_id=user.id)
     if row is None:
         raise NotFoundError("Run not found")
     calls = await service.calls_of(parsed)
@@ -189,7 +195,7 @@ async def get_ai_costs(
     settings: SettingsDep,
     range_key: str = _RANGE,
 ) -> AiCostsResponse:
-    summary = await ObservabilityService(session).cost_summary(range_key=range_key)
+    summary = await ObservabilityService(session).cost_summary(range_key=range_key, user_id=user.id)
     budget = getattr(settings, "ai_daily_budget_usd", 0.0)
     return AiCostsResponse(
         range=str(summary["range"]),
@@ -206,7 +212,7 @@ async def get_costs_by_agent(
     user: CurrentUser,
     range_key: str = _RANGE,
 ) -> list[CostByEntity]:
-    rows = await ObservabilityService(session).cost_by_agent(range_key=range_key)
+    rows = await ObservabilityService(session).cost_by_agent(range_key=range_key, user_id=user.id)
     return [CostByEntity(**row) for row in rows]
 
 
@@ -216,7 +222,7 @@ async def get_costs_by_feature(
     user: CurrentUser,
     range_key: str = _RANGE,
 ) -> list[CostBreakdown]:
-    rows = await ObservabilityService(session).cost_by_feature(range_key=range_key)
+    rows = await ObservabilityService(session).cost_by_feature(range_key=range_key, user_id=user.id)
     return [CostBreakdown(**row) for row in rows]
 
 

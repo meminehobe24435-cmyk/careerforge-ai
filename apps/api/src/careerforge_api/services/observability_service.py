@@ -16,7 +16,7 @@ import hashlib
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerforge_api.db.compat import utcnow
@@ -63,6 +63,18 @@ class ObservabilityService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    @staticmethod
+    def _scope(user_id: UUID | None) -> Any | None:
+        """SQL condition limiting reads to one account plus the deployment's own ownerless runs.
+
+        ``None`` means "no scoping" and is only correct for data that is not per-user at all — the
+        cache table and the prompt registry describe the deployment, and a candidate's runs do not
+        belong in another candidate's cost report.
+        """
+        if user_id is None:
+            return None
+        return or_(AgentRun.user_id == user_id, AgentRun.user_id.is_(None))
+
     # ── runs ─────────────────────────────────────────────────────────────────
 
     async def list_runs(
@@ -80,12 +92,20 @@ class ObservabilityService:
         """Runs newest first, optionally filtered.
 
         A run with no ``user_id`` belongs to the system (a seed, a scheduled job). Those are
-        included by default — an operator looking at costs wants the whole picture — and the
-        filter is explicit so a candidate-scoped view can exclude them.
+        included by default — an operator reading costs wants the whole picture — but a run that
+        belongs to *another account* is not, and PHASE 12's failure-injection pass is what found
+        that it was: a second account could list the first account's runs and fetch one by id,
+        which contradicts ``docs/API.md`` §1.2 (a cross-tenant read is a 404, never a 403 and never
+        a leak). ``include_system`` therefore means "this account's runs plus the deployment's own",
+        not "everyone's".
         """
         conditions = []
-        if user_id is not None and not include_system:
-            conditions.append(AgentRun.user_id == user_id)
+        if user_id is not None:
+            conditions.append(
+                or_(AgentRun.user_id == user_id, AgentRun.user_id.is_(None))
+                if include_system
+                else AgentRun.user_id == user_id
+            )
         if agent:
             conditions.append(AgentRun.agent == agent)
         if workflow:
@@ -105,8 +125,19 @@ class ObservabilityService:
         total = int(await self._session.scalar(count_statement) or 0)
         return rows, total
 
-    async def get_run(self, run_id: UUID) -> AgentRun | None:
-        return await self._session.get(AgentRun, run_id)
+    async def get_run(self, run_id: UUID, *, user_id: UUID | None = None) -> AgentRun | None:
+        """One run, if this caller may see it.
+
+        ``user_id`` is the caller: a run owned by a different account is reported as *not found*
+        rather than forbidden, so the response cannot be used to probe which ids exist. System runs
+        (no owner) stay readable, because they are the deployment's own work.
+        """
+        row = await self._session.get(AgentRun, run_id)
+        if row is None:
+            return None
+        if user_id is not None and row.user_id is not None and row.user_id != user_id:
+            return None
+        return row
 
     async def calls_of(self, run_id: UUID) -> Sequence[LlmCall]:
         statement = (
@@ -116,10 +147,19 @@ class ObservabilityService:
 
     # ── costs ────────────────────────────────────────────────────────────────
 
-    async def cost_summary(self, *, range_key: str = "7d") -> dict[str, Any]:
-        """Daily tokens and cost, plus the totals and the call count."""
+    async def cost_summary(
+        self, *, range_key: str = "7d", user_id: UUID | None = None
+    ) -> dict[str, Any]:
+        """Daily tokens and cost, plus the totals and the call count.
+
+        Scoped like :meth:`list_runs` — the caller's own runs plus the deployment's ownerless ones.
+        Aggregates are still per-user data: "how much did the other candidates spend" is not
+        something one account should be able to read, and PHASE 12's failure-injection pass found
+        the inconsistency between this endpoint and the runs listing it sits beside.
+        """
         days = _COST_RANGES.get(range_key, 7)
         since = None if days is None else utcnow() - timedelta(days=days)
+        scope = self._scope(user_id)
 
         daily = select(
             func.date(AgentRun.started_at).label("day"),
@@ -135,11 +175,19 @@ class ObservabilityService:
             func.coalesce(func.sum(AgentRun.cost_cny), 0.0),
             func.coalesce(func.sum(AgentRun.latency_ms), 0),
         )
-        calls = select(func.count(LlmCall.id))
+        calls = (
+            select(func.count(LlmCall.id))
+            .select_from(LlmCall)
+            .join(AgentRun, LlmCall.agent_run_id == AgentRun.id)
+        )
+        if scope is not None:
+            daily = daily.where(scope)
+            totals = totals.where(scope)
+            calls = calls.where(scope)
         if since is not None:
             daily = daily.where(AgentRun.started_at >= since)
             totals = totals.where(AgentRun.started_at >= since)
-            calls = calls.where(LlmCall.created_at >= since)
+            calls = calls.where(AgentRun.started_at >= since)
 
         rows = (await self._session.execute(daily.group_by("day").order_by("day"))).all()
         run_count, tokens, usd, cny, latency = (await self._session.execute(totals)).one()
@@ -165,7 +213,9 @@ class ObservabilityService:
             },
         }
 
-    async def cost_by_agent(self, *, range_key: str = "30d") -> list[dict[str, Any]]:
+    async def cost_by_agent(
+        self, *, range_key: str = "30d", user_id: UUID | None = None
+    ) -> list[dict[str, Any]]:
         days = _COST_RANGES.get(range_key, 30)
         since = None if days is None else utcnow() - timedelta(days=days)
         statement = select(
@@ -177,6 +227,9 @@ class ObservabilityService:
             func.coalesce(func.avg(AgentRun.latency_ms), 0.0),
             func.coalesce(func.sum(_cache_hit_sum()), 0),
         ).group_by(AgentRun.agent)
+        scope = self._scope(user_id)
+        if scope is not None:
+            statement = statement.where(scope)
         if since is not None:
             statement = statement.where(AgentRun.started_at >= since)
         rows = (await self._session.execute(statement)).all()
@@ -193,8 +246,11 @@ class ObservabilityService:
             for row in rows
         ]
 
-    async def cost_by_feature(self, *, range_key: str = "30d") -> list[dict[str, Any]]:
+    async def cost_by_feature(
+        self, *, range_key: str = "30d", user_id: UUID | None = None
+    ) -> list[dict[str, Any]]:
         """The same totals, grouped by the product feature rather than by the agent name."""
+        scope = self._scope(user_id)
         per_workflow = await self._session.execute(
             select(
                 AgentRun.workflow,
@@ -207,6 +263,7 @@ class ObservabilityService:
                 AgentRun.started_at
                 >= utcnow() - timedelta(days=_COST_RANGES.get(range_key, 30) or 3650)
             )
+            .where(scope if scope is not None else true())
             .group_by(AgentRun.workflow)
         )
         buckets: dict[str, dict[str, Any]] = {}
