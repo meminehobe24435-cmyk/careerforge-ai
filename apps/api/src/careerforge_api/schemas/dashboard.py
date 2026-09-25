@@ -64,6 +64,10 @@ class DashboardRecentJob(_CamelModel):
     role: str = ""
     match_score: float = Field(default=0.0, alias="matchScore")
     status: str = "wishlist"
+    #: When the posting was stored (``jobs.created_at``). The list is ordered by it, and the narrow
+    #: layout prints it as the row's date — a "recent jobs" list without a date cannot be read as
+    #: recent.
+    created_at: str | None = Field(default=None, alias="createdAt")
 
 
 class DashboardNextAction(_CamelModel):

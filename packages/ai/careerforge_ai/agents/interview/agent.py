@@ -13,6 +13,7 @@ from careerforge_ai.schemas.common import (
     DifficultyLevel,
     InterviewMode,
     InterviewStatus,
+    utcnow,
 )
 from careerforge_ai.schemas.interview import (
     DifficultyChange,
@@ -36,7 +37,7 @@ __all__ = [
     "finish_interview",
 ]
 
-from careerforge_ai.agents.interview.plan import INTERVIEW_AGENT
+from careerforge_ai.agents.interview.plan import INTERVIEW_AGENT, mark_plan_coverage
 from careerforge_ai.agents.interview.scorecard import (
     _MIN_QUESTIONS_FOR_SCORECARD,
     build_finish_workflow,
@@ -92,6 +93,9 @@ class InterviewAgent:
         if first is not None:
             session.turns.append(first)
             session.current_level = first.question_level or session.current_level
+        # The plan's ``covered`` flags are written from the turns that exist, never by the
+        # planner: a first question on topic X marks X covered and leaves the rest open.
+        mark_plan_coverage(session)
 
         return AgentOutcome(
             value=session,
@@ -148,6 +152,7 @@ class InterviewAgent:
             session.current_level = change.to_level
         if next_turn is not None:
             session.turns.append(next_turn)
+        mark_plan_coverage(session)
 
         return AgentOutcome(
             value=session,
@@ -177,6 +182,11 @@ class InterviewAgent:
         if graph is not None:
             services["graph"] = graph
 
+        # Stamped *before* the scorecard is aggregated, because the report's
+        # ``duration_seconds`` is measured from this timestamp. Writing it after the workflow
+        # returned would have left every scorecard reporting an interview that ended the
+        # instant it started.
+        session.completed_at = utcnow()
         output = await executor.run(build_finish_workflow(), trigger="api", services=services)
         scorecard: InterviewScorecard | None = output.get("scorecard")
         if scorecard is not None:

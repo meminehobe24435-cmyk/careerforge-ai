@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AnalysisResponse",
+    "EvidenceCreateResponse",
     "EvidenceDetail",
     "EvidenceGraphResponse",
     "EvidenceListResponse",
@@ -117,6 +118,32 @@ class EvidenceResponse(_CamelModel):
             document_chunk_id=str(row.document_chunk_id) if row.document_chunk_id else None,
             metadata=dict(row.metadata_ or {}),
         )
+
+
+class EvidenceCreateResponse(EvidenceResponse):
+    """``POST /evidence`` — the row, plus whether this call is the one that created it.
+
+    ``created`` is the field an ingestion pipeline needs (PHASE 14): the endpoint is
+    ``get_or_create`` on ``(user_id, kind, content_hash)``, so it answers ``201`` with
+    ``created: true`` the first time and ``200`` with ``created: false`` for a replay. The row
+    keeps every field the previous contract returned — the addition is a field rather than a
+    wrapper, so a client that already read ``id``/``confidence`` out of the body keeps working.
+    """
+
+    #: ``true`` only on the call that inserted the row; ``false`` when the same content was
+    #: already stored and this response is a read of it.
+    created: bool = True
+
+    @classmethod
+    def project(cls, row: Any, *, created: bool) -> EvidenceCreateResponse:
+        """Project the row and add the one fact only the caller knows.
+
+        Not an override of ``EvidenceResponse.from_row``: that one returns ``Self`` and takes just
+        the row, so a subclass requiring a second argument would violate its own contract (mypy is
+        right to refuse it). The projection itself is the parent's, so the two cannot drift.
+        """
+        base = EvidenceResponse.from_row(row)
+        return cls(**base.model_dump(), created=created)
 
 
 class EvidenceDetail(EvidenceResponse):

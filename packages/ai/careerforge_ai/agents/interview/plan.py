@@ -181,9 +181,32 @@ def _covered_topics(session: InterviewSession) -> str:
     return "、".join(dict.fromkeys(topics)) or "（无）"
 
 
+def _asked_topics(session: InterviewSession) -> set[str | None]:
+    """The topics the interviewer has actually asked about.
+
+    One definition, read by both the next-topic picker and the plan's ``covered`` flag: two
+    copies of "what has been asked" would eventually disagree, and the flag would then say a
+    topic had been covered while the picker still chose it.
+    """
+    return {turn.topic for turn in session.turns if turn.role == "interviewer"}
+
+
+def mark_plan_coverage(session: InterviewSession) -> None:
+    """Write ``covered`` on every plan item from the interviewer turns actually asked.
+
+    The flag is *derived*, never declared by the planner: a plan item marked covered by
+    construction would claim a question had been asked when none had. Called by
+    :class:`~careerforge_ai.agents.interview.agent.InterviewAgent` after every turn it appends,
+    so it is current whenever a session is serialised.
+    """
+    asked = _asked_topics(session)
+    for item in session.plan:
+        item.covered = item.topic in asked
+
+
 def _pick_topic(session: InterviewSession) -> InterviewPlanItem:
     """The first planned topic not yet covered, else the first."""
-    covered = {turn.topic for turn in session.turns if turn.role == "interviewer"}
+    covered = _asked_topics(session)
     for item in session.plan:
         if item.topic not in covered:
             return item

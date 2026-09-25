@@ -298,6 +298,50 @@ class TestValidatorAgent:
         # No retriever was provided: the run must say so rather than implying the
         # claim was checked.
         assert any("检索" in warning for warning in outcome.warnings)
+        assert any("no retriever configured" in warning for warning in outcome.warnings), (
+            outcome.warnings
+        )
+
+    async def test_a_degraded_retrieval_that_still_returned_hits_says_so(self) -> None:
+        """The warning must match the ``sources`` list beside it (PHASE 14).
+
+        A hybrid retriever with no embedder fetches on the lexical arm and flags the result
+        degraded. The gate used to print "证据检索降级：检索不可用" — "retrieval unavailable" — for
+        that case, in the same payload as the sources it had just retrieved: a reader who trusted
+        the warning would discount a verdict that was in fact cited, and a reader who trusted the
+        sources would never learn the vector arm was down. Which arm was lost, why and what came
+        back are all in the sentence now.
+        """
+        documents = [
+            _document(
+                "freertos.md", "使用 FreeRTOS 开发多任务实时控制系统。", EvidenceKind.README, 0.8
+            ),
+            _document("motor.md", "STM32 电机控制固件，PID 闭环。", EvidenceKind.REPO_FILE, 0.8),
+        ]
+        user_id = uuid4()
+        # Lexical-only: no embedder, which is what a deployment whose provider cannot embed runs.
+        retriever = HybridRetriever()
+        await retriever.index(documents, user_id=user_id)
+        executor = WorkflowExecutor(
+            provider=HeuristicProvider(),
+            prompts=load_prompt_registry(),
+            settings=ExecutorSettings(max_retries=0, backoff_base_s=0.0),
+        )
+
+        validation, outcome = await validate_claim_text(
+            executor,
+            "使用 FreeRTOS 开发多任务实时控制系统",
+            retriever=retriever,
+            user_id=user_id,
+        )
+        assert validation is not None
+        assert validation.sources, "the lexical arm found these; the warning must not deny it"
+        degraded = [warning for warning in outcome.warnings if "检索降级" in warning]
+        assert degraded, outcome.warnings
+        sentence = degraded[0]
+        assert "检索不可用" not in sentence, sentence
+        assert "no embedder configured" in sentence, sentence
+        assert "已返回" in sentence, sentence
 
     async def test_offers_a_safer_rewrite_for_a_blocked_claim(self) -> None:
         executor, user_id, retriever = await _executor_with_evidence(

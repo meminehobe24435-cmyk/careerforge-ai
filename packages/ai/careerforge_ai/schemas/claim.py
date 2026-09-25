@@ -128,7 +128,9 @@ class ClaimValidation(CFBaseModel):
     rule_version: str = "claim_rules@1.0.0"
     model: str | None = None
     prompt_version: str | None = None
-    latency_ms: int = 0
+    #: ``None`` unless a caller measured it. The gate used to carry ``0`` here from
+    #: construction and never wrote it, so the field read as a measurement that had been taken.
+    latency_ms: int | None = None
     validated_at: datetime = Field(default_factory=utcnow)
 
     @property

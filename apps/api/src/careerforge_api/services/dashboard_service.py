@@ -311,6 +311,9 @@ class DashboardService:
                     # The tracker supplies real statuses; until then a job is an aspiration,
                     # which is what "wishlist" means.
                     "status": "wishlist",
+                    # The list is ordered by this, and the narrow layout prints it: a "recent jobs"
+                    # list without a date cannot be checked against the claim that it is recent.
+                    "createdAt": job.created_at.isoformat() if job.created_at else None,
                 }
             )
         return rows

@@ -66,6 +66,21 @@ class EvidenceRepository:
         )
         return set((await self._session.scalars(statement)).all())
 
+    async def by_content_hash(
+        self, *, user_id: UUID, kind: str, content_hash: str
+    ) -> Evidence | None:
+        """The row ``uq_evidence_user_id`` would collide with, if it exists.
+
+        The tenancy triple is the constraint's own key, so this is the lookup that turns an
+        ``IntegrityError`` into an answer — see :meth:`EvidenceService.add_manual`.
+        """
+        statement = select(Evidence).where(
+            Evidence.user_id == user_id,
+            Evidence.kind == kind,
+            Evidence.content_hash == content_hash,
+        )
+        return await self._session.scalar(statement)
+
     async def upsert_many(self, rows: Iterable[dict[str, Any]]) -> list[Evidence]:
         """Insert evidence, reusing the row when the same content was already extracted.
 

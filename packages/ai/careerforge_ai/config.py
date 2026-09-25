@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     rate_limit_write_per_min: int = 60
     rate_limit_ai_per_min: int = 20
     rate_limit_auth_per_min: int = 10
+    #: Ingestion budget, in requests per hour. This was hard-coded to 20 inside the middleware until
+    #: PHASE 14, which meant neither a test suite nor a self-hosted deployment could change it: a
+    #: scenario that ingests a handful of documents passed alone and failed inside a full run, and
+    #: the failure looked like a product bug rather than a test-isolation one. A limit nobody can
+    #: configure is a limit that gets worked around.
+    rate_limit_upload_per_hour: int = 20
 
     # ── Demo seed ────────────────────────────────────────────────────────────
     demo_user_email: str = "demo@careerforge.ai"

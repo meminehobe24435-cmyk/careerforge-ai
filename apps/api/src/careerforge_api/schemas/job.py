@@ -167,14 +167,26 @@ class SkillTreeResponse(_CamelModel):
 
 
 class MatchDimensionResponse(_CamelModel):
+    """One of the five dimensions of the score.
+
+    ``score``, ``weight`` and ``weighted`` are columns of ``job_matches`` and are always measured.
+    ``notes`` and ``evidenceIds`` are the *engine's* per-dimension detail — the row keeps only the
+    flat ``evidence_used`` list and the why-block — so ``GET /jobs/{id}/match`` returns them as
+    ``null`` rather than as empty lists (PHASE 14). An empty ``evidenceIds`` reads as "no evidence
+    backs this dimension", which was printed on the Jobs page as ``Evidence 0`` for a dimension the
+    live endpoint had just backed with three citations.
+    """
+
     key: str
     label: str
     score: float
     weight: float
     weighted: float
     formula: str = ""
-    notes: list[str] = Field(default_factory=list)
-    evidence_ids: list[str] = Field(default_factory=list, alias="evidenceIds")
+    #: ``None`` on ``GET``: not stored per dimension.
+    notes: list[str] | None = None
+    #: ``None`` on ``GET``: not stored per dimension.
+    evidence_ids: list[str] | None = Field(default=None, alias="evidenceIds")
 
 
 class MatchWhyResponse(_CamelModel):
@@ -225,6 +237,15 @@ class MatchResponse(_CamelModel):
     ``strengths``, ``gaps`` and ``unknowns`` are modelled rather than passed through as the
     engine's dicts: the engine speaks snake_case, the wire speaks camelCase, and a client
     that had to special-case three nested lists would be right to call that a bug.
+
+    **Five fields are optional because one of the two endpoints cannot produce them**
+    (PHASE 14). ``job_matches`` stores the score, the five dimensions, the ``why`` block and
+    the strengths/gaps/unknowns — it does not store the coverage, the confidence, the
+    degradation state or the narrative, because those describe *that run*. ``GET`` reconstructs
+    a response from the row, so its defaults (``0.0`` / ``false`` / ``[]``) were being
+    serialised as if they were measurements: a stored match reported "Evidence Coverage 0%"
+    next to a live endpoint that reported 100% for the same pair. ``None`` says "this endpoint
+    did not measure it", which is the only statement the row can support.
     """
 
     job_id: str = Field(alias="jobId")
@@ -234,10 +255,15 @@ class MatchResponse(_CamelModel):
     gaps: list[MissedSkillResponse] = Field(default_factory=list)
     unknowns: list[UnknownSkillResponse] = Field(default_factory=list)
     why: MatchWhyResponse = Field(default_factory=MatchWhyResponse)
-    evidence_coverage: float = Field(default=0.0, alias="evidenceCoverage")
-    confidence: float = 0.0
-    degraded: bool = False
-    narrative: str = ""
+    #: ``None`` on ``GET``: the column does not exist, so no measurement is available.
+    evidence_coverage: float | None = Field(default=None, alias="evidenceCoverage")
+    #: Mean evidence confidence of the requirements listed as strengths. ``None`` on ``GET``.
+    confidence: float | None = None
+    #: Whether the run that produced this match was degraded. ``None`` on ``GET``.
+    degraded: bool | None = None
+    #: ``None`` on ``GET``: no narrative was ever generated *or stored* for the row, which is a
+    #: different statement from "the narrator produced an empty one".
+    narrative: str | None = None
     #: Set when the evidence dimension had nothing to measure — the one warning a reader
-    #: must not miss, because it changes what the score means.
-    warnings: list[str] = Field(default_factory=list)
+    #: must not miss, because it changes what the score means. ``None`` on ``GET``.
+    warnings: list[str] | None = None

@@ -17,7 +17,7 @@ from careerforge_ai.agents import InterviewAgent, finish_interview, start_interv
 from careerforge_ai.agents.interview import next_difficulty
 from careerforge_ai.orchestrator import WorkflowExecutor
 from careerforge_ai.schemas.common import DifficultyLevel, InterviewMode, InterviewStatus
-from careerforge_ai.schemas.interview import InterviewScorecard
+from careerforge_ai.schemas.interview import InterviewScorecard, InterviewSession
 from careerforge_ai.schemas.job import JDAnalysis
 from careerforge_ai.schemas.profile import CandidateProfile
 
@@ -107,6 +107,46 @@ class TestStart:
         assert session is not None
         assert session.turns[0].question_level is not None
 
+    async def test_the_plan_marks_the_topics_that_were_actually_asked(
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
+    ) -> None:
+        """``plan[].covered`` is derived from the interviewer turns (PHASE 14).
+
+        Nothing used to write the flag, so it read ``False`` for every topic — including the one
+        the opening question had just asked. The assertion is deliberately about the *relation*
+        between the flag and the turns rather than about a specific topic: the interviewer's
+        wording decides which topic it picks, and a test that hard-coded a topic would break the
+        day the question bank improved.
+        """
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
+        assert session is not None
+        asked = {turn.topic for turn in session.turns if turn.role == "interviewer"}
+        assert asked, "the opening question names a topic"
+        assert any(item.covered for item in session.plan), (
+            "at least the topic that was just asked must be marked covered"
+        )
+        for item in session.plan:
+            assert item.covered is (item.topic in asked), item
+        # And the topics nothing has asked about are still open — the flag is not just ``True``.
+        unasked = [item for item in session.plan if item.topic not in asked]
+        assert all(not item.covered for item in unasked), unasked
+
+    async def test_coverage_advances_with_the_turns(
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
+    ) -> None:
+        """The flag tracks the conversation rather than being written once at startup."""
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
+        assert session is not None
+        before = {item.topic for item in session.plan if item.covered}
+        updated, _ = await submit_answer(
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
+        )
+        assert updated is not None
+        after = {item.topic for item in updated.plan if item.covered}
+        asked = {turn.topic for turn in updated.turns if turn.role == "interviewer"}
+        assert after == {topic for topic in asked if topic in {i.topic for i in updated.plan}}
+        assert before <= after, "coverage never goes backwards within a session"
+
 
 class TestTurn:
     async def test_records_the_answer_and_the_evaluation(
@@ -186,6 +226,44 @@ class TestFinish:
         keys = {dimension.key for dimension in scorecard.dimensions}
         assert keys == set(InterviewScorecard.DIMENSION_KEYS)
         assert 0.0 <= scorecard.overall_score <= 100.0
+
+    async def test_the_scorecard_measures_how_long_the_interview_took(
+        self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph
+    ) -> None:
+        """``duration_seconds`` is measured from the session's own timestamps (PHASE 14).
+
+        It used to be the literal ``0``, which is not a duration this interview had: the UI could
+        only render it as "unavailable" and explain that ``0`` here was not a measurement. Now the
+        finish step stamps ``completed_at`` before the scorecard is aggregated, and the value is
+        the difference between that and ``started_at``.
+        """
+        session, _ = await start_interview(iv_exec, job=iv_job, profile=iv_profile, graph=iv_graph)
+        assert session is not None
+        assert session.completed_at is None, "a running interview has no end yet"
+        session, _ = await submit_answer(
+            iv_exec, session=session, answer=LONG_ANSWER, profile=iv_profile, graph=iv_graph
+        )
+        assert session is not None
+        scorecard, _ = await finish_interview(
+            iv_exec, session=session, profile=iv_profile, graph=iv_graph
+        )
+        assert scorecard is not None
+        assert scorecard.duration_seconds is not None, (
+            "a finished scorecard must know how long the interview took"
+        )
+        assert scorecard.duration_seconds >= 0
+        assert session.completed_at is not None
+        measured = int((session.completed_at - session.started_at).total_seconds())
+        assert scorecard.duration_seconds == measured, (
+            scorecard.duration_seconds,
+            measured,
+        )
+
+    def test_an_unfinished_session_reports_no_duration(self) -> None:
+        """``None`` for a session that was never closed — "not finished" is not "lasted 0s"."""
+        from careerforge_ai.agents.interview.scorecard import _duration_seconds
+
+        assert _duration_seconds(InterviewSession()) is None
 
     async def test_per_question_review_is_populated(
         self, iv_exec: WorkflowExecutor, iv_profile: CandidateProfile, iv_job: JDAnalysis, iv_graph

@@ -71,8 +71,6 @@ __all__ = [
     "MatchRequest",
     "MatchResponse",
     "StartInterviewRequest",
-    "ValidateClaimRequest",
-    "ValidateClaimResponse",
 ]
 
 from careerforge_api.schemas.ai import (
@@ -86,6 +84,4 @@ from careerforge_api.schemas.ai import (
     MatchRequest,
     MatchResponse,
     StartInterviewRequest,
-    ValidateClaimRequest,
-    ValidateClaimResponse,
 )

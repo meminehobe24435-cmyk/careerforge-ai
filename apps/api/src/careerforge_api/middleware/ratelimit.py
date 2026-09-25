@@ -168,7 +168,10 @@ def classify_request(method: str, path: str, settings: APISettings) -> RateLimit
     ):
         return RateLimitRule("auth", settings.rate_limit_auth_per_min, 60.0, "ip")
     if any(marker in normalized for marker in _UPLOAD_MARKERS) and upper in _WRITE_METHODS:
-        return RateLimitRule("upload", 20, 3600.0, "user")
+        # Configurable since PHASE 14. Hard-coded at 20 here, it could not be raised for a test suite
+        # or a self-hosted deployment that ingests more than twenty documents an hour — and a test
+        # that passes alone then fails inside a full run reads as a product bug.
+        return RateLimitRule("upload", settings.rate_limit_upload_per_hour, 3600.0, "user")
     if any(marker in normalized for marker in _AI_MARKERS):
         return RateLimitRule("ai", settings.rate_limit_ai_per_min, 60.0, "user")
     if upper in _READ_METHODS:

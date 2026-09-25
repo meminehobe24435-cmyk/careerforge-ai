@@ -11,9 +11,12 @@ from __future__ import annotations
 import json
 
 from httpx import AsyncClient
+import pytest
 
 from careerforge_api import __version__
 from careerforge_api.core.config import APISettings
+from careerforge_api.schemas.system import ServiceHealthEntry
+from careerforge_api.services import system_service
 from tests.conftest import EnvelopeCheck
 
 
@@ -192,3 +195,137 @@ def test_redact_dsn_removes_only_the_password() -> None:
     assert redact_dsn("sqlite+aiosqlite:///C:/tmp/careerforge.db") == (
         "sqlite+aiosqlite:///C:/tmp/careerforge.db"
     )
+
+
+# ── GET /system/ready (PHASE 14) ─────────────────────────────────────────────
+
+
+async def test_ready_is_ready_while_optional_dependencies_are_degraded(
+    client: AsyncClient, envelope: EnvelopeCheck, settings: APISettings
+) -> None:
+    """A zero-key install is **ready**, with every degraded dependency named.
+
+    This is the assertion that stops an orchestrator from killing a working public demo: the
+    suite runs on SQLite with the heuristic provider and no Redis, so ``/system/health`` is
+    ``degraded`` — and readiness, which is a different question, must still be ``ready``.
+    """
+    response = await client.get("/api/v1/system/ready")
+    assert response.status_code == 200
+    data = envelope(response)["data"]
+
+    assert data["ready"] is True
+    assert data["status"] == "ready"
+    assert data["gate"] == "database"
+    assert data["environment"] == settings.environment
+    assert data["checkedAt"]
+    assert [entry["name"] for entry in data["dependencies"]] == [
+        "api",
+        "database",
+        "vector",
+        "queue",
+        "llm_provider",
+    ]
+
+    # Degraded is reported, not fatal — and the gate is not in the list.
+    assert "llm_provider" in data["degraded"]
+    assert "vector" in data["degraded"]
+    assert "database" not in data["degraded"]
+
+    provider = next(entry for entry in data["dependencies"] if entry["name"] == "llm_provider")
+    assert provider["status"] == "degraded"
+    assert provider["degraded"] is True
+    assert provider["reason"] == "no_api_key"
+    assert data["meta"]["degraded"] is True
+
+
+async def test_ready_is_public_and_needs_no_token(client: AsyncClient) -> None:
+    assert (await client.get("/api/v1/system/ready")).status_code == 200
+
+
+async def test_ready_is_not_ready_when_the_gate_is_down_and_still_explains_why(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one dependency that gates readiness, and the 503 that keeps its explanation.
+
+    The envelope's error body has no ``data``, so the per-dependency detail travels in
+    ``error.details``: a caller that only sees the status code still gets to read which
+    dependency failed and what the others were doing.
+    """
+
+    async def unreachable(*_args: object, **_kwargs: object) -> ServiceHealthEntry:
+        return ServiceHealthEntry(
+            name="database",
+            status="down",
+            backend="sqlite",
+            detail="OperationalError: unable to open database file",
+        )
+
+    monkeypatch.setattr(system_service, "probe_database", unreachable)
+    response = await client.get("/api/v1/system/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["success"] is False
+    assert body["data"] is None
+    assert body["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+    by_field = {detail["field"]: detail["issue"] for detail in body["error"]["details"]}
+    assert by_field["database"] == "down"
+    assert by_field["llm_provider"] == "degraded"
+    # The probe's own message survives, so the operator does not have to guess.
+    database_detail = next(
+        detail for detail in body["error"]["details"] if detail["field"] == "database"
+    )
+    assert "unable to open database file" in database_detail["message"]
+
+
+# ── GET /system/version (PHASE 14) ───────────────────────────────────────────
+
+
+async def test_version_publishes_build_identity(
+    client: AsyncClient, envelope: EnvelopeCheck, settings: APISettings
+) -> None:
+    """Version, commit, build timestamp and environment — the four facts the /system page needs."""
+    response = await client.get("/api/v1/system/version")
+    assert response.status_code == 200
+    data = envelope(response)["data"]
+
+    assert data["app"] == "CareerForge AI"
+    assert data["version"] == __version__
+    assert data["environment"] == settings.environment
+    assert data["pythonVersion"].startswith("3.12")
+    assert data["schemaVersion"] == "v1"
+    assert data["taxonomyVersion"]
+    assert data["checkedAt"]
+    # Present and honest: no build recorded one, so it says so instead of stamping "now".
+    assert "buildTimestamp" in data
+    if data["commit"] is not None:
+        assert data["commitShort"] == data["commit"][:7]
+    else:
+        assert data["commitShort"] is None
+
+
+async def test_version_is_public_and_carries_no_path_host_or_secret(
+    client: AsyncClient, envelope: EnvelopeCheck, settings: APISettings
+) -> None:
+    """Anonymous callers read this, so nothing in it may describe the machine it runs on.
+
+    ``/system/info`` legitimately reports the SQLite URL — which *is* an absolute path — so a
+    version payload that quietly included the same field would be a leak in a place nobody
+    checks. Every value is asserted to be an identifier, not a location.
+    """
+    data = envelope(await client.get("/api/v1/system/version"))["data"]
+
+    for key, value in data.items():
+        if not isinstance(value, str):
+            continue
+        assert "\\" not in value, f"/system/version leaked a path in {key}"
+        assert "://" not in value, f"/system/version leaked a URL in {key}"
+        assert not value.startswith("/"), f"/system/version leaked an absolute path in {key}"
+
+    body = json.dumps(data)
+    assert str(settings.repo_root) not in body
+    assert settings.jwt_secret not in body
+    assert "sqlite" not in body.lower()
+    assert ".db" not in body
+    assert "postgres" not in body.lower()
+    assert "careerforge.db" not in body

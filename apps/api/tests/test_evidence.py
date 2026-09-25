@@ -283,6 +283,7 @@ async def test_manual_evidence_gets_a_computed_confidence(
     )
     assert response.status_code == 201, response.text
     created = envelope(response)["data"]
+    assert created["created"] is True, "this call is the one that inserted the row"
     assert created["kind"] == "manual"
     # 0.55 is the self-report tier (``AUTHORITY_SCORES[RESUME_SELF_REPORT]``), strictly
     # below the uploaded-document tier (0.80). Hand-typed evidence must never be scored as
@@ -298,6 +299,48 @@ async def test_manual_evidence_gets_a_computed_confidence(
         headers=demo.headers,
     )
     assert rejected.status_code == 400
+
+
+async def test_adding_the_same_evidence_twice_is_not_a_server_error(
+    client: AsyncClient, envelope: EnvelopeCheck, app: FastAPI, demo: Session
+) -> None:
+    """``POST /evidence`` is ``get_or_create`` (PHASE 14), not a blind insert.
+
+    ``evidence`` is unique on ``(user_id, kind, content_hash)`` and the insert did not honour it,
+    so a replay was a ``500 INTERNAL_ERROR`` — measured, and reported as a backend bug by both
+    clients that add manual evidence (``apps/web/e2e/helpers/pages.ts``,
+    ``apps/web/scripts/capture-pages.mts``), which is why each of them reads before writing. An
+    ingestion pipeline is *expected* to replay; the honest answer to "store this" is the row that
+    already holds it.
+    """
+    payload = {
+        "title": "重复提交的证据",
+        "snippet": "同一段内容提交两次，必须只落一行，并且第二次不是错误。",
+        "locator": {"path": "notes.md", "line": 7},
+    }
+    first = await client.post("/api/v1/evidence", json=payload, headers=demo.headers)
+    assert first.status_code == 201, first.text
+    created = envelope(first)["data"]
+    assert created["created"] is True
+
+    second = await client.post("/api/v1/evidence", json=payload, headers=demo.headers)
+    assert second.status_code == 200, (
+        f"a repeat insert answered {second.status_code}: {second.text}"
+    )
+    repeated = envelope(second)["data"]
+    assert repeated["created"] is False, "the second call created nothing"
+    assert repeated["id"] == created["id"], "the same content is the same row"
+    assert repeated["confidence"] == created["confidence"]
+
+    # Exactly one row exists for that content — the constraint and the response agree. The count
+    # is taken through the ORM rather than the API, so a response that merely *reported* an
+    # existing row cannot pass.
+    async with app.state.session_factory() as db:
+        count = await db.scalar(
+            select(func.count()).select_from(Evidence).where(Evidence.title == payload["title"])
+        )
+    assert count == 1, f"{count} rows for one payload"
+    assert UUID(created["id"])
 
 
 async def test_deleting_evidence_removes_the_edges_that_reference_it(

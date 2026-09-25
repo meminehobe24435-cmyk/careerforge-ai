@@ -237,6 +237,16 @@ async def match_job(
 
 @router.get("/{job_id}/match", summary="The newest stored match")
 async def get_match(job_id: str, session: DbSession, user: CurrentUser) -> MatchResponse:
+    """The stored match, as far as the row can honestly describe it.
+
+    ``job_matches`` keeps the score, the weights and the ``why`` block. It does **not** keep the
+    evidence coverage, the confidence, the degradation state, the narrative or the warnings:
+    those describe the run that produced the number, and no column holds them. They are
+    therefore returned as ``null`` rather than as the model's ``0.0``/``false``/``[]`` defaults
+    (PHASE 14) — a stored match used to report "Evidence Coverage 0%" beside a live endpoint
+    that reported 100% for the same job, and the client had no way to tell which was real.
+    Recomputing is one ``POST`` away and is the only way to get those five figures.
+    """
     job = await _load_own(job_id, session=session, user=user)
     row = await JobService(session).latest_match(job=job, user=user)
     if row is None:
@@ -254,6 +264,11 @@ async def get_match(job_id: str, session: DbSession, user: CurrentUser) -> Match
                 float(getattr(row, f"{key}_score")) * float((row.weights or {}).get(key, 0.0)), 2
             ),
             formula=str((row.why or {}).get("formula", "")),
+            # Not stored per dimension — see ``MatchDimensionResponse``. ``None`` rather than
+            # ``[]``: the Jobs page renders an empty list as "0 pieces of evidence back this
+            # dimension", which is a claim the row cannot make.
+            notes=None,
+            evidence_ids=None,
         )
         for key in row.dimension_scores
     }
@@ -272,5 +287,11 @@ async def get_match(job_id: str, session: DbSession, user: CurrentUser) -> Match
             explanation=str((row.why or {}).get("explanation", "")),
             computed_at=row.created_at,
         ),
-        warnings=[],
+        # Not measured by this endpoint — see the docstring. Null is the honest answer, and
+        # the client renders it as "unavailable" instead of as a zero.
+        evidence_coverage=None,
+        confidence=None,
+        degraded=None,
+        narrative=None,
+        warnings=None,
     )

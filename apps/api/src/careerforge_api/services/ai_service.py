@@ -377,10 +377,16 @@ class AIService:
 
     @property
     def retriever(self) -> Any | None:
-        """The hybrid retriever, when one is configured for this process.
+        """The process-level hybrid retriever, when one is configured.
 
-        ``None`` on the current deployment: the evidence tables arrive with the
-        Evidence Graph phase, so validation runs on supplied material alone and says
-        so in its reasons rather than pretending retrieval happened.
+        ``None`` on every shipped deployment: nothing in ``create_app``/``lifespan`` sets
+        ``app.state.retriever``, and since PHASE 14 nothing *needs* to. The claim gate does not
+        read this property — ``ResumeService.validate`` builds a retriever over the caller's own
+        ``evidence`` rows per request (``services/retrieval_service.py``), which is the only
+        version that can be tenant-scoped. What remains here is the honest report of the
+        deployment's configuration, which ``GET /ai/capabilities`` serialises.
+
+        History worth keeping: the removed ``POST /ai/validate/claim`` read *this* property, so
+        on a live deployment it searched nothing while answering as if it had.
         """
         return self._retriever

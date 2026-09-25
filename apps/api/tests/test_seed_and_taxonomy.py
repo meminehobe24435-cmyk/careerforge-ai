@@ -9,7 +9,7 @@ taxonomy module, not a copy of it.
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from sqlalchemy import func, select
@@ -20,6 +20,7 @@ from careerforge_api.models.prompt import PromptVersion
 from careerforge_api.models.skill import Skill
 from careerforge_api.models.user import User
 from careerforge_api.repositories.prompt_repository import PromptRepository
+from careerforge_api.services.demo_candidate import DEMO_SKILLS
 from careerforge_api.services.seed_service import seed_all
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
 
@@ -38,7 +39,6 @@ async def test_demo_user_is_seeded_with_a_profile(app: FastAPI) -> None:
         assert user.is_demo is True
         assert user.password_hash is None
         assert user.storage_scope == "cloud"
-
         profile = await users.get_profile(user_id=user.id)
         assert profile is not None
         assert profile.slug == "alex"
@@ -48,6 +48,137 @@ async def test_demo_user_is_seeded_with_a_profile(app: FastAPI) -> None:
         assert public is not None
         assert public.is_published is False
         assert public.sections["contact"] is False
+
+
+async def test_demo_candidate_fixture_is_a_coherent_person(app: FastAPI, settings) -> None:
+    """The seed's candidate fixture produces a person, not rows that happen to exist.
+
+    Before this, the seed wrote the user and the profile row and stopped: no projects, no
+    experience, no declared skills. Every screen that shows a *person* — the recruiter view above
+    all — therefore read a candidate whose first project had the same name and summary, because the
+    only rows it ever had came from whoever imported a résumé last.
+
+    The assertion runs against **a private account** rather than the shared demo one, and that is a
+    correctness requirement rather than tidiness: the suite shares one database, and another test's
+    `POST /profile/import` replaces the demo account's career entities. Asserting on the demo
+    account would make this test a statement about test order.
+
+    What it pins is coherence:
+
+    * the headline is a **title**, not the person's name printed twice;
+    * every project has a summary that is longer than, and different from, its own name;
+    * the skill set contains what the shipped demo flows match on (STM32/FreeRTOS/Python/FastAPI/
+      RAG) and does **not** contain the ones the Unsupported preset and the Jobs gap depend on
+      being absent (AUTOSAR, Kafka, Kubernetes, Rust, TensorFlow).
+    """
+    async with app.state.session_factory() as session:
+        from careerforge_api.models.profile_entity import (
+            Experience as ExperienceRow,
+            ProfileSkillRow,
+            Project as ProjectRow,
+        )
+        from careerforge_api.repositories.user_repository import UserRepository
+        from careerforge_api.services.seed_service import ensure_demo_candidate
+
+        users = UserRepository(session)
+        account = await users.create(
+            email=f"candidate-fixture-{uuid4().hex[:8]}@example.com",
+            display_name="Fixture Candidate",
+            password_hash="not-a-real-hash",
+            is_demo=False,
+            storage_scope="cloud",
+        )
+        await session.commit()
+
+        counts = await ensure_demo_candidate(session, account, settings)
+        await session.commit()
+
+        assert counts["projects"] == 3
+        assert counts["experiences"] == 2
+        assert counts["educations"] == 1
+        assert counts["skills"] >= 10
+
+        profile = await users.get_profile(user_id=account.id)
+        assert profile is not None
+        # A title, not the display name: the public page prints both, one above the other.
+        assert profile.headline
+        assert profile.headline != account.display_name
+        assert profile.summary
+        assert account.display_name not in profile.summary
+
+        projects = (
+            await session.scalars(
+                select(ProjectRow).where(ProjectRow.user_id == account.id).order_by(ProjectRow.name)
+            )
+        ).all()
+        assert len(projects) == 3
+        for project in projects:
+            assert project.summary, f"project {project.name!r} has no summary"
+            # The bug that read as broken data: a summary that only repeats the name.
+            assert project.summary.strip() != project.name.strip()
+            assert len(project.summary) > len(project.name)
+
+        experiences = (
+            await session.scalars(select(ExperienceRow).where(ExperienceRow.user_id == account.id))
+        ).all()
+        assert len(experiences) == 2
+        assert all(row.description for row in experiences)
+
+        declared = {
+            row.canonical_id
+            for row in (
+                await session.scalars(
+                    select(ProfileSkillRow).where(ProfileSkillRow.user_id == account.id)
+                )
+            ).all()
+        }
+        # Present: the skills the shipped demo posting, the Strong validator preset and the
+        # AI-application half of the same person rely on.
+        assert {"stm32", "free_rtos", "pid", "i2c", "python", "fastapi", "rag"} <= declared
+        # Absent: the Unsupported preset and the Jobs gap both depend on these being missing.
+        assert not declared & {"autosar", "kafka", "kubernetes", "rust", "tensorflow"}
+        # Every declared skill resolves in the taxonomy, so the counts above are all of them…
+        assert declared <= {skill.canonical_id for skill in SKILLS}
+        # …and every fixture entry was written, i.e. no id was silently dropped by the writer.
+        assert counts["skills"] == len(DEMO_SKILLS)
+
+
+async def test_demo_candidate_is_not_seeded_over_existing_work(app: FastAPI, settings) -> None:
+    """The seed fills in a new account and leaves a used one alone.
+
+    ``persist_profile`` is the import writer: it *replaces* the career entities it is handed. A
+    boot-time seed that ran unconditionally would delete the work of anyone who had imported their
+    own résumé into the demo account — silently, on every restart. The guard is therefore part of
+    the contract, and it is asserted here rather than assumed.
+    """
+    async with app.state.session_factory() as session:
+        from careerforge_api.models.profile_entity import Project as ProjectRow
+        from careerforge_api.repositories.user_repository import UserRepository
+        from careerforge_api.services.seed_service import ensure_demo_candidate
+
+        users = UserRepository(session)
+        account = await users.create(
+            email=f"candidate-used-{uuid4().hex[:8]}@example.com",
+            display_name="Has Own Work",
+            password_hash="not-a-real-hash",
+            is_demo=False,
+            storage_scope="cloud",
+        )
+        await session.commit()
+
+        assert await ensure_demo_candidate(session, account, settings) != {}
+        await session.commit()
+        before = (
+            await session.scalars(select(ProjectRow).where(ProjectRow.user_id == account.id))
+        ).all()
+
+        # A second run is a no-op — nothing is rewritten, nothing is duplicated.
+        assert await ensure_demo_candidate(session, account, settings) == {}
+        await session.commit()
+        after = (
+            await session.scalars(select(ProjectRow).where(ProjectRow.user_id == account.id))
+        ).all()
+        assert [row.id for row in after] == [row.id for row in before]
 
 
 async def test_seed_all_is_idempotent(app: FastAPI, settings) -> None:
@@ -69,7 +200,11 @@ async def test_seed_all_is_idempotent(app: FastAPI, settings) -> None:
         users_after = await session.scalar(select(func.count()).select_from(User))
         prompts_after = await session.scalar(select(func.count()).select_from(PromptVersion))
 
-    assert first.demo_user_created is False  # the lifespan already seeded it
+    # Neither run creates the account: the app's lifespan already did, and the second run finds
+    # it. The flag is asserted on both runs because it used to be declared on `SeedReport` and
+    # never written, so `False` meant nothing at all.
+    assert first.demo_user_created is False
+    assert second.demo_user_created is False
     assert second.skills is not None
     assert second.skills.inserted == 0
     assert second.skills.updated == 0

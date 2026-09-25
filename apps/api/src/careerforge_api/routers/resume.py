@@ -1,4 +1,4 @@
-"""``/resume`` and the Claim Validator (``docs/API.md`` §2.6/§2.9, §2.5).
+"""``/resume`` and the Claim Validator (``docs/API.md`` §2.5/§2.6, §2.10).
 
 Two surfaces, one gate:
 
@@ -10,6 +10,14 @@ Two surfaces, one gate:
 
 Both are synchronous. Scoring and rule-checking are deterministic and local; the only network
 call is the optional narrative, and when it degrades the response says so.
+
+``POST /ai/validate/claim`` used to be a third surface over the same agent, declared in
+``routers/ai.py``. It was removed in PHASE 14 rather than repaired: it held no retriever
+(``app.state.retriever`` is set by nothing in this repository) and supplied no material, so it
+retrieved nothing, cited nothing and answered ``unsupported`` with ``confidence: 0.0`` for
+sentences the candidate's own evidence supports. Keeping it would have meant either a second
+copy of the gating logic in a router or a second, permanently wrong answer to the same
+question. A claim is now validated in exactly one place, and this module is it.
 """
 
 from __future__ import annotations
@@ -136,10 +144,14 @@ async def delete_version(version_id: str, session: DbSession, user: CurrentUser)
     await service.delete_version(version)
 
 
-def _validation_response(claim_id: UUID, validation: ClaimValidation) -> ValidateClaimResponse:
+def _validation_response(
+    claim_id: UUID, validation: ClaimValidation, *, warnings: list[str], degraded: bool
+) -> ValidateClaimResponse:
     return ValidateClaimResponse(
         claim_id=str(claim_id),
         claim=ClaimValidationResponse.from_schema(validation),
+        warnings=list(warnings),
+        degraded=degraded,
     )
 
 
@@ -151,6 +163,14 @@ async def validate_one(
     agent: AIServiceDep,
 ) -> ValidateClaimResponse:
     """Check one sentence against the candidate's own evidence.
+
+    **This is the canonical gate** (PHASE 14). It is the only path that decides a claim, and it
+    decides it the same way whether the sentence arrives from the Validator page, from
+    ``/resume/optimize``'s bullets or from a batch: one service, one agent, one set of rules.
+    ``POST /ai/validate/claim`` was removed in the same phase — it ran the same agent with no
+    retriever and no material, so it could never cite a source and could never reach
+    ``supported``. Two endpoints over one gate is one endpoint too many when the second one
+    cannot tell the truth.
 
     No version is created: this is the page where someone pastes a line they are *considering*
     and finds out whether they can back it up before it reaches a résumé.
@@ -184,7 +204,9 @@ async def validate_one(
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    return _validation_response(outcome.claim_id, outcome.validation)
+    return _validation_response(
+        outcome.claim_id, outcome.validation, warnings=outcome.warnings, degraded=outcome.degraded
+    )
 
 
 @validator_router.post("/evidence/validate/batch", summary="Claim Validator — up to 20")
@@ -194,7 +216,7 @@ async def validate_batch(
     user: CurrentUser,
     agent: AIServiceDep,
 ) -> list[ValidateClaimResponse]:
-    """Validate several sentences in one call.
+    """Validate several sentences in one call, through the same gate as the single path.
 
     Bounded at 20 and synchronous. Each claim is stored on its own, so a failure part-way
     through leaves the successful ones behind rather than discarding work the user watched
@@ -222,5 +244,12 @@ async def validate_batch(
             )
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        responses.append(_validation_response(outcome.claim_id, outcome.validation))
+        responses.append(
+            _validation_response(
+                outcome.claim_id,
+                outcome.validation,
+                warnings=outcome.warnings,
+                degraded=outcome.degraded,
+            )
+        )
     return responses

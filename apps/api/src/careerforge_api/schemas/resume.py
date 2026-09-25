@@ -154,10 +154,18 @@ class ValidateClaimRequest(_CamelModel):
 
 
 class ValidateClaimResponse(_CamelModel):
-    """The verdict, plus the stored claim's id so a client can cite it later."""
+    """The verdict, plus the stored claim's id so a client can cite it later.
+
+    ``warnings``/``degraded`` are part of the answer rather than decoration (PHASE 14): the gate
+    can run on a degraded retrieval, and a verdict whose evidence could not be searched has to
+    say so in the response, not only in the run trace. A client that shows the status and hides
+    the degrade is presenting a weaker judgement as a normal one.
+    """
 
     claim_id: str = Field(alias="claimId")
     claim: ClaimValidationResponse
+    warnings: list[str] = Field(default_factory=list)
+    degraded: bool = False
 
 
 class ResumeClaimResponse(_CamelModel):

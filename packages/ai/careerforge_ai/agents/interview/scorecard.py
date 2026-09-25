@@ -271,8 +271,20 @@ async def _scorecard(context: RunContext, inputs: dict[str, Any]) -> InterviewSc
         per_question=per_question,
         difficulty_start=session.plan[0].target_level if session.plan else DifficultyLevel.CONCEPT,
         difficulty_end=session.current_level,
-        duration_seconds=0,
+        duration_seconds=_duration_seconds(session),
     )
+
+
+def _duration_seconds(session: InterviewSession) -> int | None:
+    """How long the interview took, from the session's own timestamps.
+
+    ``None`` when the session has not been closed: the scorecard is built when the interview
+    ends, and a session that never recorded an end has no length to report. A hard-coded ``0``
+    used to stand here, which a reader could not tell from "this interview lasted no time".
+    """
+    if session.completed_at is None:
+        return None
+    return max(0, int((session.completed_at - session.started_at).total_seconds()))
 
 
 def claimed_skills(answer: str) -> set[str]:

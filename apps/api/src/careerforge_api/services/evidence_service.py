@@ -39,12 +39,12 @@ from careerforge_ai.schemas.common import (
 )
 from careerforge_ai.schemas.evidence import EvidenceItem, EvidenceLocator, GraphEdge, GraphNode
 from careerforge_ai.schemas.profile import CandidateProfile
-from careerforge_ai.scoring.confidence import compute_confidence
 from careerforge_api.models.document import Document, DocumentChunk
 from careerforge_api.models.evidence import Evidence, EvidenceLinkRow
 from careerforge_api.models.skill import Skill
 from careerforge_api.models.user import Profile, User
 from careerforge_api.repositories.evidence_repository import EvidenceRepository
+from careerforge_api.services.manual_evidence import get_or_create_manual
 from careerforge_api.services.profile_service import ProfileService
 
 __all__ = [
@@ -393,41 +393,22 @@ class EvidenceService:
         snippet: str = "",
         locator: EvidenceLocator | None = None,
         occurred_at: datetime | None = None,
-    ) -> Evidence:
-        """Store evidence the candidate typed themselves (``evidence.kind = 'manual'``).
+    ) -> tuple[Evidence, bool]:
+        """Store evidence the candidate typed themselves, or return the row it duplicates.
 
-        Confidence is *computed*, never accepted from the caller. A manual entry is the
-        weakest tier that still counts, and letting a client choose its own confidence
-        would make the number meaningless exactly where the product claims it is not.
+        A thin delegation to :func:`~careerforge_api.services.manual_evidence.get_or_create_manual`,
+        which owns the de-duplication rule (``UNIQUE (user_id, kind, content_hash)``), the computed
+        confidence and the savepoint that makes a race lose cleanly. Kept as a method so the
+        endpoint reads the same either way.
         """
-        resolved_locator = locator or EvidenceLocator()
-        breakdown = compute_confidence(
-            kind=EvidenceKind.MANUAL,
+        return await get_or_create_manual(
+            self._session,
+            user=user,
+            title=title,
+            snippet=snippet,
+            locator=locator,
             occurred_at=occurred_at,
-            locator=resolved_locator,
-            independent_sources=1,
-            extraction_method="user_corrected",
         )
-        payload = f"{title}:{snippet}:{resolved_locator.model_dump_json()}"
-        row = Evidence(
-            user_id=user.id,
-            kind=EvidenceKind.MANUAL.value,
-            title=title[:300],
-            snippet=snippet[:2000],
-            locator=resolved_locator.model_dump(exclude_none=True),
-            source_authority=float(breakdown.inputs.source_authority),
-            specificity=float(breakdown.inputs.specificity),
-            extraction_quality=float(breakdown.inputs.extraction_quality),
-            recency_score=float(breakdown.inputs.recency),
-            corroboration_count=1,
-            confidence=float(breakdown.score),
-            occurred_at=occurred_at,
-            content_hash=hashlib.sha256(payload.encode("utf-8")).hexdigest(),
-            metadata_={"source": "manual"},
-        )
-        self._session.add(row)
-        await self._session.flush()
-        return row
 
     async def get(self, evidence_id: UUID, *, user: User) -> Evidence | None:
         return await self._evidence.get(evidence_id, user_id=user.id)

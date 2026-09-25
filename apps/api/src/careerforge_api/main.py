@@ -72,7 +72,7 @@ from careerforge_api.services.ai_service import InterviewSessionStore
 from careerforge_api.services.auth_service import TokenRevocationRegistry
 from careerforge_api.services.failure_journal import FailureJournal
 from careerforge_api.services.metering import DatabaseCacheStore
-from careerforge_api.services.seed_service import ensure_demo_user
+from careerforge_api.services.seed_service import ensure_demo_candidate, ensure_demo_user
 from careerforge_api.services.skill_taxonomy_service import sync_skill_taxonomy
 from careerforge_api.workers.handlers import register_default_handlers
 from careerforge_api.workers.queue import build_queue_selection
@@ -136,7 +136,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with session_scope(session_factory) as session:
         await PromptRepository(session).sync_registry(registry)
         await sync_skill_taxonomy(session)
-        await ensure_demo_user(session, settings)
+        demo_user = await ensure_demo_user(session, settings)
+        # The same career rows `scripts/seed.py` writes, through the same function: a demo account
+        # that has projects and skills because a script was run, but not because the server booted,
+        # is a demo that behaves differently in the two ways anyone actually starts this app.
+        # Skipped for an account that already has career rows — see `ensure_demo_candidate`.
+        await ensure_demo_candidate(session, demo_user, settings)
 
     logger.info(
         "app_started",

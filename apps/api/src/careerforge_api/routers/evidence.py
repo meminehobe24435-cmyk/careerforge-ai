@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 
 from careerforge_ai.graph import extract_subgraph, graph_stats
 from careerforge_ai.schemas.common import GraphNodeType
@@ -27,6 +27,7 @@ from careerforge_api.models.evidence import EVIDENCE_KINDS
 from careerforge_api.schemas.evidence import (
     AnalysisResponse,
     CitedByEntry,
+    EvidenceCreateResponse,
     EvidenceDetail,
     EvidenceGraphResponse,
     EvidenceListResponse,
@@ -109,26 +110,38 @@ async def list_evidence(
 @router.post(
     "/evidence",
     status_code=status.HTTP_201_CREATED,
-    summary="Add evidence by hand",
+    summary="Add evidence by hand (idempotent)",
 )
 async def create_evidence(
     payload: ManualEvidenceRequest,
     session: DbSession,
     user: CurrentUser,
-) -> EvidenceResponse:
+    response: Response,
+) -> EvidenceCreateResponse:
     """Manual evidence: something true that no upload contains (a shipped feature, an award).
+
+    **Idempotent** (PHASE 14). ``evidence`` is unique on ``(user_id, kind, content_hash)``, and
+    this endpoint used to insert blind: replaying the same payload was a ``500 INTERNAL_ERROR``
+    on a request that had already succeeded. It is now ``get_or_create`` — ``201`` with
+    ``created: true`` the first time, ``200`` with ``created: false`` and the stored row after
+    that — because an ingestion pipeline is *expected* to replay and the honest answer to
+    "store this" is the row that already holds it.
 
     Confidence is computed from the same five factors as everything else and can never be
     supplied by the client — a self-declared score would defeat the point of having one.
     """
-    row = await EvidenceService(session).add_manual(
+    row, created = await EvidenceService(session).add_manual(
         user=user,
         title=payload.title,
         snippet=payload.snippet,
         locator=payload.evidence_locator,
         occurred_at=payload.occurred_at,
     )
-    return EvidenceResponse.from_row(row)
+    if not created:
+        # The row exists already, so nothing was created. ``200`` is the honest status: a
+        # repeated request that writes nothing is not a creation.
+        response.status_code = status.HTTP_200_OK
+    return EvidenceCreateResponse.project(row, created=created)
 
 
 @router.get("/evidence/{evidence_id}", summary="Evidence detail")

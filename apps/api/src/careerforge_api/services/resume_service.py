@@ -74,13 +74,22 @@ def integrity_of(validations: list[ClaimValidation]) -> float:
 
 @dataclass(slots=True)
 class ClaimOutcome:
-    """One validated claim, with the persisted row's id."""
+    """One validated claim, with the persisted row's id.
+
+    ``warnings``/``degraded`` travel with the verdict (PHASE 14). The gate reports a degraded
+    retrieval — "证据检索降级：retriever failed: RetrievalError" — and this service used to
+    unpack the workflow outcome into ``_outcome`` and drop it, so the caller received a verdict
+    judged without retrieval and no way to know. A degradation that is measured and then thrown
+    away is indistinguishable from no degradation at all.
+    """
 
     claim_id: UUID
     validation: ClaimValidation
     section: str = "summary"
     original_text: str = ""
     evidence_ids: list[UUID] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    degraded: bool = False
 
 
 @dataclass(slots=True)
@@ -247,7 +256,7 @@ class ResumeService:
         resolved = retriever or await build_retriever(
             self._session, user_id=user.id, embedder=embedder
         )
-        validation, _outcome = await validate_claim_text(
+        validation, gate_outcome = await validate_claim_text(
             executor,
             text,
             retriever=resolved,
@@ -277,6 +286,10 @@ class ResumeService:
             validation=validation,
             section=claim.section,
             evidence_ids=[source.evidence_id for source in validation.sources],
+            # Carried, not dropped: a claim judged with a broken retriever is a weaker verdict,
+            # and only the response can say so.
+            warnings=list(gate_outcome.warnings),
+            degraded=gate_outcome.degraded,
         )
 
     # ── storage ──────────────────────────────────────────────────────────────

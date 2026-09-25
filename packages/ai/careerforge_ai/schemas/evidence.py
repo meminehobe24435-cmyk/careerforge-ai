@@ -227,6 +227,11 @@ class RetrievalResult(CFBaseModel):
     rrf_k: int = 60
     took_ms: int = 0
     degraded: bool = False
+    #: *Why* it was degraded — "no embedder configured", "the dense arm raised X". PHASE 14 added
+    #: this because the reason was computed by the retriever and then dropped by the caller, which
+    #: then had to invent one: the claim gate reported "证据检索降级：检索不可用" while returning two
+    #: retrieved sources, a sentence that contradicted the payload it was attached to.
+    degraded_reason: str | None = None
 
     def by_channel(self, channel: RetrievalChannel) -> list[RetrievalHit]:
         return [hit for hit in self.hits if hit.channel == channel]

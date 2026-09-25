@@ -195,7 +195,9 @@ async def retrieve_phase(context: RunContext, inputs: dict[str, Any]) -> dict[st
         "rrf_k": result.rrf_k,
         "took_ms": result.took_ms,
     }
-    return {"hits": hits, "degraded": result.degraded, "reason": None}
+    # The retriever's *own* reason travels on. It used to stop here, so the caller had to make one
+    # up and reported "检索不可用" while returning the two sources it had just retrieved (PHASE 14).
+    return {"hits": hits, "degraded": result.degraded, "reason": result.degraded_reason}
 
 
 async def verdict_phase(context: RunContext, inputs: dict[str, Any]) -> ClaimLLMVerdict | None:
@@ -274,8 +276,7 @@ class ValidatorAgent:
 
         retrieval = output.get("retrieve") or {}
         if validation is not None and retrieval.get("degraded"):
-            reason = retrieval.get("reason") or "检索不可用"
-            warnings.append(f"证据检索降级：{reason}")
+            warnings.append(_retrieval_degraded_warning(retrieval))
 
         return AgentOutcome(
             value=validation,
@@ -286,6 +287,22 @@ class ValidatorAgent:
             ),
             warnings=warnings,
         )
+
+
+def _retrieval_degraded_warning(retrieval: dict[str, Any]) -> str:
+    """One sentence that matches what actually happened, not the worst case.
+
+    "检索不可用" (retrieval unavailable) was printed even when the lexical arm returned hits, which
+    made the warning contradict the ``sources`` list in the same payload — a reader who trusts the
+    warning would discount a verdict that was in fact backed by two citations, and a reader who
+    trusts the sources would never learn that the vector arm was down. Both facts belong in the
+    sentence: which arm was lost, why, and what came back (PHASE 14).
+    """
+    reason = str(retrieval.get("reason") or "原因未说明")
+    hits = len(retrieval.get("hits") or [])
+    if hits:
+        return f"证据检索降级：仅关键词通道可用（{reason}），已返回 {hits} 条命中"
+    return f"证据检索降级：没有命中（{reason}）"
 
 
 async def validate_claim_text(

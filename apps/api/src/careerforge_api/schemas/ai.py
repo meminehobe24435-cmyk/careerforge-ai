@@ -21,8 +21,6 @@ from careerforge_ai.schemas.profile import CandidateProfile
 __all__ = [
     "AnalyzeJobRequest",
     "AnalyzeJobResponse",
-    "ValidateClaimRequest",
-    "ValidateClaimResponse",
     "MatchRequest",
     "MatchResponse",
     "StartInterviewRequest",
@@ -60,32 +58,6 @@ class AnalyzeJobRequest(CFBaseModel):
 
 class AnalyzeJobResponse(CFBaseModel):
     analysis: JDAnalysis
-    meta: AiMeta
-
-
-class ValidateClaimRequest(CFBaseModel):
-    claim: str = Field(min_length=2, max_length=1000)
-    evidence_text: str = Field(
-        default="",
-        max_length=20_000,
-        description=(
-            "Material to judge the claim against. Optional: with no evidence supplied "
-            "the gate reports the claim as unsupported rather than assuming support."
-        ),
-    )
-    job_context: str = Field(default="", max_length=2000)
-
-
-class ValidateClaimResponse(CFBaseModel):
-    status: str
-    confidence: float
-    allows_resume_inclusion: bool
-    is_blocking: bool
-    sources: list[dict[str, Any]] = Field(default_factory=list)
-    reasons: list[dict[str, Any]] = Field(default_factory=list)
-    safe_rewrite: dict[str, Any] | None = None
-    unknowns: list[str] = Field(default_factory=list)
-    independent_source_count: int = 0
     meta: AiMeta
 
 

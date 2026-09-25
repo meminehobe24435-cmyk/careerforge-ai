@@ -97,7 +97,20 @@ def test_endpoint_groups_map_to_the_documented_budgets(settings: APISettings) ->
     ai = classify_request("POST", "/api/v1/jobs/analyze", settings)
     assert (ai.limit, ai.window_seconds) == (settings.rate_limit_ai_per_min, 60.0)
     upload = classify_request("POST", "/api/v1/documents", settings)
-    assert (upload.limit, upload.window_seconds) == (20, 3600.0)
+    # The hourly bucket is a *setting* since PHASE 14 (it was hard-coded at 20 in the middleware), so
+    # this asserts three things the hard-coded version could not distinguish: the classifier uses the
+    # configured value, the shipped default is still the documented 20/hour, and raising it works.
+    assert (upload.limit, upload.window_seconds) == (settings.rate_limit_upload_per_hour, 3600.0)
+    assert APISettings.model_fields["rate_limit_upload_per_hour"].default == 20, (
+        "the documented production default is 20 uploads per hour"
+    )
+    raised = classify_request(
+        "POST", "/api/v1/documents", settings.model_copy(update={"rate_limit_upload_per_hour": 500})
+    )
+    assert raised.limit == 500, (
+        "the upload budget must be configurable: a hard-coded limit cannot be raised for a test "
+        "suite or a self-hosted deployment, and the workaround is always worse than the setting"
+    )
 
 
 async def test_token_bucket_refills_over_time(settings: APISettings) -> None:

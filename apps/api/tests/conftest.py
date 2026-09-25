@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 import itertools
+import os
 from typing import Any
 from uuid import uuid4
 
@@ -40,21 +41,43 @@ TEST_PASSWORD = "sup3r-secret-pw"
 
 #: Budgets high enough that no ordinary test can trip the limiter; the rate-limit
 #: test builds its own app with a deliberately small one.
+#:
+#: ``upload`` matters as much as the per-minute buckets: its production limit is **20 per hour**, so
+#: a scenario that ingests a handful of documents would pass alone and fail in a full run — and the
+#: failure would look like a product bug rather than a test-isolation one. (PHASE 13's browser suite
+#: hit exactly this with a shared identity.)
 QUIET_LIMITS: dict[str, int] = {
     "rate_limit_auth_per_min": 10_000,
     "rate_limit_read_per_min": 10_000,
     "rate_limit_write_per_min": 10_000,
     "rate_limit_ai_per_min": 10_000,
+    "rate_limit_upload_per_hour": 10_000,
 }
 
 
 def _database_overrides(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
-    """SQLite gets a throwaway file; a configured PostgreSQL URL is used as-is."""
-    probe = APISettings()
-    if not is_sqlite_url(probe.resolved_database_url):
-        return {}
+    """SQLite in a throwaway file — **regardless of what the developer's ``.env`` says**.
+
+    The previous version probed ``APISettings()``, which reads the environment *and* a local
+    ``.env``. On a machine whose ``.env`` sets ``USE_SQLITE=false`` (a normal thing for someone
+    running the Docker path), the probe concluded "PostgreSQL is configured" and the whole unit suite
+    tried to reach a database and a Redis that were not running: PHASE 13 measured 272 connection
+    errors and a 24-minute run, from a suite that is documented as needing no external service.
+
+    A unit test must not depend on an external service it did not ask for. PostgreSQL is opt-in
+    through ``CAREERFORGE_TEST_POSTGRES=1``, which is what the CI matrix sets.
+    """
+    if os.environ.get("CAREERFORGE_TEST_POSTGRES") == "1":
+        probe = APISettings()
+        if not is_sqlite_url(probe.resolved_database_url):
+            return {}
     directory = tmp_path_factory.mktemp("careerforge-db")
-    return {"use_sqlite": True, "sqlite_path": str(directory / "careerforge-test.db")}
+    return {
+        "use_sqlite": True,
+        "sqlite_path": str(directory / "careerforge-test.db"),
+        # Explicit, so the queue cannot fall back to Redis through a configured URL either.
+        "queue_backend": "inprocess",
+    }
 
 
 @pytest.fixture(scope="session")

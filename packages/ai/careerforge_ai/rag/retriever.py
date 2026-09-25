@@ -241,7 +241,12 @@ class HybridRetriever:
         }
         fused = fuse_with_ranks(rankings, k=self._rrf_k)
         if not fused:
-            return RetrievalResult(query=query, rrf_k=self._rrf_k, degraded=degraded)
+            return RetrievalResult(
+                query=query,
+                rrf_k=self._rrf_k,
+                degraded=degraded,
+                degraded_reason=dense_error,
+            )
 
         ordered = sorted(fused.items(), key=lambda item: (-item[1][0], item[0]))[:limit]
         relevance = normalize_scores({doc_id: value for doc_id, (value, _) in ordered})
@@ -268,7 +273,7 @@ class HybridRetriever:
                 )
             )
 
-        result = RetrievalResult(
+        return RetrievalResult(
             query=query,
             hits=hits,
             filters=dict(filters or {}),
@@ -278,10 +283,12 @@ class HybridRetriever:
             rrf_k=self._rrf_k,
             took_ms=int((time.perf_counter() - started) * 1000),
             degraded=degraded,
+            # Carried as its own field rather than smuggled into ``filters`` under a private key
+            # (PHASE 14): ``filters`` is documented as the filters that were applied, and the
+            # caller had no way to say *why* retrieval degraded without inventing a reason —
+            # which it did, printing "检索不可用" beside two retrieved sources.
+            degraded_reason=dense_error,
         )
-        if dense_error:
-            result.filters["_dense_error"] = dense_error
-        return result
 
     async def _dense_arm(
         self,

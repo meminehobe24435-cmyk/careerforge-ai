@@ -198,6 +198,16 @@ class PublicService:
         if summary is None:  # pragma: no cover - the workflow always assembles
             raise ValidationError("公开页生成失败：RecruiterAgent 没有返回结果")
 
+        # The heading of the public page is the **person**, and the line under it is their
+        # professional title. The agent derives `display_name` from `profile.headline` (with
+        # `ProfileService.load` falling back to `user.display_name` when no headline is stored), so
+        # a candidate who *has* a headline was published with the same sentence as their name and
+        # their title: the page printed it twice, which reads as duplicated data rather than as a
+        # design. The account's own display name is the honest source for the heading, and it is
+        # never the legal name (`docs/API.md` §2.13) — the candidate chose it.
+        if user.display_name:
+            summary = summary.model_copy(update={"display_name": user.display_name})
+
         payload = summary.model_dump(mode="json")
         findings = scan_pii(_flatten(payload))
         payload = self._apply_hidden_skills(payload, user)

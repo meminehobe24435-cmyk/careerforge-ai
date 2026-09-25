@@ -20,8 +20,10 @@ import pytest
 
 from careerforge_ai.errors import RetrievalError
 from careerforge_ai.providers.heuristic import HeuristicProvider
+from tests.claim_support import evidence_ready as _evidence_ready
 from tests.conftest import EnvelopeCheck, UserFactory
 from tests.failure_helpers import (
+    newest_runs,
     post,
     run_row,
     steps_of,
@@ -152,31 +154,37 @@ class _ExplodingRetriever:
         raise RetrievalError("vector backend is unreachable")
 
 
-async def test_an_unwired_retriever_is_reported_and_the_gate_still_answers(
+async def test_the_gate_builds_its_own_retriever_when_the_process_has_none(
     client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
 ) -> None:
-    """The shipped deployment has no retriever, and every surface says so.
+    """The shipped deployment configures no process retriever, and the gate retrieves anyway.
 
-    ``app.state.retriever`` is never set by ``create_app``/``lifespan``, so the claim gate runs on
-    the material in the request alone. What matters is that the answer is still produced *and* that
-    the absence is stated: an empty evidence set that looks like a genuine miss is the worst of the
-    three possible outcomes.
+    ``app.state.retriever`` is still never set by ``create_app``/``lifespan`` — that part of the
+    old test remains true — but since PHASE 14 the claim gate does not depend on it: the canonical
+    ``POST /evidence/validate`` builds a hybrid retriever over the caller's own ``evidence`` rows
+    per request (``services/retrieval_service.py``). What used to be asserted here was the
+    *defect*: the stateless ``/ai/validate/claim`` read that unset property, retrieved nothing and
+    reported ``sources: []`` with a "no retriever configured" warning for a claim the account's
+    evidence supported. That endpoint is gone; this test now pins the behaviour that replaced it.
     """
-    account = await make_user(display_name="No retriever")
+    account = await make_user(display_name="No process retriever")
     assert getattr(app.state, "retriever", None) is None, (
-        "this test pins the shipped configuration, which wires no retriever at all"
+        "this test pins the shipped configuration, which wires no process-level retriever"
     )
 
-    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
+    response = await post(client, account, "/evidence/validate", {"text": CLAIM})
     assert response.status_code == 200, response.text
     data = envelope(response)["data"]
-    assert data["sources"] == []
-    assert any("检索" in warning for warning in data["meta"]["warnings"]), (
-        f"the response does not state that retrieval did not happen: {data['meta']['warnings']}"
+    claim = data["claim"]
+    assert claim["sources"] == [], "this account has no evidence, so there is nothing to cite"
+    assert claim["status"] in {"unsupported", "contradicted"}, claim
+    assert claim["reasons"], "a refusal must explain itself"
+    assert not any("no retriever configured" in warning for warning in data["warnings"]), (
+        f"the gate reported a missing retriever, which is what PHASE 14 fixed: {data['warnings']}"
     )
 
     health = envelope(await client.get("/api/v1/system/health"))["data"]
-    assert health["status"] == "degraded", "an API whose retrieval arm is unwired is not healthy"
+    assert health["status"] == "degraded", "an API whose vector arm is not durable is not healthy"
     vector = health["checks"]["vector"]
     assert vector["status"] == "degraded"
     assert vector["reason"] and vector["detail"]
@@ -186,33 +194,16 @@ async def test_an_unwired_retriever_is_reported_and_the_gate_still_answers(
     ]
     assert capabilities["retrieval_available"] is False
     assert any("检索" in item for item in capabilities["limitations"])
-
-
-async def test_the_step_chain_marks_a_retrieval_that_never_happened_as_ok(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
-) -> None:
-    """GAP, asserted on purpose: the trace and the response disagree about the retrieval.
-
-    ``retrieve_phase`` returns ``{"degraded": True, "reason": "no retriever configured"}`` and the
-    agent turns that into a warning — but the *executor* derives a step's status from the provider
-    chain alone (``RunContext.degraded``), so the step is written as ``ok``. An operator reading the
-    step chain cannot tell "retrieved nothing" from "did not retrieve", which is exactly the
-    distinction the warning exists to make.
-    """
-    account = await make_user(display_name="Retrieval trace")
-    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
-    data = envelope(response)["data"]
-    assert any("检索" in warning for warning in data["meta"]["warnings"])
-
-    steps = await steps_of(client, account, str(data["meta"]["run_id"]))
-    assert steps["retrieve"]["status"] == "ok"  # measured; the response says otherwise
-    assert not steps["retrieve"]["errorCode"] and not steps["retrieve"]["errorMessage"]
+    # The limitation must not claim the gate is blind to the evidence base: it retrieves from it
+    # on every request, and that sentence would be a false statement inside a payload whose whole
+    # purpose is to state what does not work.
+    assert not any("不会去检索证据库" in item for item in capabilities["limitations"])
 
 
 async def test_a_broken_retrieval_backend_degrades_instead_of_returning_500(
-    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck
+    client: AsyncClient, make_user: UserFactory, app: FastAPI, envelope: EnvelopeCheck, monkeypatch
 ) -> None:
-    """A retriever that raises must degrade the gate, not crash it.
+    """A retriever that raises must degrade the gate, not crash it — and must say so.
 
     This test previously asserted the opposite — a 500 — because that is what the code did: the
     optional step recorded ``None`` into the dependency slot, and the decision phase raised
@@ -221,26 +212,56 @@ async def test_a_broken_retrieval_backend_degrades_instead_of_returning_500(
     it is the one failure it cannot afford to crash on. PHASE 12 fixed ``retrieve_phase`` (it now
     catches and reports) and the three ``None``-unsafe reads in the gate.
 
-    Where the statement lives is asserted explicitly (PHASE 13). The response carries it as a
-    *warning* — evidence that could not be searched — and not in ``reasons``: this verdict is
-    reachable without retrieval (the rules blocked the claim first), so putting "the search failed"
-    in a reason would claim the verdict depended on a search that never happened. An earlier version
-    of this test looked for those words in ``reasons`` and could never find them.
+    PHASE 14 moved it onto the canonical endpoint. The failure is injected where the gate actually
+    gets its retriever (``services/retrieval_service.build_retriever``, called per request by
+    ``ResumeService.validate``) rather than by setting ``app.state.retriever``, which nothing
+    reads any more.
+
+    Where the statement lives is asserted explicitly. The response carries it as a *warning* —
+    evidence that could not be searched — and not in ``reasons``: this verdict is reachable
+    without retrieval (the rules blocked the claim first), so putting "the search failed" in a
+    reason would claim the verdict depended on a search that never happened.
     """
     account = await make_user(display_name="Broken retriever")
-    app.state.retriever = _ExplodingRetriever()
+    await _evidence_ready(client, envelope, account)
 
-    response = await post(client, account, "/ai/validate/claim", {"claim": CLAIM})
+    from careerforge_api.services import resume_service
+
+    broken = _ExplodingRetriever()
+
+    async def exploding_retriever(*args: Any, **kwargs: Any) -> _ExplodingRetriever:
+        return broken
+
+    monkeypatch.setattr(resume_service, "build_retriever", exploding_retriever)
+
+    response = await post(client, account, "/evidence/validate", {"text": CLAIM})
     assert response.status_code == 200, response.text
     body = envelope(response)["data"]
+    assert broken.calls > 0, "the gate never asked the broken retriever, so nothing was proven"
     # The verdict still exists, and it is not a silent pass: the reasons say what was found missing
     # and the warnings say the evidence could not be searched, which is what lets a reader discount
     # the verdict.
-    assert body["status"] in {"unsupported", "partially_supported"}
-    assert body["status"] != "supported", "a claim judged without retrieval must not be supported"
-    assert body["reasons"], "a verdict without reasons is indistinguishable from a bug"
-    warnings = " ".join(str(item) for item in body["meta"]["warnings"])
+    assert body["degraded"] is True
+    assert body["claim"]["status"] in {"unsupported", "partially_supported"}
+    assert body["claim"]["status"] != "supported", (
+        "a claim judged without retrieval must not be supported"
+    )
+    assert body["claim"]["reasons"], "a verdict without reasons is indistinguishable from a bug"
+    warnings = " ".join(str(item) for item in body["warnings"])
     assert "检索" in warnings, warnings
+
+    # The trace agrees with the response, and it is reachable from the run table: a degraded
+    # verdict leaves an ``agent_runs`` row even when the caller only reads the HTTP body.
+    run = await newest_runs(app, limit=1)
+    assert run and run[0].workflow == "claim_validate", [item.workflow for item in run]
+    assert run[0].status == "degraded", run[0].status
+    steps = await steps_of(client, account, str(run[0].id))
+    # GAP, asserted on purpose: ``retrieve_phase`` reported the degradation but the *executor*
+    # derives a step's status from the provider chain alone, so the step is written ``ok``. An
+    # operator reading the step chain cannot tell "retrieved nothing" from "did not retrieve",
+    # which is exactly the distinction the warning exists to make.
+    assert steps["retrieve"]["status"] == "ok"  # measured; the response says otherwise
+    assert not steps["retrieve"]["errorCode"] and not steps["retrieve"]["errorMessage"]
 
 
 async def test_a_failed_step_does_not_take_down_what_succeeded(

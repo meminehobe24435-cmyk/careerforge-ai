@@ -45,6 +45,10 @@ class InterviewPlanItem(CFBaseModel):
     )
     source: str = Field(default="evidence", description="jt_requirement | evidence | resume | gap")
     source_ids: list[UUID] = Field(default_factory=list)
+    #: Whether an interviewer turn has actually asked about this topic. **Derived, not
+    #: declared**: ``mark_plan_coverage`` writes it from the turns that were asked, so it is
+    #: ``False`` only while the topic is still unasked. Before PHASE 14 nothing wrote it and it
+    #: read ``False`` on a topic the interview had already spent three questions on.
     covered: bool = False
 
 
@@ -57,8 +61,11 @@ class InterviewTurn(CFBaseModel):
     topic: str | None = None
     question_level: DifficultyLevel | None = None
     evaluation: TurnEvaluation | None = None
-    tokens: int = 0
-    latency_ms: int = 0
+    #: ``None`` when the turn was built without measuring them — which is every turn today: the
+    #: interviewer's question is produced inside a workflow whose real usage is recorded on the
+    #: step trace. ``0`` here used to mean "we did not look", which is not a measurement.
+    tokens: int | None = None
+    latency_ms: int | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -141,7 +148,10 @@ class InterviewScorecard(CFBaseModel):
 
     difficulty_start: DifficultyLevel = DifficultyLevel.CONCEPT
     difficulty_end: DifficultyLevel = DifficultyLevel.CONCEPT
-    duration_seconds: int = 0
+    #: Wall-clock length of the session, from ``InterviewSession.started_at`` to
+    #: ``completed_at``. ``None`` when the session was never closed, because "not finished" is
+    #: not "finished in zero seconds" — which is what this field reported before PHASE 14.
+    duration_seconds: int | None = None
     generated_at: datetime = Field(default_factory=utcnow)
     algorithm_version: str = "scorecard@1.0.0"
 

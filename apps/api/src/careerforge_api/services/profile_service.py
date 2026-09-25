@@ -130,6 +130,20 @@ class ProfileService:
             document_id=document.id if document else None,
         )
 
+    async def persist_profile(self, *, user: User, profile: CandidateProfile) -> dict[str, int]:
+        """Store an already-assembled profile — the path the demo seed takes.
+
+        Deliberately the *same* writer an import uses: upsert by ``dedupe_key``, replace what the
+        source contains, keep the declared skills in step with the dictionary. A seeded profile
+        that took a different route would be the one shape nothing else in the product can produce,
+        which is how a demo starts disagreeing with the code it is demonstrating.
+
+        The caller decides *when* this is safe. It is a full replacement of the career entities, so
+        running it over a profile a candidate has already edited would overwrite their work; the
+        seed only calls it for an account that has none yet.
+        """
+        return await self._persist(user, ProfileImportResult(profile=profile), document=None)
+
     async def _persist(
         self, user: User, result: ProfileImportResult, *, document: Document | None
     ) -> dict[str, int]:

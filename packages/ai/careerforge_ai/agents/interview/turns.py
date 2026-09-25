@@ -12,6 +12,7 @@ from careerforge_ai.agents.interview.plan import (
     _pick_topic,
     _plan_topics,
     _recent_turns,
+    mark_plan_coverage,
     next_difficulty,
 )
 from careerforge_ai.orchestrator import RunContext, Step, Workflow
@@ -153,7 +154,9 @@ async def _ask(context: RunContext, inputs: dict[str, Any]) -> InterviewTurn:
         content=question.question,
         topic=question.topic,
         question_level=question.level,
-        tokens=0,
+        # ``tokens`` / ``latency_ms`` are left unset on purpose: this builder never measured
+        # them, and a written ``0`` would claim it had. The model call's real usage lives on
+        # the step trace (``StepTrace.usage``), which is where the AI Runs page reads it.
     )
 
 
@@ -232,8 +235,10 @@ async def _adapt(context: RunContext, inputs: dict[str, Any]) -> dict[str, Any]:
     evaluation: TurnEvaluation = inputs["evaluate"]
     change = next_difficulty(session.current_level, evaluation.score)
 
-    # The next topic: prefer something not yet covered, since the turn has moved on.
-    covered = {turn.topic for turn in session.turns if turn.role == "interviewer"}
-    next_item = next((item for item in session.plan if item.topic not in covered), session.plan[0])
+    # The next topic: prefer something not yet covered, since the turn has moved on. The
+    # ``covered`` flags are refreshed from the interviewer turns first, so the pick and the
+    # flags cannot disagree about what has been asked.
+    mark_plan_coverage(session)
+    next_item = next((item for item in session.plan if not item.covered), session.plan[0])
 
     return {"change": change, "level": change.to_level.level, "next": next_item}

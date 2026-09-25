@@ -39,11 +39,15 @@ from careerforge_api.schemas.system import (
     ServiceHealthEntry,
     SystemHealthResponse,
     SystemInfoResponse,
+    SystemReadinessResponse,
+    SystemVersionResponse,
 )
 
 __all__ = [
     "collect_health",
     "collect_info",
+    "collect_readiness",
+    "collect_version",
     "detect_git_sha",
     "detect_node_version",
     "overall_status",
@@ -243,6 +247,89 @@ async def collect_health(
             "cacheHit": False,
             "tookMs": took_ms,
         },
+    )
+
+
+# ── /system/ready ────────────────────────────────────────────────────────────
+
+#: The single dependency that decides readiness. Everything else is advisory — see
+#: :class:`careerforge_api.schemas.system.SystemReadinessResponse`.
+READINESS_GATE = "database"
+
+
+async def collect_readiness(
+    *,
+    settings: APISettings,
+    engine: AsyncEngine,
+    provider: LLMProvider | None,
+    queue_backend: str,
+    queue_degradation_reason: str | None = None,
+) -> SystemReadinessResponse:
+    """Run the probes and answer the one question a load balancer asks.
+
+    Only the ``database`` probe does I/O; the other four are pure functions over settings and the
+    live process, so running all five costs one ``SELECT 1`` and lets the payload name every
+    degraded dependency instead of just the gate.
+    """
+    began = time.perf_counter()
+    provider_entry = probe_provider(settings, provider)
+    services = [
+        probe_api(settings),
+        await probe_database(engine, settings),
+        probe_vector(settings),
+        probe_queue(
+            settings=settings,
+            active_backend=queue_backend,
+            degradation_reason=queue_degradation_reason,
+        ),
+        provider_entry,
+    ]
+    gate = next(entry for entry in services if entry.name == READINESS_GATE)
+    ready = gate.status == "ok"
+    degraded = sorted(
+        entry.name for entry in services if entry.name != READINESS_GATE and entry.status != "ok"
+    )
+    return SystemReadinessResponse(
+        status="ready" if ready else "not_ready",
+        ready=ready,
+        gate=READINESS_GATE,
+        environment=settings.environment,
+        checked_at=datetime.now(UTC),
+        dependencies=services,
+        degraded=degraded,
+        version={"api": __version__, "python": sys.version.split()[0], "schemas": "v1"},
+        meta={
+            "provider": provider_entry.provider,
+            "degraded": bool(provider_entry.degraded),
+            "cacheHit": False,
+            "tookMs": int((time.perf_counter() - began) * 1000),
+        },
+    )
+
+
+# ── /system/version ──────────────────────────────────────────────────────────
+
+
+def collect_version(*, settings: APISettings) -> SystemVersionResponse:
+    """Build identity for the public ``/system`` page — four facts, no environment details.
+
+    Every value here is an identifier whose *shape* is fixed (a version, a hash, an ISO-8601
+    string, an environment name) or a runtime version read from the interpreter. Nothing is
+    derived from a path, a URL or a request, which is what makes it safe to serve anonymously.
+    """
+    sha = detect_git_sha(settings)
+    return SystemVersionResponse(
+        app=settings.app_name,
+        version=__version__,
+        commit=sha or None,
+        commit_short=sha[:7] if sha else None,
+        build_timestamp=settings.build_time.strip() or None,
+        environment=settings.environment,
+        python_version=sys.version.split()[0],
+        node_version=detect_node_version(),
+        schema_version="v1",
+        taxonomy_version=TAXONOMY_VERSION,
+        checked_at=datetime.now(UTC),
     )
 
 

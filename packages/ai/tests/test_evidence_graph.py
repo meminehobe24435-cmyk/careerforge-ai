@@ -474,6 +474,12 @@ class TestTraceClaim:
 
 
 class TestStats:
+    """The counts on the summary strip.
+
+    The ``mean_confidence`` rule — ``None`` when the view holds nothing to average — lives in
+    ``test_graph_stats.py``, which owns that pair of cases without needing this module's fixtures.
+    """
+
     def test_counts_by_type_and_relation(self, profile: CandidateProfile) -> None:
         graph = build_evidence_graph(
             profile=profile,
@@ -483,4 +489,5 @@ class TestStats:
         assert stats["nodes"] == len(graph.nodes)
         assert isinstance(stats["nodes_by_type"], dict)
         assert isinstance(stats["edges_by_relation"], dict)
+        assert stats["mean_confidence"] is not None
         assert 0.0 <= float(stats["mean_confidence"]) <= 1.0

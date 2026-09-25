@@ -143,18 +143,23 @@ AI 相关响应统一携带：
 
 ### 2.1 认证与账户 `/auth` `/me`
 
-| 方法   | 路径             | 说明                                 | 认证    |
-| ------ | ---------------- | ------------------------------------ | ------- |
-| POST   | `/auth/register` | 注册                                 | —       |
-| POST   | `/auth/login`    | 登录                                 | —       |
-| POST   | `/auth/demo`     | 一键 Demo 登录                       | —       |
-| POST   | `/auth/refresh`  | 刷新 token                           | refresh |
-| POST   | `/auth/logout`   | 注销（吊销 refresh）                 | ✅      |
-| GET    | `/auth/me`       | 当前用户                             | ✅      |
-| GET    | `/me/settings`   | 隐私/AI 设置                         | ✅      |
-| PATCH  | `/me/settings`   | 更新设置（Local Mode、公开项、预算） | ✅      |
-| GET    | `/me/export`     | 导出全部数据（JSON）                 | ✅      |
-| DELETE | `/me`            | 彻底删除账号与数据                   | ✅      |
+> **状态：`/auth/*` 六个端点已实现（PHASE 1/2）**，路由表见 `apps/api/src/careerforge_api/routers/auth.py`。
+> **`/me/*` 四个端点尚未实现**（PHASE 14 核对路由表时确认）：`GET/PATCH /me/settings`、
+> `GET /me/export`、`DELETE /me` 只有本文档的条目，代码中没有对应路由，调用会得到 `404 NOT_FOUND`。
+> 本表把它们标成「未实现」而不是删掉——删掉会让人以为需求不存在；留着不加标记则是文档在说谎。
+
+| 方法   | 路径             | 说明                                         | 认证    |
+| ------ | ---------------- | -------------------------------------------- | ------- |
+| POST   | `/auth/register` | 注册                                         | —       |
+| POST   | `/auth/login`    | 登录                                         | —       |
+| POST   | `/auth/demo`     | 一键 Demo 登录                               | —       |
+| POST   | `/auth/refresh`  | 刷新 token                                   | refresh |
+| POST   | `/auth/logout`   | 注销（吊销 refresh）                         | ✅      |
+| GET    | `/auth/me`       | 当前用户                                     | ✅      |
+| GET    | `/me/settings`   | 隐私/AI 设置 — 未实现                        | ✅      |
+| PATCH  | `/me/settings`   | 更新设置（Local Mode、公开项、预算）— 未实现 | ✅      |
+| GET    | `/me/export`     | 导出全部数据（JSON）— 未实现                 | ✅      |
+| DELETE | `/me`            | 彻底删除账号与数据 — 未实现                  | ✅      |
 
 ```jsonc
 // POST /auth/demo  → 200
@@ -322,28 +327,40 @@ AI 相关响应统一携带：
 > `skills` 字典、候选人节点来自 `profiles`，只有证据与边是独立表，因此重新分析幂等
 > （证据按内容去重、边按五元组去重）。
 > `POST /evidence` 的置信度由服务端计算，请求体禁止传 `confidence`（多传字段直接 400）。
+> **`POST /evidence` 是幂等的（PHASE 14）**：`evidence` 上有 `UNIQUE (user_id, kind, content_hash)`，
+> 相同内容重复提交返回**已存在的那一行**（`200` + `created: false`），首次插入返回 `201` +
+> `created: true`。此前它直接插入、不理会该约束，于是重复提交是 `500 INTERNAL_ERROR`——两个客户端
+> （`apps/web/e2e/helpers/pages.ts`、`apps/web/scripts/capture-pages.mts`）因此都写了「先读再写」的
+> 绕行，并把它作为后端缺陷记录在注释里。摄取流水线本来就会重放，正确的回答是把已有的那一行给它。
 > `GET /evidence-graph` 的 `stats` 描述**本次返回的子图**，`totals` 描述全图，避免出现
-> 「画布 10 个节点、摘要写 129」这类自相矛盾。
-> `POST /evidence/validate` 的能力已由 `POST /ai/validate/claim` 提供（同一套确定性门禁）；
-> 批量校验（≤ 20 条）随 PHASE 6 简历 Copilot 一起接入。
+> 「画布 10 个节点、摘要写 129」这类自相矛盾。`stats.meanConfidence` 在**本次子图里没有任何节点带
+> 置信度**时为 `null`（PHASE 14）：此前的 `0.0` 会被读成「每个节点都得 0 分」，而事实是「还没有被评分」；
+> `highConfidence`/`lowConfidence` 仍为 `0`，因为「没有高置信度节点」对该子图是真话。
+> **断言门禁只有一条路径：`POST /evidence/validate`**（PHASE 14）。它由 `ResumeService.validate`
+> 实现：为当前用户构建混合检索器（BM25 + 向量 + RRF），把候选人材料交给规则阶段，落库一条 claim。
+> 曾经的 `POST /ai/validate/claim` **已删除**：它读 `app.state.retriever`（仓库里没有任何地方设置
+> 这个属性），材料也只来自请求体，因此检索不到任何东西、`sources` 恒为空、`confidence` 恒为 `0.0`，
+> 对自己材料明确支持的句子也判 `unsupported`——`supported` 在那条路径上结构上不可达（PHASE 13 实测）。
+> 一个门禁、一条路径、一个决定判定结果的地方；第二个入口只会是第二份门禁逻辑，或者同一个问题的第二个
+> 永久错误的答案。
 > `POST /documents/{id}/analyze` 是**同步**端点：它只做确定性的本地计算，不调用模型，
 > 因此不套用 §1.4 的 202 约定。
 
-| 方法   | 路径                              | 说明                                                                  |
-| ------ | --------------------------------- | --------------------------------------------------------------------- |
-| GET    | `/evidence-graph`                 | 子图查询：`?focus=skill:stm32&depth=2&types=project,repo_file&limit=` |
-| GET    | `/evidence`                       | 证据列表（`?kind=&minConfidence=&limit=`）                            |
-| GET    | `/evidence/{id}`                  | 证据详情（locator、置信度拆解、来源）                                 |
-| POST   | `/evidence`                       | 手工添加证据（`manual` 类型，置信度服务端计算）                       |
-| DELETE | `/evidence/{id}`                  | 删除（同时删除引用它的边）                                            |
-| GET    | `/evidence/{id}/trace`            | 反向溯源：该证据支持了哪些 Claim                                      |
-| POST   | `/documents/{id}/analyze`         | 由已存文档构建证据与技能边（同步、幂等）                              |
-| POST   | `/evidence/validate`              | **Claim Validator（单条）** — 现由 `/ai/validate/claim` 提供          |
-| POST   | `/evidence/validate/batch`        | 批量验证（≤ 20 条）— PHASE 6                                          |
-| GET    | `/claims`                         | 断言列表（`?status=&versionId=&jobId=`）                              |
-| GET    | `/claims/{id}`                    | 断言详情（含检索详情与判定理由）                                      |
-| POST   | `/claims/{id}/accept` · `/reject` | 接受/拒绝 AI 改写建议                                                 |
-| GET    | `/claims/{id}/validations`        | 验证历史                                                              |
+| 方法   | 路径                              | 说明                                                                             |
+| ------ | --------------------------------- | -------------------------------------------------------------------------------- |
+| GET    | `/evidence-graph`                 | 子图查询：`?focus=skill:stm32&depth=2&types=project,repo_file&limit=`            |
+| GET    | `/evidence`                       | 证据列表（`?kind=&minConfidence=&limit=`）                                       |
+| GET    | `/evidence/{id}`                  | 证据详情（locator、置信度拆解、来源）                                            |
+| POST   | `/evidence`                       | 手工添加证据（`manual` 类型，置信度服务端计算）— **幂等**：201 新建 / 200 已存在 |
+| DELETE | `/evidence/{id}`                  | 删除（同时删除引用它的边）                                                       |
+| GET    | `/evidence/{id}/trace`            | 反向溯源：该证据支持了哪些 Claim                                                 |
+| POST   | `/documents/{id}/analyze`         | 由已存文档构建证据与技能边（同步、幂等）                                         |
+| POST   | `/evidence/validate`              | **Claim Validator（单条，唯一门禁路径）** — 见下方请求/响应示例                  |
+| POST   | `/evidence/validate/batch`        | 批量验证（≤ 20 条，逐条落库）                                                    |
+| GET    | `/claims`                         | 断言列表（`?status=&versionId=&jobId=`）— 未实现                                 |
+| GET    | `/claims/{id}`                    | 断言详情（含检索详情与判定理由）— 未实现                                         |
+| POST   | `/claims/{id}/accept` · `/reject` | 接受/拒绝 AI 改写建议 — 未实现                                                   |
+| GET    | `/claims/{id}/validations`        | 验证历史 — 未实现                                                                |
 
 ```jsonc
 // GET /evidence-graph?focus=skill:stm32&depth=2 → 200
@@ -401,28 +418,60 @@ AI 相关响应统一携带：
 ```
 
 ```jsonc
-// POST /evidence/validate
-// request
+// POST /evidence —— 首次 → 201；相同内容再次提交 → 200（沿用既有行）
+// request（`extra="forbid"`：传 confidence 直接 400）
+{ "title": "上线了一个内部工具",
+  "snippet": "用 Python 写了一个自动生成周报的脚本",
+  "locator": { "url": "https://example.com/tool" } }
+
+// 201（首次）/ 200（重复）
+{ "success": true, "data": {
+    "id": "uuid-e9", "kind": "manual", "title": "上线了一个内部工具",
+    "confidence": 0.55, "created": true,          // 重复提交时为 false，且 id 与首次相同
+    "factors": { "sourceAuthority": 0.55, "recency": 0.9, "specificity": 0.5,
+                 "corroboration": 0.6, "extractionQuality": 0.7,
+                 "corroborationSources": 1, "recomputed": 0.55,
+                 "formulaVersion": "confidence@1.0.0" },
+    "locator": { "url": "https://example.com/tool", "path": null, "line": null } } }
+```
+
+```jsonc
+// POST /evidence/validate —— 唯一门禁路径（routers/resume.py → ResumeService.validate）
+// request：`extra="forbid"`；旧 /ai/validate/claim 的 { claim, evidence_text } 会被 400 拒绝
 { "text": "基于 FreeRTOS 开发多任务实时控制系统，任务调度周期 1ms",
-  "jobId": "uuid-job", "projectId": "uuid-proj" }
+  "section": "summary", "jobId": "uuid-job" }
 
 // 200
 { "success": true, "data": {
-    "claim": "基于 FreeRTOS 开发多任务实时控制系统，任务调度周期 1ms",
-    "status": "partially_supported",
-    "confidence": 0.68,
-    "hasQuantifiedClaim": true,
-    "sources": [
-      {"evidenceId":"uuid-e1","title":"freertos.c","kind":"repo_file","relevance":0.94,
-       "channel":"both","locator":{"path":"Core/Src/freertos.c","line":18},
-       "url":"https://github.com/.../freertos.c#L18"},
-      {"evidenceId":"uuid-e2","title":"README.md","kind":"readme","relevance":0.81,"channel":"semantic"} ],
-    "reasons": [
-      {"rule":"numeric_without_evidence","severity":"warning",
-       "message":"「1ms 调度周期」在证据中未找到量化支撑，建议删除具体数值或补充实测数据"} ],
-    "safeRewrite": "基于 FreeRTOS 开发多任务实时控制系统，完成任务划分、队列通信与优先级配置",
-    "unknowns": ["实际调度周期未在证据中体现"] } }
+    "claimId": "uuid-claim-1",              // 判定已落库（resume_claims.resume_version_id 为 null）
+    "claim": {
+      "claim": "基于 FreeRTOS 开发多任务实时控制系统，任务调度周期 1ms",
+      "status": "partially_supported",
+      "confidence": 0.68,
+      "hasQuantifiedClaim": true,
+      "independentSourceCount": 2,
+      "ruleVersion": "claim_rules@1.0.0",
+      "model": "heuristic@1.0.0",           // 判定所依据的模型；规则阶段未调用模型时为 null
+      "sources": [
+        {"evidenceId":"uuid-e1","title":"freertos.c","kind":"document_chunk","relevance":0.94,
+         "channel":"both","locator":"Core/Src/freertos.c:18","url":null,"snippet":"…"},
+        {"evidenceId":"uuid-e2","title":"README.md","kind":"manual","relevance":0.81,
+         "channel":"semantic","locator":"","url":null,"snippet":"…"} ],
+      "reasons": [
+        {"rule":"numeric_without_evidence","severity":"warning","evidenceIds":[],
+         "message":"「1ms 调度周期」在证据中未找到量化支撑，建议删除具体数值或补充实测数据"} ],
+      "safeRewrite": { "text": "基于 FreeRTOS 开发多任务实时控制系统",
+                       "removedClaims": ["任务调度周期 1ms"], "rationale": "删去无证据的量化表述" },
+      "unknowns": ["实际调度周期未在证据中体现"] },
+    // 门禁自己的降级状态：检索失败时 `degraded: true`，`warnings` 里写明原因
+    "degraded": false,
+    "warnings": [] } }
 ```
+
+> **`degraded` / `warnings` 属于判定本身，不是装饰（PHASE 14）**：检索器抛异常时门禁仍会给出判定，
+> 但那是「没检索到证据」而不是「没有证据支持」，响应必须说明，否则读者无法给它打折。这两个字段此前
+> 被服务层丢弃（`ResumeService.validate` 把工作流 outcome 解包到一个未使用的变量里），只在运行轨迹里
+> 可见。
 
 **状态语义**：`supported` / `partially_supported` / `unsupported` / `contradicted`（详见 PRD 4.4）。
 `contradicted` **只用于证据确实与之冲突**（时间线冲突，或模型报告了 `contradicting_evidence`）；
@@ -443,29 +492,37 @@ AI 相关响应统一携带：
 > 由哪个算法版本产生。
 > `strengths` / `gaps` / `unknowns` 在响应中是 camelCase 且明确的模型；`why.formula` 是真实
 > 公式而非描述，`dimensions[*].weighted` 之和等于 `score`（有测试断言这一点）。
+> **`GET /jobs/{id}/match` 读库，因此它只能回答库里有的东西（PHASE 14）**：`job_matches` 存了分数、
+> 五个维度的分数与权重、`why`、`strengths`/`gaps`/`unknowns`，**没有**存 `evidenceCoverage`、
+> `confidence`、`degraded`、`narrative`、`warnings`，也没有按维度存 `evidenceIds` / `notes`。
+> 这些字段在 GET 响应里是 `null`（而不是模型的 `0.0` / `false` / `[]`）：此前的默认值会被当成测量值，
+> 于是同一次匹配在 GET 上显示「证据覆盖率 0%」，而 POST 刚刚测出 100%。要拿到这五个数字就重新算一次
+> （`POST`），这是唯一诚实的途径。GET 与 POST 的响应结构相同，只有这几个字段有值/无值的区别。
 > 尚未实现：`PATCH /jobs/{id}`（纠正解析结果）、`POST /jobs/match`（不落库的即时匹配）、
-> `POST /jobs/{id}/skill-gap` 与 `/learning-plan`（CoachAgent 已有，端点待接）。
+> `POST /jobs/{id}/skill-gap` 与 `/learning-plan`（CoachAgent 已有，端点待接；两行此前只写了
+> 「PHASE 8」，读起来像已交付，PHASE 14 核对路由表时确认仍未挂载）。
 > `POST /jobs/{id}/applications`（加入投递看板）已实现，见 §2.9。
 > `experience` 与 `project` 两个维度自 PHASE 2b 起由 §2.2 的职业实体表驱动；空缺的维度会如实
 > 记为 0 并在 `unknowns` 里说明「没有这类数据」，而不是用假设填补。
 
-| 方法   | 路径                       | 说明                                                      |
-| ------ | -------------------------- | --------------------------------------------------------- |
-| POST   | `/jobs/analyze`            | `{ "text": "JD..." }` → 200（WF-03），同步返回解析结果    |
-| GET    | `/jobs`                    | 列表（`?q=` 按岗位名子串）                                |
-| GET    | `/jobs/{id}`               | 详情（含 `analysis` 原文与全部要求行）                    |
-| GET    | `/jobs/{id}/skill-tree`    | Required / Preferred / Bonus 三层树（每项带 JD 原文出处） |
-| PATCH  | `/jobs/{id}`               | 修正解析结果（用户纠正提升 `parse_confidence`）— 未实现   |
-| DELETE | `/jobs/{id}`               | 删除（级联要求行与匹配历史）                              |
-| POST   | `/jobs/{id}/match`         | 计算匹配（WF-04）→ 同步，落库并返回完整 `why`             |
-| GET    | `/jobs/{id}/match`         | 最新匹配结果（读库，不重算）                              |
-| POST   | `/jobs/match`              | 不保存 JD 的即时匹配 — 未实现                             |
-| POST   | `/jobs/{id}/skill-gap`     | 缺口矩阵 — PHASE 8                                        |
-| POST   | `/jobs/{id}/learning-plan` | 30 天计划 + mini projects（WF-08）— PHASE 8               |
-| POST   | `/jobs/{id}/applications`  | 加入投递看板 — PHASE 8                                    |
+| 方法   | 路径                       | 说明                                                         |
+| ------ | -------------------------- | ------------------------------------------------------------ |
+| POST   | `/jobs/analyze`            | `{ "text": "JD..." }` → 200（WF-03），同步返回解析结果       |
+| GET    | `/jobs`                    | 列表（`?q=` 按岗位名子串）                                   |
+| GET    | `/jobs/{id}`               | 详情（含 `analysis` 原文与全部要求行）                       |
+| GET    | `/jobs/{id}/skill-tree`    | Required / Preferred / Bonus 三层树（每项带 JD 原文出处）    |
+| PATCH  | `/jobs/{id}`               | 修正解析结果（用户纠正提升 `parse_confidence`）— 未实现      |
+| DELETE | `/jobs/{id}`               | 删除（级联要求行与匹配历史）                                 |
+| POST   | `/jobs/{id}/match`         | 计算匹配（WF-04）→ 同步，落库并返回完整 `why` 与五个测量字段 |
+| GET    | `/jobs/{id}/match`         | 最新匹配结果（读库，不重算；未存储的字段为 `null`）          |
+| POST   | `/jobs/match`              | 不保存 JD 的即时匹配 — 未实现                                |
+| POST   | `/jobs/{id}/skill-gap`     | 缺口矩阵 — 未实现（CoachAgent 已有，端点未挂载）             |
+| POST   | `/jobs/{id}/learning-plan` | 30 天计划 + mini projects（WF-08）— 未实现                   |
+| POST   | `/jobs/{id}/applications`  | 加入投递看板（见 §2.9）                                      |
 
 ```jsonc
-// POST /jobs/{id}/match → 200
+// POST /jobs/{id}/match → 200（GET 同构，但 evidenceCoverage / confidence / degraded /
+//                          narrative / warnings 与各维度的 evidenceIds / notes 为 null）
 {
   "success": true,
   "data": {
@@ -473,29 +530,72 @@ AI 相关响应统一携带：
     "score": 86.0,
     "dimensions": {
       "skill": {
+        "key": "skill",
+        "label": "技能匹配",
         "score": 91.0,
         "weight": 0.4,
         "weighted": 36.4,
-        "matched": ["stm32", "freertos", "c", "embedded_debugging"],
-        "missed": ["can", "autosar"],
+        "formula": "0.40·skill + …",
+        "notes": ["无证据的技能按 40% 计入"],
+        "evidenceIds": ["uuid-e1", "uuid-e1", "uuid-e2"],
       },
-      "experience": { "score": 88.0, "weight": 0.25, "weighted": 22.0 },
-      "project": { "score": 84.0, "weight": 0.2, "weighted": 16.8 },
-      "education": { "score": 100.0, "weight": 0.05, "weighted": 5.0 },
-      "evidence": { "score": 78.0, "weight": 0.1, "weighted": 7.8 },
+      "experience": {
+        "key": "experience",
+        "label": "经验匹配",
+        "score": 88.0,
+        "weight": 0.25,
+        "weighted": 22.0,
+        "formula": "…",
+        "notes": [],
+        "evidenceIds": [],
+      },
+      "project": {
+        "key": "project",
+        "label": "项目匹配",
+        "score": 84.0,
+        "weight": 0.2,
+        "weighted": 16.8,
+      },
+      "education": {
+        "key": "education",
+        "label": "学历匹配",
+        "score": 100.0,
+        "weight": 0.05,
+        "weighted": 5.0,
+      },
+      "evidence": {
+        "key": "evidence",
+        "label": "证据强度",
+        "score": 78.0,
+        "weight": 0.1,
+        "weighted": 7.8,
+      },
     },
     "strengths": [
-      { "skill": "stm32", "label": "STM32", "reason": "3 个项目 + 12 条代码证据" },
-      { "skill": "freertos", "label": "FreeRTOS", "reason": "freertos.c + 任务划分提交" },
+      {
+        "canonicalId": "stm32",
+        "displayName": "STM32",
+        "requirement": "required",
+        "userLevel": "advanced",
+        "evidenceCount": 12,
+        "confidence": 0.95,
+        "reason": "3 个项目 + 12 条代码证据",
+      },
     ],
     "gaps": [
-      { "skill": "can", "label": "CAN", "severity": "high", "jdEvidence": "熟悉 CAN/CANopen 总线" },
-      { "skill": "autosar", "label": "AUTOSAR", "severity": "high" },
+      {
+        "canonicalId": "can",
+        "displayName": "CAN",
+        "requirement": "required",
+        "severity": "high",
+        "jdEvidence": "熟悉 CAN/CANopen 总线",
+      },
     ],
     "unknowns": [
       {
-        "skill": "rt_thread",
-        "label": "RT-Thread",
+        "canonicalId": "rt_thread",
+        "displayName": "RT-Thread",
+        "requirement": "preferred",
         "reason": "简历未提及且无相关证据",
         "askUser": "你是否接触过 RT-Thread？",
       },
@@ -505,7 +605,14 @@ AI 相关响应统一携带：
       "algorithmVersion": "match@1.0.0",
       "evidenceUsed": ["uuid-e1", "uuid-e2", "uuid-e7"],
       "notes": ["证据强度维度因 CAN/AUTOSAR 缺失被扣分，反映「要求但无证据」的真实风险"],
+      "explanation": "…",
+      "computedAt": "2026-02-12T09:15:00+00:00",
     },
+    "evidenceCoverage": 1.0, // 0..1；GET 读库时为 null
+    "confidence": 0.95, // strengths 的平均证据置信度；GET 读库时为 null
+    "degraded": true, // 产生这次匹配的运行是否降级；GET 读库时为 null
+    "narrative": "", // 叙述步骤失败时为空字符串（这是一次真实的测量）
+    "warnings": ["尚无证据：请先上传简历并运行分析，证据强度维度才有数据可算。"],
   },
 }
 ```
@@ -563,78 +670,158 @@ AI 相关响应统一携带：
 }
 ```
 
-### 2.8 面试 `/interview`
+### 2.8 AI 端点 `/ai`（含模拟面试 `/ai/interview`）
 
-| 方法 | 路径                        | 说明                                                              |
-| ---- | --------------------------- | ----------------------------------------------------------------- |
-| POST | `/interview/start`          | `{ mode, jobId?, projectId?, difficulty? }` → 返回 session + 首题 |
-| POST | `/interview/{id}/message`   | 提交回答 → 返回下一题（含 `evaluate` 与难度变化）                 |
-| GET  | `/interview/{id}/stream`    | SSE 流式出题（推荐）                                              |
-| POST | `/interview/{id}/finish`    | 结束并生成 Scorecard                                              |
-| GET  | `/interview/{id}`           | 会话详情（含全部消息）                                            |
-| GET  | `/interview/{id}/scorecard` | 七维评分卡                                                        |
-| GET  | `/interview`                | 历史列表（`?mode=&status=`）                                      |
-| POST | `/interview/{id}/abandon`   | 放弃（保留记录）                                                  |
+> **状态：已实现（PHASE 2/PHASE 7）**。本节按**代码**写就（PHASE 14）：路由在
+> `apps/api/src/careerforge_api/routers/ai.py`，请求/响应模型在 `schemas/ai.py`，面试引擎在
+> `packages/ai/careerforge_ai/agents/interview/*` 与 `schemas/interview.py`。
+> **此前本节写的是另一套东西**：路径写成 `/interview/*`（实际挂载在 `/ai/interview/*`）、
+> 字段写成 camelCase（`interviewId` / `difficultyChange` / `message`）、请求体写成 `jobId` +
+> `projectId`（实际是**已解析的 `JDAnalysis`**）。照着旧文档写客户端，一个字段都对不上。
+> **这些端点是无状态的**：材料由调用方在请求体里给出，AI 层不去读未落地的表。因此
+> `POST /ai/interview/start` 收的是 `GET /jobs/{id}` 的 `analysis`（不是 `/jobs/analyze` 的响应——
+> 后者多一个 `warnings` 键，`extra="forbid"` 会直接 400）。
+> 每个端点都真的跑生产 agent（`WorkflowExecutor`），每次运行都写 `agent_runs`，响应里的 `meta`
+> 说明是哪个 provider 提供的答案、是否降级、`run_id` 是多少。
+> **断言校验不在这里**：`POST /ai/validate/claim` 已于 PHASE 14 **删除**，唯一门禁路径是
+> `POST /evidence/validate`（§2.5）。后者会为当前用户构建混合检索器并把候选人材料交给规则阶段，
+> 而前者读 `app.state.retriever`（仓库里没有任何地方设置它）、材料只来自请求体，于是检索不到任何
+> 证据、`sources` 恒为空、`confidence` 恒为 `0.0`，对候选人自己材料明确支持的句子也判 `unsupported`——
+> `supported` 在那条路径上结构上不可达。
+> **响应字段是 snake_case**（Pydantic 模型直接序列化，没有 `by_alias`），`meta` 里的键同样是
+> snake_case。面试会话保存在**进程内**（`GET /ai/capabilities` 的 `session_store: "in-process"`）：
+> 多进程部署下，另一个 worker 看不到本进程创建的会话。
 
-```jsonc
-// POST /interview/start
-{ "mode": "technical", "jobId": "uuid-job", "difficulty": 1 }
-
-// 200
-{ "success": true, "data": {
-    "interviewId": "uuid-iv", "mode": "technical", "status": "in_progress",
-    "plan": [ {"topic":"freertos","targetLevel":1,"reason":"简历与 freertos.c 证据命中岗位要求"},
-              {"topic":"spi_debugging","targetLevel":2,"reason":"项目含 SPI 传感器驱动"} ],
-    "message": { "turnIndex": 0, "role": "interviewer", "questionLevel": 1, "topic": "freertos",
-                 "content": "你在 Balance Robot 里用了 FreeRTOS，为什么选择它而不是裸机前后台？" } } }
-
-// POST /interview/{id}/message  → 200
-{ "success": true, "data": {
-    "evaluation": { "turnIndex": 0, "score": 7.5, "technicalAccuracy": 0.8, "depth": 0.6,
-                    "missingKnowledge": ["优先级反转与互斥量优先级继承"],
-                    "feedback": "概念正确，但未涉及中断与任务的同步边界。" },
-    "difficultyChange": { "from": 1, "to": 2, "reason": "回答正确，进入工程层追问" },
-    "message": { "turnIndex": 1, "role": "interviewer", "questionLevel": 2, "topic": "freertos",
-                 "content": "Task 与 ISR 之间你用什么方式通信？为什么不用全局变量？" } } }
-```
+| 方法   | 路径                                | 说明                                                          |
+| ------ | ----------------------------------- | ------------------------------------------------------------- |
+| POST   | `/ai/analyze/jd`                    | `{ text }` → JD 解析结果 `analysis` + `meta`（同步，WF-03）   |
+| POST   | `/ai/match`                         | `{ job, profile }` → 五维匹配分 + `why`（无状态版本，不落库） |
+| GET    | `/ai/capabilities`                  | agent 清单、provider 链、本部署的限制与降级状态（需认证）     |
+| POST   | `/ai/interview/start`               | `{ mode?, job?, profile?, difficulty? }` → 会话 + 计划 + 首题 |
+| POST   | `/ai/interview/{session_id}/answer` | `{ answer }` → 评估、难度变化、下一题                         |
+| POST   | `/ai/interview/{session_id}/finish` | 收尾并生成七维 Scorecard                                      |
+| GET    | `/ai/interview/{session_id}`        | 会话详情（刷新页面后恢复用）                                  |
+| DELETE | `/ai/interview/{session_id}`        | 丢弃会话 → `204`，无响应体                                    |
 
 ```jsonc
-// GET /interview/{id}/scorecard → 200
+// GET /ai/capabilities → 200（需认证）
 {
   "success": true,
   "data": {
-    "overallScore": 78.0,
-    "dimensions": [
-      { "key": "technicalAccuracy", "label": "技术准确性", "score": 82 },
-      { "key": "communication", "label": "表达沟通", "score": 75 },
-      { "key": "depth", "label": "技术深度", "score": 70 },
-      { "key": "problemSolving", "label": "问题解决", "score": 80 },
-      { "key": "engineeringThinking", "label": "工程思维", "score": 76 },
-      { "key": "confidence", "label": "自信度", "score": 79 },
-      { "key": "evidenceConsistency", "label": "证据一致性", "score": 88 },
-    ],
-    "evidenceConflicts": [
+    "agents": [
       {
-        "claim": "熟悉 CAN 总线",
-        "evidenceState": "图谱中无 CAN 相关证据",
-        "severity": "medium",
-        "advice": "面试前补齐或调整表述，避免追问失分",
-      },
+        "agent": "validator",
+        "workflow": "claim_validate",
+        "status": "ready",
+        "purpose": "断言验证与防幻觉门禁",
+      } /* …共 9 个… */,
     ],
-    "perQuestion": [
-      {
-        "turnIndex": 0,
-        "topic": "freertos",
-        "level": 1,
-        "verdict": "strong",
-        "suggestedAnswer": "…",
-        "followUpTopics": ["Queue vs Semaphore", "优先级反转"],
-      },
+    "provider": "heuristic",
+    "provider_chain": ["heuristic"],
+    "degraded": true, // 零密钥部署：主 provider 是确定性启发式实现
+    "retrieval_available": false, // 进程级检索器未配置（AI 端点不用它，见 limitations）
+    "session_store": "in-process",
+    "active_interview_sessions": 0,
+    "limitations": [
+      "进程级检索器未配置：AI 端点（analyze/match/interview）为无状态实现，材料来自请求体；断言门禁 POST /evidence/validate 不受影响，它每次请求都会用当前用户的 evidence 表构建混合检索器（BM25 + 向量 + RRF）",
+      "当前使用 SQLite 与进程内队列，数据不跨进程共享",
+      "AI 端点为无状态实现：输入直接来自请求体（岗位用 JD 解析结果、画像由调用方提供），不读取未落地的表",
     ],
-    "followUpTopics": ["FreeRTOS 内存管理 heap_4", "中断延迟测量方法"],
-    "durationSeconds": 942,
   },
 }
+```
+
+```jsonc
+// POST /ai/interview/start
+// request：`extra="forbid"`；`job` 是 JD 解析结果本身（GET /jobs/{id} 的 analysis），
+// 不是 jobId —— 存储 id 由服务端从别处取，无状态端点不需要它
+{ "mode": "technical",
+  "job": { "company": "某科技", "role": "嵌入式软件工程师", "education_requirement": "本科",
+           "years_experience_min": 3.0,
+           "required_skills": [ { "canonical_id": "stm32", "raw_text": "STM32",
+                                  "requirement": "required", "jd_evidence": "熟悉 STM32" } ] },
+  "profile": { "skills": [ /* CandidateProfile … */ ] },
+  "difficulty": 1 }
+
+// 200
+{ "success": true, "data": {
+    "session_id": "uuid-iv",
+    "mode": "technical",
+    "status": "in_progress",
+    "current_level": "concept",
+    "plan": [
+      { "topic": "stm32", "label": "STM32", "target_level": "engineering",
+        "reason": "岗位要求 STM32，且你有 8 条证据", "source": "evidence",
+        "source_ids": ["uuid-e1", "uuid-e2"], "covered": true },
+      { "topic": "can", "label": "CAN", "target_level": "concept",
+        "reason": "岗位必备 CAN，但证据图谱中没有支撑，面试中很可能被追问", "source": "gap",
+        "source_ids": [], "covered": false }
+    ],
+    "turns": [
+      { "turn_index": 0, "role": "interviewer", "topic": "stm32", "level": "engineering",
+        "score": null, "content": "你在 Balance Robot 里用了 STM32，为什么选择它而不是其它方案？" }
+    ],
+    "scorecard": null,
+    "meta": { "provider": "heuristic", "model": "heuristic@1.0.0", "prompt_version": "interviewer@v1",
+              "degraded": true, "degraded_reason": "no_api_key", "workflow": "interview_start",
+              "run_id": "uuid-run", "latency_ms": 12, "cache_hit": false, "warnings": [] } } }
+
+// POST /ai/interview/{session_id}/answer
+{ "answer": "因为需要多任务并发，裸机前后台在时序上很难保证……" }
+
+// 200
+{ "success": true, "data": {
+    "session_id": "uuid-iv",
+    "status": "in_progress",
+    "current_level": "debugging",                 // 难度阶梯：concept → engineering → debugging
+    "evaluation": {
+      "turn_index": 1, "score": 78.0,
+      "technical_accuracy": 0.8, "depth": 0.6, "communication": 0.75,
+      "problem_solving": 0.7, "engineering_thinking": 0.65, "confidence": 0.82,
+      "missing_knowledge": ["优先级反转与互斥量优先级继承"],
+      "feedback": "概念正确，但未涉及中断与任务的同步边界。",
+      "strong_points": [], "follow_up_topics": [], "suggested_answer": "…" },
+    "difficulty_change": { "from_level": "concept", "to_level": "debugging",
+                           "reason": "回答得分 78，高于 75，进入更深一层追问" },
+    "next_question": { "turn_index": 2, "content": "Task 与 ISR 之间你用什么方式通信？为什么不用全局变量？",
+                       "topic": "can", "level": "debugging" },
+    "meta": { /* … */ } } }
+
+// POST /ai/interview/{session_id}/finish → 200（结构与 start 相同，status=completed）
+// GET  /ai/interview/{session_id}      → 200（同一结构，用于刷新后恢复）
+// DELETE /ai/interview/{session_id}    → 204（无响应体）
+{ "success": true, "data": {
+    "session_id": "uuid-iv", "mode": "technical", "status": "completed",
+    "current_level": "debugging",
+    "plan": [ /* 同上；`covered` 由**实际问过的题目**推导，不是计划时声明的 */ ],
+    "turns": [ /* 面试官与候选人交替 */ ],
+    "scorecard": {
+      "interview_id": "uuid-iv", "mode": "technical",
+      "overall_score": 78.0,
+      "dimensions": [
+        { "key": "technical_accuracy", "label": "技术准确性", "score": 82.0, "comment": "" },
+        { "key": "communication", "label": "表达沟通", "score": 75.0, "comment": "" },
+        { "key": "depth", "label": "技术深度", "score": 70.0, "comment": "" },
+        { "key": "problem_solving", "label": "问题解决", "score": 80.0, "comment": "" },
+        { "key": "engineering_thinking", "label": "工程思维", "score": 76.0, "comment": "" },
+        { "key": "confidence", "label": "自信度", "score": 79.0, "comment": "" },
+        { "key": "evidence_consistency", "label": "证据一致性", "score": 88.0,
+          "comment": "口述内容与证据图谱一致" } ],
+      "strengths": [], "weaknesses": [],
+      "missing_knowledge": ["优先级反转与互斥量优先级继承"],
+      "follow_up_topics": ["FreeRTOS 内存管理 heap_4", "中断延迟测量方法"],
+      "evidence_conflicts": [
+        { "statement": "熟悉 CAN 总线", "evidence_state": "你在回答中提到了这些技术，但证据图谱中没有支撑材料：can",
+          "severity": "medium", "advice": "面试前补齐相关代码或文档，或调整表述范围，避免追问时无法举证" } ],
+      "per_question": [
+        { "turn_index": 0, "topic": "stm32", "level": "engineering", "verdict": "strong",
+          "question": "…", "answer": "…", "suggested_answer": "…",
+          "missing_knowledge": [], "follow_up_topics": [] } ],
+      "difficulty_start": "engineering", "difficulty_end": "debugging",
+      "duration_seconds": 942,          // started_at → completed_at；会话未结束时为 null
+      "generated_at": "2026-09-25T18:40:00+00:00",
+      "algorithm_version": "scorecard@1.0.0" },
+    "meta": { "provider": "session", "workflow": "interview", "degraded": false, "warnings": [] } } }
 ```
 
 ### 2.9 投递看板 `/applications`
@@ -726,14 +913,17 @@ AI 相关响应统一携带：
 
 > **状态：已实现（PHASE 6b）**：`POST /resume/optimize`、`GET /resume/versions`、
 > `GET /resume/versions/{id}`、`DELETE /resume/versions/{id}`，以及 §2.5 的
-> `POST /evidence/validate` 与 `/evidence/validate/batch`（≤ 20 条）。表见 §2.9（迁移 `0006`）。
+> `POST /evidence/validate` 与 `/evidence/validate/batch`（≤ 20 条）。表结构见
+> `docs/DATABASE.md` §2.9（迁移 `0006`）。
 > **门禁持有的不是徽章而是引用**：`claim_evidence` 记录「这句话靠哪条证据」，`resume_claims`
 > 记录判定、置信度、触发的规则与降级改写；因此「为什么被改写」在几个月后仍可回答，且不依赖
 > 当时是否配了模型。`resume_claims.resume_version_id` 可空，Validator 页因此能校验一句**尚未**
 > 进入任何版本的草稿。
 > **门禁需要检索器**：缺检索器时它不会降级，而是全盘拒绝——API 侧为每次校验构建当用户的混合
 > 检索器（BM25 + 向量 + RRF），并把候选人材料作为规则阶段的输入传给引擎（协议规定持有材料的
-> 调用方应当提供）。
+> 调用方应当提供）。这条路径就是 `POST /evidence/validate`，**唯一**的门禁入口（PHASE 14 删除了
+> 无状态的 `POST /ai/validate/claim`，理由见 §2.5）。检索失败时响应会给出 `degraded: true` 与
+> `warnings`，运行轨迹里也有对应的一条 `agent_runs`。
 > `integrity_score` 与 `claim_stats` 由**本次实际落库的 claim** 计算，不抄引擎字段，避免摘要与
 > 内容互相矛盾。
 > 剩余已知限制见 `docs/ROADMAP.md`「已知限制」：去掉度量动词后分句可能只剩名词短语（规则无法诚实
@@ -1068,10 +1258,10 @@ curl -s -X POST localhost:8000/api/v1/jobs/analyze \
 # 3) 匹配
 curl -s -X POST localhost:8000/api/v1/jobs/$JOB/match -H "Authorization: Bearer $T" | jq .data.score
 
-# 4) 验证一句可能有问题的简历描述
+# 4) 验证一句可能有问题的简历描述（唯一门禁路径，见 §2.5）
 curl -s -X POST localhost:8000/api/v1/evidence/validate \
   -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
-  -d '{"text":"优化系统性能，提升 70%"}' | jq '.data.status, .data.safeRewrite'
+  -d '{"text":"优化系统性能，提升 70%"}' | jq '.data.claim.status, .data.claim.safeRewrite.text, .data.degraded'
 
 # 5) 打开证据图谱（stm32 子图）
 curl -s "localhost:8000/api/v1/evidence-graph?focus=skill:stm32&depth=2" \

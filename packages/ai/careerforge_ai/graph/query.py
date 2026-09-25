@@ -241,7 +241,11 @@ def graph_stats(nodes: Sequence[GraphNode], edges: Sequence[GraphEdge]) -> dict[
         "edges": len(edges),
         "nodes_by_type": dict(sorted(by_type.items())),
         "edges_by_relation": dict(sorted(by_relation.items())),
-        "mean_confidence": (round(sum(confidences) / len(confidences), 4) if confidences else 0.0),
+        # ``None`` when not one node in this view carries a confidence: an empty mean is
+        # undefined, and the ``0.0`` that stood here was read as "every node scored zero" —
+        # the opposite of "nothing has been scored yet". The two counts below stay ``0``,
+        # because "no node is high-confidence" is a true statement about such a view.
+        "mean_confidence": (round(sum(confidences) / len(confidences), 4) if confidences else None),
         "high_confidence": sum(1 for value in confidences if value >= 0.75),
         "low_confidence": sum(1 for value in confidences if value < 0.45),
     }

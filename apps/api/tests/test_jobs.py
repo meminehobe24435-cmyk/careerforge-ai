@@ -232,6 +232,23 @@ async def test_match_scores_against_the_stored_evidence_graph(
     assert latest["score"] == match["score"]
     assert latest["why"]["formula"] == match["why"]["formula"]
 
+    # The five fields the ``job_matches`` row does not hold are ``null``, not the model's
+    # defaults (PHASE 14). Serialising ``0.0``/``false``/``[]`` here made a stored match report
+    # "evidence coverage 0%" beside the live endpoint's measurement for the same pair.
+    for unmeasured in ("evidenceCoverage", "confidence", "degraded", "narrative", "warnings"):
+        assert latest[unmeasured] is None, (
+            f"GET /jobs/{{id}}/match reported {unmeasured}={latest[unmeasured]!r}, which is a "
+            "value no column in job_matches can supply"
+        )
+    # The same rule per dimension: the row keeps the score, the weight and the formula, but not the
+    # engine's per-dimension notes or evidence ids, so those are ``null`` too — an empty list here
+    # was rendered as "Evidence 0" for a dimension the live match had backed with three citations.
+    for key, dimension in latest["dimensions"].items():
+        assert dimension["score"] == match["dimensions"][key]["score"]
+        assert dimension["weight"] == match["dimensions"][key]["weight"]
+        assert dimension["evidenceIds"] is None, dimension
+        assert dimension["notes"] is None, dimension
+
 
 async def test_match_without_evidence_says_the_dimension_is_unmeasured(
     client: AsyncClient, envelope: EnvelopeCheck, make_user: UserFactory

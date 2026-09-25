@@ -3,11 +3,14 @@
 The assertions concentrate on the property the product claims: **a supported sentence can name
 the evidence that supports it, and an unsupported one is refused rather than reworded.** A test
 that only checked status codes would pass on a gate that approved everything.
+
+The gate's own behaviour — the fabricated metric, the single uncorroborated source, the empty
+evidence base, the degraded retrieval — lives in ``test_claim_gate.py``. This module covers what
+this feature adds on top: the stored claim, the citations, the version and its integrity score.
 """
 
 from __future__ import annotations
 
-import asyncio
 import itertools
 
 from fastapi import FastAPI
@@ -15,64 +18,14 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 
 from careerforge_api.models.resume import ClaimEvidence, ResumeClaim
+from tests.claim_support import (
+    JD_TEXT,
+    UNSUPPORTED_CLAIM,
+    evidence_ready as _evidence_ready,
+)
 from tests.conftest import EnvelopeCheck, Session, UserFactory
 
-RESUME = """教育经历
-某某大学 电子信息工程 本科 2019-2023
-
-实习经历
-某某科技 嵌入式软件实习生 2023.07-2023.12
-使用 STM32 与 FreeRTOS 开发电机控制固件，负责 CAN 总线节点通信调试。
-
-项目经历
-Balance Robot 基于 STM32 与 FreeRTOS 的两轮自平衡小车。
-
-专业技能
-C/C++、Python、STM32、FreeRTOS、CAN
-"""
-
-JD_TEXT = """某某科技有限公司
-岗位：嵌入式软件工程师
-
-任职要求：
-1. 熟悉 STM32 平台开发；
-2. 熟悉 FreeRTOS 实时操作系统。
-"""
-
-#: A sentence the evidence cannot support: it names a technology nothing the candidate supplied
-#: mentions, and it carries a number with nothing to compare it against.
-UNSUPPORTED_CLAIM = "使用 Kubernetes 将部署效率提升了 300%，并主导了 TensorFlow 模型上线。"
-
 _counter = itertools.count()
-
-
-def _resume() -> bytes:
-    return f"{RESUME}\n<!-- fixture {next(_counter)} -->\n".encode()
-
-
-async def _evidence_ready(client: AsyncClient, envelope: EnvelopeCheck, session: Session) -> None:
-    """Upload, parse, analyse, and import the profile — everything the gate can cite."""
-    body = await client.post(
-        "/api/v1/documents",
-        files={"file": ("resume.txt", _resume(), "text/plain")},
-        data={"kind": "resume"},
-        headers=session.headers,
-    )
-    assert body.status_code == 202, body.text
-    accepted = envelope(body)["data"]
-    for _ in range(200):
-        task = envelope(
-            await client.get(f"/api/v1/tasks/{accepted['taskId']}", headers=session.headers)
-        )["data"]
-        if task["status"] in {"succeeded", "failed"}:
-            break
-        await asyncio.sleep(0.02)
-    assert task["status"] == "succeeded", task
-
-    analyzed = await client.post(
-        f"/api/v1/documents/{accepted['documentId']}/analyze", headers=session.headers
-    )
-    assert analyzed.status_code == 200, analyzed.text
 
 
 async def test_a_supported_claim_names_its_evidence(

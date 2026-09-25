@@ -6,10 +6,13 @@ Verified by making real requests rather than by inspecting the route table: Fast
 check reports zero routes for endpoints that work perfectly. Behaviour is the only
 honest source of truth here.
 
-The assertions concentrate on the properties the product promises: a fabricated
-metric is refused, a claim backed only by self-reported material is *weak* rather
-than *supported*, and the scorecard's seven dimensions are measured rather than
-derived.
+The assertions concentrate on the properties the product promises: the job description is parsed
+into normalised skills, the score's five dimensions are measured rather than derived, and the
+degradation of a run is stated in the response rather than hidden.
+
+**Claim validation is no longer here.** ``POST /ai/validate/claim`` was removed in PHASE 14 and
+its behaviour lives in ``test_resume.py``, which drives the canonical ``POST /evidence/validate``
+against a real evidence base. What remains below is the pin on the removal itself.
 """
 
 from __future__ import annotations
@@ -132,64 +135,47 @@ class TestAnalyzeJob:
         assert response.status_code == 401
 
 
-class TestValidateClaim:
-    async def test_refuses_a_fabricated_metric(self, client: AsyncClient, demo, envelope) -> None:
+class TestValidateClaimRemoved:
+    """``POST /ai/validate/claim`` is gone, and its absence is the point (PHASE 14).
+
+    The endpoint ran the real gate with ``app.state.retriever`` — a property nothing in this
+    repository ever sets — and with no material, so it retrieved nothing, cited nothing, and
+    answered ``unsupported`` with ``confidence: 0.0`` even for a sentence the candidate's own
+    evidence supports. ``supported`` was structurally unreachable through it. Measured live in
+    PHASE 13: "使用 STM32 与 FreeRTOS 开发电机控制固件" over a populated evidence base came back
+    ``unsupported`` with zero sources.
+
+    It is not repaired, it is **removed**: the canonical gate is ``POST /evidence/validate``
+    (``routers/resume.py``), which the Validator page, the E2E specs and ``docs/API.md`` all use,
+    and which builds a real hybrid retriever per request. Keeping a second entry point would mean
+    a second copy of the gating logic or a second, permanently wrong answer to the same question.
+    """
+
+    async def test_the_endpoint_is_not_mounted(self, client: AsyncClient, demo) -> None:
         response = await client.post(
-            "/api/v1/ai/validate/claim",
+            "/api/v1/ai/validate/claim", json={"claim": "使用 Docker 部署"}, headers=demo.headers
+        )
+        assert response.status_code == 404, (
+            "the stateless claim endpoint is back; if it is deliberate, it must delegate to "
+            "ResumeService.validate rather than run the gate itself"
+        )
+
+    async def test_the_canonical_endpoint_is_the_one_that_answers(
+        self, client: AsyncClient, demo, envelope
+    ) -> None:
+        """The claim shapes the removed endpoint used to take are refused, not half-honoured."""
+        response = await client.post(
+            "/api/v1/evidence/validate",
             json={
-                "claim": "优化算法性能，提升 70%",
-                "evidence_text": "重构控制回路，减少重复计算。",
+                "claim": "使用 STM32 与 FreeRTOS 开发电机控制固件",
+                "evidence_text": MATERIAL,
             },
             headers=demo.headers,
         )
-        assert response.status_code == 200, response.text
-        data = envelope(response)["data"]
-        # `unsupported`, not `contradicted`: nothing in the evidence contradicts the 70%,
-        # it simply has no comparable measurement anywhere. Calling that a contradiction
-        # would tell the candidate their own evidence says otherwise when it says nothing.
-        assert data["status"] == "unsupported"
-        assert data["is_blocking"] is True
-        assert data["allows_resume_inclusion"] is False
-        assert any("70%" in reason["message"] for reason in data["reasons"])
-
-    async def test_offers_a_safer_rewrite(self, client: AsyncClient, demo, envelope) -> None:
-        response = await client.post(
-            "/api/v1/ai/validate/claim",
-            json={"claim": "优化算法性能，提升 70%", "evidence_text": "优化算法性能。"},
-            headers=demo.headers,
-        )
-        data = envelope(response)["data"]
-        assert data["safe_rewrite"] is not None
-        assert "70%" not in data["safe_rewrite"]["text"]
-
-    async def test_self_reported_material_is_weak_not_supported(
-        self, client: AsyncClient, demo, envelope
-    ) -> None:
-        response = await client.post(
-            "/api/v1/ai/validate/claim",
-            json={"claim": "基于 FreeRTOS 开发多任务实时控制系统", "evidence_text": MATERIAL},
-            headers=demo.headers,
-        )
-        data = envelope(response)["data"]
-        # One uncorroborated source is one source: the gate must not call it supported.
-        assert data["status"] != "supported"
-        assert data["status"] in {"partially_supported", "unsupported"}
-
-    async def test_no_evidence_means_no_support(self, client: AsyncClient, demo, envelope) -> None:
-        response = await client.post(
-            "/api/v1/ai/validate/claim",
-            json={"claim": "熟练使用 Redis 与 Kafka 构建高并发架构"},
-            headers=demo.headers,
-        )
-        data = envelope(response)["data"]
-        assert data["allows_resume_inclusion"] is False
-        assert data["unknowns"]
-
-    async def test_requires_authentication(self, client: AsyncClient, envelope) -> None:
-        response = await client.post(
-            "/api/v1/ai/validate/claim", json={"claim": "使用 Docker 部署"}
-        )
-        assert response.status_code == 401
+        # ``extra="forbid"``: the canonical body is ``{text, section, jobId}``, and a client
+        # sending the old body must be told rather than have its material silently dropped.
+        assert response.status_code == 400, response.text
+        assert envelope(response, success=False)["error"]["code"] == "VALIDATION_ERROR"
 
 
 class TestMatch:

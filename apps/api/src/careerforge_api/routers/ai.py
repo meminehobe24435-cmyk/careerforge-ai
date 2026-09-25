@@ -2,14 +2,23 @@
 
 Scope, stated because the honest boundary matters more than the endpoint count:
 these routes are **stateless**. Material arrives in the request body rather than by
-id, because the tables those ids would point at (``jobs``, ``evidence``,
-``documents``, ``resume_versions``) belong to phases that have not landed. When they
-do, these handlers gain a persistence step and keep the same contracts.
+id, because the tables those ids would point at (``jobs``, ``profile``) are read by the
+caller and passed in. That is what makes them useful as probes: a reviewer can drive an
+agent without owning a stored row.
 
 What is real: every handler runs the production agent through a real
 :class:`~careerforge_ai.orchestrator.WorkflowExecutor`, every run is written to
 ``agent_runs``, and every response carries metadata saying which provider served it
 and whether the answer was degraded.
+
+**Claim validation is not here** (PHASE 14). ``POST /ai/validate/claim`` used to live in this
+module and could never say *why*: it read a retriever off ``app.state.retriever``, which
+nothing in the repository sets, so it retrieved no evidence, cited no source and answered
+``unsupported`` with ``confidence: 0.0`` even for a sentence the candidate's own material
+plainly supports — ``supported`` was structurally unreachable through it. The canonical gate
+is ``POST /evidence/validate`` (``routers/resume.py``), which builds a hybrid retriever over
+the caller's stored evidence and supplies the rules phase with the candidate's material. One
+gate, one path, one place where a verdict is decided: this module does not keep a second copy.
 """
 
 from __future__ import annotations
@@ -35,8 +44,6 @@ from careerforge_api.schemas.ai import (
     MatchRequest,
     MatchResponse,
     StartInterviewRequest,
-    ValidateClaimRequest,
-    ValidateClaimResponse,
 )
 from careerforge_api.services.ai_service import AGENT_CATALOGUE, AIService, InterviewSessionStore
 
@@ -149,10 +156,22 @@ async def capabilities(
     """
     limitations: list[str] = []
     if service.retriever is None:
-        limitations.append("证据检索未接入：断言验证只依据请求中提供的材料，不会去检索证据库")
+        # What is true (PHASE 14): the *AI* endpoints are stateless and retrieve nothing —
+        # their material arrives in the request body. The claim gate is not one of them any
+        # more: ``POST /evidence/validate`` builds a hybrid retriever over the caller's stored
+        # evidence on every request, so claiming "断言验证不会去检索证据库" would have been a
+        # false statement sitting in the payload a client reads to find out what is missing.
+        limitations.append(
+            "进程级检索器未配置：AI 端点（analyze/match/interview）为无状态实现，材料来自请求体；"
+            "断言门禁 POST /evidence/validate 不受影响，它每次请求都会用当前用户的 evidence 表"
+            "构建混合检索器（BM25 + 向量 + RRF）"
+        )
     if settings.use_sqlite:
         limitations.append("当前使用 SQLite 与进程内队列，数据不跨进程共享")
-    limitations.append("AI 端点为无状态实现：输入直接来自请求体，尚未与 jobs/evidence 表持久化打通")
+    limitations.append(
+        "AI 端点为无状态实现：输入直接来自请求体（岗位用 JD 解析结果、画像由调用方提供），"
+        "不读取未落地的表"
+    )
     degraded = getattr(request.app.state, "provider", None) is not None and (
         service.provider_name == "heuristic"
     )
@@ -194,50 +213,6 @@ async def analyze_job(
             provider=service.provider_name,
             workflow="jd_analysis",
             prompt_version="jd_analysis@v1",
-        ),
-    )
-
-
-@router.post("/ai/validate/claim", response_model=ValidateClaimResponse)
-async def validate_claim(
-    payload: ValidateClaimRequest,
-    service: AIServiceDep,
-    user: CurrentUser,
-) -> ValidateClaimResponse:
-    """Run the hallucination gate over one claim.
-
-    The endpoint exists so the gate can be probed directly — the fastest way for a
-    reviewer to see that a fabricated metric is refused rather than reworded.
-    """
-    outcome = await service.validator_agent().run(
-        service.executor(),
-        claim=payload.claim,
-        evidence_text=payload.evidence_text,
-        job_context=payload.job_context,
-        retriever=service.retriever,
-        user_id=user.id,
-    )
-    validation = outcome.value
-    if validation is None:
-        raise ValidationError("断言验证未能完成")
-
-    return ValidateClaimResponse(
-        status=validation.status.value,
-        confidence=validation.confidence,
-        allows_resume_inclusion=validation.allows_resume_inclusion,
-        is_blocking=validation.is_blocking,
-        sources=[source.model_dump(mode="json") for source in validation.sources],
-        reasons=[reason.model_dump(mode="json") for reason in validation.reasons],
-        safe_rewrite=(
-            validation.safe_rewrite.model_dump(mode="json") if validation.safe_rewrite else None
-        ),
-        unknowns=list(validation.unknowns),
-        independent_source_count=validation.independent_source_count,
-        meta=_meta(
-            outcome,
-            provider=service.provider_name,
-            workflow="claim_validate",
-            prompt_version="evidence_validator@v1",
         ),
     )
 
