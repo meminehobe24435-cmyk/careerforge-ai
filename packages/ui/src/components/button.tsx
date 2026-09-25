@@ -6,6 +6,7 @@ import type { VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 import { cn } from '../lib/cn';
+import { focusRing } from '../lib/focus-ring';
 import { Spinner } from './spinner';
 
 /**
@@ -19,7 +20,7 @@ export const buttonVariants = cva(
     'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap',
     'rounded-md font-medium',
     'transition-[background-color,border-color,color,opacity] duration-[var(--dur-fast)] ease-forge',
-    'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+    focusRing,
     'disabled:pointer-events-none disabled:opacity-50',
     '[&_svg]:shrink-0',
   ].join(' '),

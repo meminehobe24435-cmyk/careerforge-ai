@@ -2,6 +2,14 @@
  * CareerForge AI — design tokens
  * Source of truth: docs/UI.md §2.1 (colour), §2.3 (scale/motion). FROZEN SPEC.
  *
+ * PHASE 14 amendment — §2.1's *neutral text* values only. `docs/UI.md` §9
+ * requires body text ≥ 4.5:1, and the three greys §2.1 froze did not meet it in
+ * either theme, so §2.1 and §9 contradicted each other and the accessibility
+ * gate was measuring §9. The two neutral text ramps here are the §9-conformant
+ * values; every other colour in §2.1 is unchanged. docs/UI.md itself is out of
+ * this change's file scope and still shows the old greys — see the PHASE 14
+ * report. The per-value derivation is in the comment above each ramp.
+ *
  * Rules:
  *  - dark is the first-class theme: the dark values live on `:root`;
  *  - light overrides live on `[data-theme="light"]` (next-themes writes the
@@ -24,9 +32,39 @@
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.18);
 
+  /* ---- Neutral text ramp — WCAG AA verified (docs/UI.md §9) --------------
+   *
+   * §9 requires 正文 ≥ 4.5:1. The ramp below was solved against that floor
+   * rather than eyeballed, because the previous values did not meet it:
+   * `--text-tertiary: #71717a` measured 4.12:1 on `--bg-base` and 3.99:1 on
+   * `--bg-surface`, and it is the single cause of every `color-contrast`
+   * violation the axe gate reported (403 usages across the app, most of them
+   * 10–11px labels, which are *normal* text, not large text — large text only
+   * starts at 18.66px bold / 24px regular, so the 3:1 allowance never applies
+   * to any usage here).
+   *
+   * Two decisions:
+   *
+   * 1. `--text-tertiary` is solved against the LIGHTEST surface it can be
+   *    painted on (`--bg-active: #212429`), not just the page background, so
+   *    the token stays compliant in hover/selected rows and inside
+   *    `bg-elevated` chips (`Kbd`) without a per-surface override:
+   *        #08090a 6.22 · #0d0e10 6.02 · #141518 5.69 · #1a1c1f 5.33 · #212429 4.86
+   *
+   * 2. `--text-secondary` moves *with* it. Raising tertiary alone would have
+   *    left the two tiers x1.21 apart in luminance — visually one tone — which
+   *    is the "flattened hierarchy" regression that a green axe run does not
+   *    catch. Re-spacing keeps three distinguishable steps:
+   *        primary→secondary x1.70 · secondary→tertiary x1.63
+   *    (before: x2.21 / x1.89, but from a failing floor).
+   *
+   * Deliberately *not* done: overriding `text-gray-*` per page (the guard
+   * rejects raw colours, and the next page would break again), or shrinking
+   * the 10px tertiary labels. Those labels now measure ≥ 4.86:1 at their
+   * smallest size, so no size increase is needed to meet AA. */
   --text-primary: #edeef0;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
+  --text-secondary: #b8b8c1;
+  --text-tertiary: #8f8f98;
   --text-inverse: #08090a;
 
   /* ---- Brand + semantics (Forge amber, deliberately not purple/blue) ----- */
@@ -109,9 +147,17 @@
   --border-default: rgba(9, 9, 11, 0.1);
   --border-strong: rgba(9, 9, 11, 0.18);
 
+  /* Same AA solve as the dark ramp above, mirrored: on light surfaces the
+     binding case is the DARKEST background (`--bg-active: #e4e4e7`), so these
+     are solved downwards instead of upwards.
+        #ffffff 6.04 · #fafafa 5.78 · #f4f4f5 5.49 · #e4e4e7 4.76  (tertiary)
+     The light ramp fails far worse than the dark one did — `#a1a1aa` measured
+     2.02:1 on `--bg-active`, less than half the floor — because zinc-400 was
+     never a text colour on white. `secondary` is re-spaced for the same reason
+     as in dark (primary→secondary x1.91 · secondary→tertiary x1.73). */
   --text-primary: #09090b;
-  --text-secondary: #52525b;
-  --text-tertiary: #a1a1aa;
+  --text-secondary: #3f3f46;
+  --text-tertiary: #62626b;
   /* On light surfaces "inverse" text is white (used on dark overlays only;
      text on a brand surface uses --brand-fg, which stays dark). */
   --text-inverse: #fafafa;

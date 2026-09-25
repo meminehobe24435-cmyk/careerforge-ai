@@ -296,6 +296,32 @@ jobs:
         # also why the config never calls `playwright install`.
         run: pnpm --filter @careerforge/web test:e2e
 
+      - name: Accessibility gate (axe) — 0 critical, 0 serious
+        # A named step of its own because this is a gate, not a report. The failures it catches are
+        # not cosmetic and cannot be "kept an eye on": a 10px label at 3.99:1 is unreadable for a
+        # low-vision user, and a scrollable panel with no tab stop is unreachable by keyboard. Both
+        # are invisible in a screenshot, in a code review, and in the 301 component tests (jsdom
+        # computes no colour and lays nothing out) — which is exactly why the check has to be
+        # mechanical and has to fail the build. PHASE 13 shipped these ten pages with 0 critical and
+        # 10 serious violations; a report nobody is required to read is how that happened.
+        #
+        # The spec itself decides what blocks: `critical` and `serious` fail, `moderate` and `minor`
+        # are printed and attached as test annotations. That split is deliberate and load-bearing —
+        # a gate that also fires on a heading-order nit gets disabled, and then it guards nothing.
+        # `e2e/helpers/axe.ts` holds the assertion; `apps/web/e2e/a11y.spec.ts` holds the pages.
+        #
+        # `e2e/a11y.spec.ts` re-runs the ten a11y tests that the step above already covered (five
+        # pages × two viewports). That duplicates a little wall-clock time on purpose: it makes
+        # "accessibility failed" a distinct, green-or-red line in the job, and it can be re-run on
+        # its own while debugging. The upload step below keeps the failure artefacts.
+        #
+        # The path argument goes straight after the script name with NO `--`. pnpm forwards a
+        # literal `--` into the command line, playwright then ignores the positional argument and
+        # the step silently re-runs the *entire* suite — measured, not assumed: `pnpm … test:e2e --
+        # e2e/a11y.spec.ts --list` printed "Running 50 tests" while `pnpm … test:e2e
+        # e2e/a11y.spec.ts --list` printed only the ten a11y tests.
+        run: pnpm --filter @careerforge/web test:e2e e2e/a11y.spec.ts
+
       - name: Upload the failure artefacts
         if: failure()
         uses: actions/upload-artifact@v4

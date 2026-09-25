@@ -220,8 +220,21 @@ export function SessionContext({ session, target }: SessionContextProps) {
             A posting with a dozen skills produces a dozen plan rows. Capped and scrollable: the
             panel is context, and an uncapped list made the whole workspace twice the height of the
             answer flow at both widths.
+
+            `tabIndex={0}` because a scrollable region that cannot take focus is unreachable by
+            keyboard: axe's `scrollable-region-focusable` flagged this node (serious) on both
+            viewports, and the rule is right — with no focus stop here, a keyboard user simply
+            cannot read past row ~8, and PageDown scrolls the *page*, moving the rows they were
+            reading out of view. `aria-label` is the name the focus stop needs (an unlabelled tab
+            stop announces nothing), and it is deliberately on the `<ul>` rather than a
+            `role="group"` wrapper so the list semantics survive — a group would replace them. The
+            ring comes from the global `:focus-visible` rule in `globals.css`.
           */}
-          <ul className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
+          <ul
+            tabIndex={0}
+            aria-label="题目依据列表（可滚动，方向键或 PageDown 浏览）"
+            className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1"
+          >
             {session.plan.map((item) => (
               <li key={`${item.topic}-${item.label}`} className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">

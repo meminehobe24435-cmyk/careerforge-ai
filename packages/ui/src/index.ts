@@ -9,6 +9,12 @@
  */
 
 export { cn } from './lib/cn';
+/**
+ * The 2px brand focus ring (docs/UI.md §9). Exported so app-level components can use the working
+ * class string instead of re-writing the `outline-none … focus-visible:outline-2` pair, which
+ * renders no ring at all in Tailwind v4 — see `lib/focus-ring.ts` for the measured proof.
+ */
+export { focusRing } from './lib/focus-ring';
 
 export { Button, buttonVariants } from './components/button';
 export type { ButtonProps } from './components/button';

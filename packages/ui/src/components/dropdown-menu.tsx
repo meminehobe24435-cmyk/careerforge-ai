@@ -4,6 +4,7 @@ import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import * as React from 'react';
 
 import { cn } from '../lib/cn';
+import { focusRing } from '../lib/focus-ring';
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -40,9 +41,14 @@ export const DropdownMenuItem = React.forwardRef<
       ref={ref}
       className={cn(
         'relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5',
-        'text-secondary text-sm outline-none',
+        'text-secondary text-sm',
         'ease-forge transition-colors duration-[var(--dur-fast)]',
         'data-[highlighted]:bg-hover data-[highlighted]:text-primary',
+        // The highlight background alone is not a focus ring: Radix sets `data-highlighted` for
+        // pointer hover too, so keyboard focus and hover looked identical and a keyboard user could
+        // not tell where they were. `focusRing` is the 2px brand ring docs/UI.md §9 requires, and
+        // the content's `p-1` leaves exactly the 4px (2px offset + 2px outline) it needs.
+        focusRing,
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         '[&_svg]:size-3.5 [&_svg]:shrink-0',
         inset && 'pl-8',
