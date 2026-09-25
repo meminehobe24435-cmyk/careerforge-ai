@@ -455,32 +455,41 @@ CREATE INDEX ix_embeddings_hnsw ON embeddings
 
 #### `agent_runs`
 
-| 列                                                     | 类型            | 说明                                            |
-| ------------------------------------------------------ | --------------- | ----------------------------------------------- |
-| `user_id`                                              | `uuid null`     | 系统任务可空                                    |
-| `workflow`                                             | `text`          | `job_match` / `resume_optimize` …               |
-| `agent`                                                | `text`          | 主 Agent id                                     |
-| `status`                                               | `text`          | CHECK `running`/`succeeded`/`failed`/`degraded` |
-| `trigger`                                              | `text`          | CHECK `api`/`job`/`manual`/`seed`/`eval`        |
-| `steps`                                                | `jsonb`         | 步骤链追踪数组                                  |
-| `input_ref` / `output_ref`                             | `jsonb`         | 输入输出摘要（脱敏，非全文）                    |
-| `provider` / `model`                                   | `text`          |                                                 |
-| `prompt_version`                                       | `text`          |                                                 |
-| `prompt_tokens` / `completion_tokens` / `total_tokens` | `integer`       |                                                 |
-| `cost_usd` / `cost_cny`                                | `numeric(10,6)` |                                                 |
-| `latency_ms`                                           | `integer`       |                                                 |
-| `cache_hit`                                            | `boolean`       |                                                 |
-| `parent_run_id`                                        | `uuid null`     | 子工作流                                        |
-| `request_id`                                           | `text`          | 与 HTTP 请求关联                                |
-| `error`                                                | `text`          |                                                 |
-| `started_at` / `finished_at`                           | `timestamptz`   |                                                 |
+| 列                                                     | 类型                 | 说明                                                                 |
+| ------------------------------------------------------ | -------------------- | -------------------------------------------------------------------- |
+| `user_id`                                              | `uuid null`          | 系统任务可空                                                         |
+| `workflow`                                             | `text`               | `job_match` / `resume_optimize` …                                    |
+| `agent`                                                | `text`               | 主 Agent id                                                          |
+| `status`                                               | `text`               | CHECK `running`/`succeeded`/`failed`/`degraded`                      |
+| `trigger`                                              | `text`               | CHECK `api`/`job`/`manual`/`seed`/`eval`                             |
+| `steps`                                                | `jsonb`              | 步骤链追踪数组                                                       |
+| `input_ref` / `output_ref`                             | `jsonb`              | 输入输出摘要（脱敏，非全文）                                         |
+| `provider` / `model`                                   | `text`               |                                                                      |
+| `prompt_version`                                       | `text`               |                                                                      |
+| `prompt_tokens` / `completion_tokens` / `total_tokens` | `integer null`       | **NULL = provider 未上报用量**；`0` = 上报为零（PHASE 13）           |
+| `cached_tokens`                                        | `integer null`       | 供应商侧 prompt 缓存命中数；NULL = 未上报                            |
+| `cost_usd` / `cost_cny`                                | `numeric(10,6) null` | 同上，NULL 不参与 `SUM`                                              |
+| `usage_status`                                         | `text null`          | CHECK `reported`/`estimated`/`cached`/`unavailable`/`legacy`         |
+| `latency_ms`                                           | `integer`            |                                                                      |
+| `cache_hit`                                            | `boolean`            |                                                                      |
+| `parent_run_id`                                        | `uuid null`          | 子工作流                                                             |
+| `request_id`                                           | `text`               | 与 HTTP 请求关联                                                     |
+| `error`                                                | `text`               | **已脱敏**：密钥/令牌/整篇文档不会入库（`services/error_report.py`） |
+| `error_code`                                           | `text null`          | `error` 的可机器处理分类（`PROVIDER_UNAVAILABLE` …）                 |
+| `started_at` / `finished_at`                           | `timestamptz`        |                                                                      |
+
+> **`NULL` 不是 `0`（PHASE 13）**：计数列可空，`NULL` 表示「provider 没有上报」，
+> `SUM` 会跳过它，因此 `/ai-costs` 的合计是**下限**而不是完整值，payload 会用
+> `unaccountedRuns` 与 `notes` 说明这一点。写 `0` 等于宣称一次没人做过的测量，
+> 写哨兵值（如 `-1`）会破坏 `token_counts_non_negative` 并把魔法值泄漏到 API。
+> 迁移 `0009` 把既有行回填为 `legacy`：它们持有的 `0` 来自还分不清这两种情况的版本。
 
 > `ix(user_id, started_at desc)`；`ix(workflow, started_at desc)`；`ix(request_id)`
 > 生产按月分区（v1.1）
 
 #### `llm_calls`
 
-`user_id`, `agent_run_id`, `agent`, `provider`, `model`, `operation`(CHECK `chat`/`stream`/`embed`/`structured`), `prompt_version`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `cost_usd`, `cost_cny`, `latency_ms`, `status`(CHECK `ok`/`error`/`timeout`/`rate_limited`/`cache_hit`), `cache_hit bool`, `error_code`, `request_id`
+`user_id`, `agent_run_id`, `agent`, `provider`, `model`, `operation`(CHECK `chat`/`stream`/`embed`/`structured`), `prompt_version`, `prompt_tokens`/`completion_tokens`/`total_tokens`/`cached_tokens`(**均可空**，NULL=未上报), `cost_usd`/`cost_cny`(**可空**), `usage_status`(CHECK `reported`/`estimated`/`cached`/`unavailable`/`legacy`), `latency_ms`, `status`(CHECK `ok`/`error`/`timeout`/`rate_limited`/`cache_hit`), `cache_hit bool`, `error_code`, `request_id`
 
 #### `prompt_versions`
 
@@ -646,29 +655,39 @@ CREATE INDEX ix_resume_claims_gate ON resume_claims (resume_version_id, status);
 
 ## 6. 迁移与版本
 
-| 项       | 约定                                                                                                                      |
-| -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 工具     | Alembic，`alembic revision --autogenerate` + 人工审查（禁止盲信 autogenerate）                                            |
-| 命名     | `NNNN_<verb>_<object>.py`，如 `0007_add_claim_evidence.py`                                                                |
-| 升级     | `docker compose run --rm migrate` 自动执行 `upgrade head`                                                                 |
-| 数据迁移 | 与结构迁移分离：结构迁移不得含业务逻辑；数据回填用独立脚本 + 幂等                                                         |
-| 回滚     | 每个迁移必须实现 `downgrade()`；不可逆迁移必须在文件头注释说明                                                            |
-| 种子     | `scripts/seed.py` 幂等（`--reset` 重建），CI 中使用                                                                       |
-| 技能词典 | `skills` 表由 `infra/db/init/002_skills.sql` 与 `packages/ai/.../parsing/skill_taxonomy.py` **双源同构**，CI 断言两者一致 |
+| 项       | 约定                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具     | Alembic，`alembic revision --autogenerate` + 人工审查（禁止盲信 autogenerate）                                                                                                   |
+| 命名     | `NNNN_<verb>_<object>.py`，如 `0007_add_claim_evidence.py`                                                                                                                       |
+| 升级     | `docker compose run --rm migrate` 自动执行 `upgrade head`                                                                                                                        |
+| 数据迁移 | 与结构迁移分离：结构迁移不得含业务逻辑；数据回填用独立脚本 + 幂等                                                                                                                |
+| 回滚     | 每个迁移必须实现 `downgrade()`；不可逆迁移必须在文件头注释说明                                                                                                                   |
+| 有损回滚 | `0009_usage_observability`: 计数列在迁移前是 `NOT NULL`，因此诚实持有 `NULL` 的行无法回滚——`downgrade()` 删除这些行并在文件头写明，而不是写回 `0`（写 `0` 正是该迁移要消除的谎） |
+| 种子     | `scripts/seed.py` 幂等（`--reset` 重建），CI 中使用                                                                                                                              |
+| 技能词典 | `skills` 表由 `infra/db/init/002_skills.sql` 与 `packages/ai/.../parsing/skill_taxonomy.py` **双源同构**，CI 断言两者一致                                                        |
 
 ---
 
 ## 7. 隐私与数据生命周期
 
-| 数据          | 策略                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------ |
-| 简历/文档原文 | `storage_scope=local` 时不落 `raw_text`，仅存解析结果、`sha256` 与向量                     |
-| PII           | 公开页与导出前经 `pii_scan`；邮箱/手机号/身份号形态串打码                                  |
-| 日志          | 不记录原文；记录 `sha256` 前 12 位作为关联键                                               |
-| 账号删除      | `DELETE /api/v1/me` → 级联删除用户全部数据（含向量、缓存、对象存储），审计日志保留脱敏记录 |
-| 导出          | `GET /api/v1/me/export` → 完整 JSON（GDPR 风格可携带）                                     |
-| 缓存          | `ai_caches` 有过期时间；用户删除时一并清理                                                 |
-| 保留          | `audit_logs` 90 天；`llm_calls`/`agent_runs` 默认保留（用户可清理）；`evidence` 随来源级联 |
+| 数据          | 策略                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| 简历/文档原文 | `storage_scope=local` 时不落 `raw_text`，仅存解析结果、`sha256` 与向量                          |
+| PII           | 公开页与导出前经 `pii_scan`；邮箱/手机号/身份号形态串打码                                       |
+| 失败原文      | `agent_runs.error` 是**唯一**从任意异常里抄下来的字段，写库前经 `services/error_report.py` 脱敏 |
+| 日志          | 不记录原文；记录 `sha256` 前 12 位作为关联键                                                    |
+| 账号删除      | `DELETE /api/v1/me` → 级联删除用户全部数据（含向量、缓存、对象存储），审计日志保留脱敏记录      |
+
+> **`agent_runs.error` 的脱敏规则（PHASE 13）**：失败运行现在会留痕，也就意味着异常文本会**成为一行数据**。
+> 而这条路径上的异常携带请求体——`httpx` 会把它失败的那份 payload 抄进消息里，`SchemaValidationError`
+> 带着模型的原始输出。因此写库前按**形状**清除：bearer/basic 令牌、`Authorization:` 头、各家前缀的 API Key
+> （`sk-`/`sk-ant-`/`ghp_`/`AKIA`/`AIza`）、JWT、邮箱、手机号，以及被粘贴进来的整篇文档（长且有句式结构，
+> 或被脱敏标记命中的段落）。同时保留诊断：一条正常的错误句子必须完整留下——本模块的第一版把
+> `no provider in the chain could serve the request …`（136 字符）整句替换成 `[omitted:136 chars]`，
+> 那等于把诊断工具用来删掉诊断。
+> | 导出 | `GET /api/v1/me/export` → 完整 JSON（GDPR 风格可携带） |
+> | 缓存 | `ai_caches` 有过期时间；用户删除时一并清理 |
+> | 保留 | `audit_logs` 90 天；`llm_calls`/`agent_runs` 默认保留（用户可清理）；`evidence` 随来源级联 |
 
 ---
 

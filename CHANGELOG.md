@@ -6,6 +6,62 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — PHASE 13 · the observability layer told the truth about what it had measured
+
+PHASE 12 found three defects in the AI observability layer, wrote them down and left them unfixed.
+This unit fixes all three and makes each one **provable by a failing test**.
+
+- **The cost page was structurally `$0.00`, including on a paid deployment.** `RunContext.structured`
+  never charged usage and `MeteredProvider.structured_output` passed `tokens=None, cost=None`, because
+  the provider returned only the parsed schema and dropped its usage object. Since every agent in the
+  product uses that path, every run recorded zero tokens. Added a **usage envelope** (`LLMUsage`) that
+  all three call shapes return — `chat`, `stream` and `structured_output` — carrying
+  `input_tokens`/`output_tokens`/`total_tokens`/`cached_tokens`, USD and CNY cost, `provider`, `model`,
+  `request_id` and **`usage_status`**. When a vendor reports nothing the status is `unavailable` and
+  every count is SQL `NULL` — **not `0`**, and not a sentinel: `agent_runs`/`llm_calls`' counts became
+  nullable (migration `0009`), `SUM` skips them, and `/ai-costs` says the totals are a floor. A cache
+  hit reports `cached` with zero counts rather than the original call's tokens, which would bill them
+  twice. The heuristic provider declares `unavailable` honestly (it computes locally and spends
+  nothing) and keeps its local count in a separate field so it can never be summed into a cost.
+- **A failed request left no trace at all.** `get_db` rolls the request's transaction back on any
+  exception and the tracker wrote inside it, so a 400 or a 500 erased the run — contradicting
+  `executor.py`'s comment that observability is never lost. A **failure journal**
+  (`services/failure_journal.py`) now holds a failed run and the outermost middleware writes it through
+  its own short-lived session _after_ the transaction has settled. Rows carry `status = failed`, a
+  sanitized `error` plus a machine-readable `error_code`, the steps that completed, latency, usage and
+  prompt version. A SAVEPOINT and a second session opened mid-transaction were both rejected; the
+  reasoning is in the module.
+- **A stored failure can no longer leak a secret or a document.** The error text is the one stored
+  field copied out of an arbitrary exception, and those exceptions quote request bodies. A sanitiser
+  (`services/error_report.py`) removes bearer tokens, API keys by vendor shape, auth headers, JWTs,
+  emails, phone numbers and pasted documents before the row is written — and leaves the diagnostic
+  intact, which the first version did not.
+- **`skill_not_in_graph` is a blocker where the vocabulary can prove it.** A claim asserting a
+  taxonomy-known technology that appears nowhere in the candidate's material — under any alias — is
+  now refused outright, instead of producing a warning while the claim came back
+  `partially_supported`. The prerequisite PHASE 12 named (a false-positive audit of the extractor) is
+  `packages/ai/tests/test_skill_presence.py`: 30 labelled cases for spelling variants
+  (`K8s` ⟷ `Kubernetes`), English/Chinese equivalents (`实时操作系统` ⟷ `FreeRTOS`), version suffixes,
+  the material's own wording, and technologies **outside** the taxonomy, which stay warnings because
+  "the extractor never recognised it" cannot be told apart from "the material never says it".
+  Evaluation: `unsupported_recall 0.9032 → 0.9355`, `macro_f1 0.8306 → 0.8481`, no metric regressed.
+- **A cache hit is now visible on the run that used it.** `RunRecorder` counts the envelope's `cached`
+  status, so `agent_runs.cache_hit` agrees with `/cache/stats` instead of denying a hit the cache layer
+  recorded.
+
+### Added — PHASE 13
+
+- `packages/ai/careerforge_ai/schemas/usage.py`, `providers/openai_responses.py`,
+  `apps/api/src/careerforge_api/services/{failure_journal,error_report}.py` and
+  `apps/api/src/careerforge_api/middleware/failures.py`, split out of files that outgrew the
+  file-length gate.
+- Migration `0009_usage_observability`: `usage_status`, `cached_tokens` and `error_code` on the
+  observability tables, and the count columns made nullable — with a `downgrade()` that says which
+  rows it cannot keep rather than writing zeros back.
+- `usageStatus` (and nullable counts) in the `/ai-runs` and `/ai-costs` payloads, so a client can
+  print "unavailable" instead of `0`. **The web pages do not read it yet** — see
+  `docs/QUALITY.md` §7.9.
+
 ### Added — PHASE 12 · Measurement: evaluation, calibration, end-to-end and coverage
 
 The phase was not "write more tests"; it was "find out what the system gets wrong". It did.

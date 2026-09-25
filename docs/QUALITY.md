@@ -145,21 +145,45 @@ breaking the production code it protects and watching it go red —
 
 ## 7. Known limitations (measured, not hidden)
 
-1. **`structured_output` records no tokens or cost.** The core returns the parsed schema and drops
-   the provider's usage envelope, so `agent_runs.total_tokens` is structurally 0 for every
-   agent that uses the structured path (all of them). The cost page is honest about it (it prints
-   the provider's own note), but a paid deployment would not see real spend. Fixing it means
-   changing `RunContext.structured`'s return shape — a core interface change, deliberately left
-   for its own unit of work.
-2. **A failed request leaves no run row.** The tracker writes inside the request transaction, which
-   `get_db` rolls back on failure. `executor.py`'s comment claims observability is never lost; the
-   measurement says otherwise. Recorded here as a contradiction, not a design decision.
+1. ~~**`structured_output` records no tokens or cost.**~~ **Fixed in PHASE 13.** The provider contract
+   gained a usage envelope: `structured_output_envelope` returns the parsed schema _and_ what the call
+   cost, `RunContext.structured` charges it to the step, and `MeteredProvider` records it per call. The
+   three call shapes (`chat`, `stream`, `structured_output`) now report the same thing —
+   `input_tokens`, `output_tokens`, `total_tokens`, `cached_tokens`, `estimated_cost` in USD and CNY,
+   `provider`, `model`, `request_id`, and a **`usage_status`**. When a provider genuinely does not
+   report usage the status is `unavailable` and every count is `NULL`, never `0`;
+   `docs/DATABASE.md`'s new `usage_status` column and the API's `usageStatus` field carry that
+   distinction to the page. The zero-key heuristic provider declares `unavailable` honestly — it
+   computes locally and spends nothing — and keeps its local count in a separate
+   `estimated_input_tokens` field so it can never be summed into a cost.
+2. ~~**A failed request leaves no run row.**~~ **Fixed in PHASE 13.** A run that ends `failed` is
+   handed to a failure journal and written through its own short-lived session _after_ the request
+   transaction has rolled back, by the outermost middleware. The row carries `status = failed`, the
+   sanitized `error` plus its machine-readable `error_code`, the steps that completed, latency, the
+   usage if any and the prompt version if any. Two approaches were rejected and the reasons are in
+   `apps/api/src/careerforge_api/services/failure_journal.py`: a SAVEPOINT (still inside the
+   transaction that rolls back) and a second session opened mid-transaction (SQLite has one writer —
+   the failure PHASE 2 already paid for). **Trade-off, stated:** the failure's row is written outside
+   the request transaction, so it carries the run record rather than any other uncommitted change —
+   which is all it needs, since the record is self-contained.
 3. **Two scope-inflation cases still pass** (`ev-0036` "吞吐提升明显", `ev-0039` "整机调试") — the
    residual 0.05. Both need entailment on the _action_, which no keyword rule can do.
-4. **`skill_not_in_graph` is only a warning.** A technology the evidence never mentions should, by
-   the product's own rule, make a claim unsupported; raising it to a blocker needs a
-   false-positive audit of the token extractor first (an honest claim wrongly hard-rejected is a
-   worse failure than a soft verdict).
+4. ~~**`skill_not_in_graph` is only a warning.**~~ **Raised in PHASE 13, on the half the audit could
+   support.** The judgement is no longer a substring match: the claim's and the material's skills are
+   both normalised through `parsing/skill_taxonomy.py`, and a taxonomy-known skill that appears
+   nowhere in the material — under any alias — is a **blocker**. The prerequisite the entry named (a
+   false-positive audit of the extractor) is `packages/ai/tests/test_skill_presence.py`: 30 labelled
+   cases covering spelling variants (`K8s` ⟷ `Kubernetes`), English/Chinese equivalents
+   (`实时操作系统` ⟷ `FreeRTOS`), version suffixes (`C++17` ⊂ `C++`), the material's own wording
+   (`HTML/CSS` for a claim about `CSS`) and technologies **outside** the taxonomy (`AWS Lambda`,
+   `RRF`), which stay warnings. What the audit cannot distinguish is stated there: for a technology
+   the vocabulary has never heard of, "the material never says it" and "the extractor never
+   recognised it" are the same observation, so escalating those would hard-reject honest claims that
+   use a tool nobody has added to the taxonomy yet. The escalate-only-when-confident rule also
+   excludes the `soft` and `domain` categories, which the audit caught rejecting a claim whose
+   evidence was sitting right there (`设计并实现了电机控制的 PID 闭环` vs the taxonomy's alias
+   `设计` for `system_design`). Measured effect: evaluation `unsupported_recall` 0.9032 → **0.9355**,
+   macro F1 0.8306 → **0.8481**, no regression anywhere, `unsafe_support_rate` unchanged at 0.0500.
 5. **Interview coverage 0.8333**: two required skills in the fixtures have no topic mapping yet.
 6. **Calibration covers the zero-key path only.** With a real provider the model's verdict changes
    the confidence distribution; the calibration artefact is regenerated by
@@ -167,6 +191,18 @@ breaking the production code it protects and watching it go red —
 7. **The E2E suite runs the desktop project by default**; the mobile project is opt-in
    (`pnpm --filter @careerforge/web test:e2e --project=mobile`) because it triples the runtime for
    a project whose mobile surface is still thin.
+8. **`cached_tokens` is only reported by vendors that report it** (OpenAI's
+   `prompt_tokens_details.cached_tokens`, DeepSeek's `prompt_cache_hit_tokens`). Ollama and the
+   heuristic provider do not, so their envelopes carry `cachedTokens: null` with
+   `cached_tokens_reported: false` — "not told", not "nothing was cached". Recorded here rather than
+   filled with a `0` that would read as a measurement.
+9. **The cost page shows `null` for a run whose usage nobody reported, and the _web_ layer does not
+   yet print "unavailable" for it.** The API and the columns are honest (PHASE 13); the four
+   observability pages still read `totalTokens`/`costUsd` as plain numbers, and the shared client
+   contract (`packages/shared`) types them as `number`. A backend-only work unit cannot change the
+   pages without touching `apps/web` and `packages/shared`, so this is reported as the remaining half
+   of finding #1 rather than claimed as done. The same applies to `usageStatus`, which the API
+   already sends and no page reads yet.
 
 ## 8. CI gates
 

@@ -1,7 +1,7 @@
 # Evaluation report
 
-- schema `1.0` · generated `2026-09-25T11:37:14.132563+00:00`
-- commit `c147180` (working tree dirty)
+- schema `1.0` · generated `2026-09-25T18:02:08.416018+00:00`
+- commit `2d201ae` (working tree dirty)
 - provider `heuristic` × chain heuristic
 - suites 4/4 executed · cases **242** · gated pass **4** / fail **0** · reported misses 0
 
@@ -9,14 +9,14 @@
 
 | suite | cases | gated | reported misses | duration |
 | --- | ---: | --- | --- | ---: |
-| `jd_extraction` | 120 | PASS | — | 430 ms |
-| `evidence_validation` | 60 | PASS | — | 157 ms |
-| `rag_retrieval` | 59 | PASS | — | 42 ms |
-| `interview_relevance` | 3 | PASS | — | 28 ms |
+| `jd_extraction` | 120 | PASS | — | 477 ms |
+| `evidence_validation` | 60 | PASS | — | 321 ms |
+| `rag_retrieval` | 59 | PASS | — | 50 ms |
+| `interview_relevance` | 3 | PASS | — | 33 ms |
 
 ## jd_extraction
 
-Dataset `jd_extraction` @ `jd1.0` · 120 cases · 430 ms
+Dataset `jd_extraction` @ `jd1.0` · 120 cases · 477 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -56,14 +56,14 @@ Counters: `company_hits`=120, `distractor_cases`=72, `distractor_leaks`=0, `educ
 
 ## evidence_validation
 
-Dataset `evidence_validation` @ `ev2.1` · 60 cases · 157 ms
+Dataset `evidence_validation` @ `ev2.1` · 60 cases · 321 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
-| `evidence.accuracy` | 0.8833 | ≥ 0.80 | **PASS** (report only) |
+| `evidence.accuracy` | 0.9000 | ≥ 0.80 | **PASS** (report only) |
 | `evidence.degraded_case_rate` | 0.0000 | — | measured, no threshold |
-| `evidence.macro_f1` | 0.8306 | ≥ 0.78 | **PASS** |
-| `evidence.micro_f1` | 0.8833 | — | measured, no threshold |
+| `evidence.macro_f1` | 0.8481 | ≥ 0.78 | **PASS** |
+| `evidence.micro_f1` | 0.9000 | — | measured, no threshold |
 | `evidence.partial_recall` | 0.6667 | — | measured, no threshold |
 | `evidence.safer_rewrite_rate` | 0.3750 | — | measured, no threshold |
 | `evidence.support_recall` | 0.9500 | ≥ 0.80 | **PASS** (report only) |
@@ -72,7 +72,7 @@ Dataset `evidence_validation` @ `ev2.1` · 60 cases · 157 ms
 | `evidence.supported_recall` | 0.9500 | — | measured, no threshold |
 | `evidence.unsafe_numeric_support_rate` | 0.0000 | ≤ 0.00 | **PASS** |
 | `evidence.unsafe_support_rate` | 0.0500 | ≤ 0.07 | **PASS** |
-| `evidence.unsupported_recall` | 0.9032 | — | measured, no threshold |
+| `evidence.unsupported_recall` | 0.9355 | — | measured, no threshold |
 
 Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`=2, `gold_partially_supported`=9, `gold_supported`=20, `gold_unsupported`=31, `numeric_claims`=4, `numeric_unsafe`=0, `scored_cases`=60, `true_positives`=19, `unsafe_supports`=2
 
@@ -82,7 +82,7 @@ Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`
 | --- | --- |
 | `supported` | supported=19, partially_supported=1, unsupported=0 |
 | `partially_supported` | supported=2, partially_supported=6, unsupported=1 |
-| `unsupported` | supported=0, partially_supported=3, unsupported=28 |
+| `unsupported` | supported=0, partially_supported=2, unsupported=29 |
 
 ### by_group
 
@@ -99,7 +99,7 @@ Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`
 | `fabricated_metric` | cases=7.0, accuracy=0.8571, unsafe_supports=0.0, mean_confidence=0.89 |
 | `fabricated_role` | cases=3.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.89 |
 | `fabricated_scope` | cases=2.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.89 |
-| `fabricated_technology` | cases=7.0, accuracy=0.8571, unsafe_supports=0.0, mean_confidence=0.8957 |
+| `fabricated_technology` | cases=7.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.8957 |
 | `firmware` | cases=2.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.93 |
 | `frontend` | cases=1.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.89 |
 | `over_claim_role` | cases=2.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.89 |
@@ -113,7 +113,7 @@ Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`
 | `vague_magnitude` | cases=1.0, accuracy=0.0, unsafe_supports=1.0, mean_confidence=0.91 |
 | `weak_evidence` | cases=2.0, accuracy=1.0, unsafe_supports=0.0, mean_confidence=0.89 |
 
-### Recorded failures (7)
+### Recorded failures (6)
 
 ```json
 {"kind": "misclassification", "case_id": "ev-0010", "claim": "使用 Redis 缓存会话数据以降低数据库压力", "gold": "supported", "predicted": "partially_supported", "confidence": 0.93, "independent_sources": 2, "reasons": ["no_evidence_match"], "description":…
@@ -122,12 +122,11 @@ Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`
 {"kind": "misclassification", "case_id": "ev-0039", "claim": "完成两轮自平衡机器人的整机调试", "gold": "partially_supported", "predicted": "supported", "confidence": 0.89, "independent_sources": 2, "reasons": [], "description": "Control tuning is evidenc…
 {"kind": "misclassification", "case_id": "ev-0052", "claim": "获得国家级算法竞赛一等奖", "gold": "unsupported", "predicted": "partially_supported", "confidence": 0.89, "independent_sources": 1, "reasons": ["no_evidence_match", "single_source_only"], "…
 {"kind": "misclassification", "case_id": "ev-0057", "claim": "在 3 个月内完成了 6 个模块的交付并提前两周上线", "gold": "unsupported", "predicted": "partially_supported", "confidence": 0.89, "independent_sources": 1, "reasons": ["single_source_only"], "descrip…
-{"kind": "misclassification", "case_id": "ev-0058", "claim": "实现了基于 FPGA 的实时图像处理流水线", "gold": "unsupported", "predicted": "partially_supported", "confidence": 0.89, "independent_sources": 1, "reasons": ["skill_not_in_graph", "no_evidence_m…
 ```
 
 ## rag_retrieval
 
-Dataset `rag_retrieval` @ `rag1.0` · 59 cases · 42 ms
+Dataset `rag_retrieval` @ `rag1.0` · 59 cases · 50 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -165,7 +164,7 @@ Counters: `dense_arm_available`=1, `dense_top5_hits`=53, `documents`=20, `fusion
 
 ## interview_relevance
 
-Dataset `interview_relevance` @ `iv1.0` · 3 cases · 28 ms
+Dataset `interview_relevance` @ `iv1.0` · 3 cases · 33 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |

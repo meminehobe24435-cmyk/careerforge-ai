@@ -222,6 +222,17 @@ NEXT    — 下一阶段目标
 | **产出**     | 四档响应式全页验收并修复；A11y 审计（键盘/ARIA/对比度/焦点）；动效统一；三态覆盖检查；Command Palette + Global Search；Error Boundary；主题 Light/Dark 并行打磨 |
 | **退出标准** | 每页 1440/1024/768/375 无横向滚动、无截断、无重叠；`axe` 无 critical 违规；`prefers-reduced-motion` 生效；灯光主题无对比度失败                                  |
 
+#### PHASE 13 实测问题记录（可观测层三处缺陷，发现 → 处置）
+
+PHASE 12 记录了三处「知道但没修」的可观测缺陷（`docs/QUALITY.md` §7.1–7.4）。本条工作单元把它们修掉，
+并把每一条都做成**可失败**的测试。
+
+| #   | 问题                                                                                                                                                                                          | 发现方式                                        | 结果                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **结构化路径 token 恒为 0**：`RunContext.structured` 从不 `add_usage`，`MeteredProvider.structured_output` 传 `tokens=None, cost=None`，provider 的用量信封被丢弃 → 有 Key 的部署成本页也是 0 | PHASE 12 成本核算套件（`docs/QUALITY.md` §7.1） | 新增**用量信封** `LLMUsage`：chat / stream / structured 三种调用形状返回同一结构（input/output/total/cached tokens、usd+cny、provider、model、request_id、**usage_status**）。`usage_status=unavailable` 时计数为 `null` 且入库为 SQL `NULL`（不是 0，也不是哨兵值）。`agent_runs`/`llm_calls` 计数列改为可空，API 暴露 `usageStatus`，成本页在存在未上报运行时输出「合计是下限」 |
+| 2   | **失败请求不留任何痕迹**：tracker 在请求事务内写库，抛错时整体回滚（400/500 前后 `agent_runs` 计数不变），与 `executor.py` 注释「observability is never lost」矛盾                            | PHASE 12 失败注入套件（`docs/QUALITY.md` §7.2） | 新增 **failure journal**：`failed` 运行改由 journal 持有，请求事务结束（回滚完成）后由**最外层中间件**用独立 session 写入。拒绝的方案写进 `failure_journal.py`：SAVEPOINT（仍随事务回滚）、请求事务进行中另开 session（SQLite 单写者 → 死锁）。写入前经 sanitizer：密钥/令牌/整篇文档一律不出现在行里                                                                             |
+| 3   | **`skill_not_in_graph` 只是 warning**：证据里完全没有的技术仍可判 `partially_supported`                                                                                                       | PHASE 12 评测 + `docs/QUALITY.md` §7.4          | 用**技能词表**（`parsing/skill_mentions.py`）替代子串判断：claim 与材料都归一化到 canonical skill，taxonomy 能识别且材料中彻底不存在的技能 → **blocker（判 unsupported）**；taxonomy 不认识的 token 仍是 warning。误伤审计：`packages/ai/tests/test_skill_presence.py`（30 例，`K8s`/`Kubernetes`、`实时操作系统`/`FreeRTOS`、`C++17`/`C++`、`AWS Lambda` 等）                    |
+
 ### PHASE 14 · README & 材料
 
 | 项           | 内容                                                                                                                                                                                                                                                                                                                   |

@@ -1,16 +1,18 @@
 # CareerForge AI
 
-> **Evidence-driven AI career operating system.**
-> Turn your experience into verifiable career evidence.
+> **Most resumes describe what you claim to know. CareerForge shows the evidence.**
+> Your resume, projects and repositories become an **evidence graph**; job matching, claim
+> validation and interviews are built on it.
 
 <p align="center">
   <b>把经历变成证据，把证据变成竞争力。</b>
 </p>
 
-<!-- Badges: activated in PHASE 15 once the remote repository exists -->
+<!-- Badges: the CI/coverage badges activate in PHASE 15 with the remote repository; the phase
+     badge below is updated by hand and must match docs/ROADMAP.md. -->
 
 ![Status](https://img.shields.io/badge/status-in%20development-orange)
-![Phase](https://img.shields.io/badge/phase-7%20%2F%2015-blue)
+![Phase](https://img.shields.io/badge/phase-13%20%2F%2015-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
@@ -18,12 +20,43 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1)
 
-> 🚧 **Project status: actively under development (PHASE 7 / 15 complete).**
-> The AI core (orchestration, providers, retrieval, evidence graph, scoring, 9 agents),
-> the API (contract, auth, middleware, persistence) and the frontend shell are built and
-> tested; uploaded documents are now parsed, chunked and stored through the queued
-> worker. Every number in this README comes from a real build/test/eval artifact — never
-> from an estimate.
+**[→ Three-minute demo script](./docs/DEMO.md)** · **[→ Quality & evaluation](./docs/QUALITY.md)** ·
+**[→ The numbers](./reports/README.md)** · **[→ Why it is built this way](./docs/ARCHITECTURE.md)**
+
+![Evidence Graph](./docs/assets/evidence-graph-demo.gif)
+
+_Clicking a skill focuses its node and opens the evidence behind it — the chain from a résumé claim to the file that proves it. ([1440px still](./docs/assets/screenshots/evidence-graph-1440.png).)_
+
+_The Evidence Graph: a claim is not a string in a database — it is connected to the project that
+used it, the repository that contains it, and the files that prove it, each with a confidence
+computed from five weighted factors. (Screenshot from the running app, demo account.)_
+
+---
+
+## Why CareerForge
+
+Every AI résumé tool can rewrite a bullet. The hard part is knowing whether the rewritten bullet is
+**true** — and a language model asked "is this supported?" will reason its way to "plausibly yes".
+
+So this project inverts the usual order. Nothing is generated until the candidate's own material has
+been assembled into an evidence graph, and every generated sentence is gated:
+
+```
+Claim  →  deterministic rules  →  hybrid retrieval over your evidence  →  model verdict  →  arithmetic
+         (free, catches the         (BM25 + pgvector, RRF fusion)          (may only judge     (confidence
+          fabricated number)                                                support)            + status)
+```
+
+The model never produces a number, never sets a confidence, and never decides alone. The result is a
+system that can say **"we could not confirm this"** — and that is measured: the evaluation reports an
+**unsafe support rate** (unsupported claims wrongly accepted) of **0.0500**, down from 0.10 before the
+evaluation found two real defects in the decision policy.
+
+> 🚧 **Project status: actively under development (PHASE 13 / 15 complete).**
+> The AI core, the API and the product surfaces are built and tested: 1,025 automated tests, four
+> evaluation suites (242 cases), confidence calibration, 11 browser end-to-end flows and 91.9%
+> core-domain coverage. Every number in this README comes from a real build/test/eval artifact —
+> never from an estimate.
 > See [ROADMAP.md](./docs/ROADMAP.md) for the live phase tracker.
 
 ---

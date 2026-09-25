@@ -3,7 +3,21 @@
 How to talk about this project, in the order an interviewer usually asks. Every number is
 reproducible from the repository — that is the point of the file.
 
+**Pick your length**: [30 seconds](#30-second-version) · [60 seconds](#60-second-version) ·
+[3 minutes](#3-minute-version) · [5 minutes](#5-minute-version) · then the [question bank](#question-bank).
+
 ---
+
+## 30-second version
+
+> CareerForge AI is an **evidence-driven career OS**. Ordinary AI résumé tools generate text straight
+> from a prompt; CareerForge first builds your résumé, projects and repositories into an **Evidence
+> Graph**, then uses AI for job matching, claim validation and interviews — with every generated
+> sentence traceable to evidence you actually have.
+>
+> To keep the AI from being confidently wrong, I evaluate it independently: evidence F1, an **unsafe
+> support rate**, RAG Hit@K and confidence calibration. 1,025 tests, four evaluation suites, and it
+> all runs with no API key.
 
 ## 60-second version
 
@@ -25,8 +39,17 @@ reproducible from the repository — that is the point of the file.
 
 Add: the four-layer test strategy and what each layer uniquely caught (`docs/QUALITY.md` §1);
 the ADRs that shaped it (the model produces no numbers — ADR-014; the provider chain always ends at
-heuristic — ADR-009); the honest gaps (unsafe support 0.05, structured-output tokens, two
-scope-inflation cases) and why they are not fixed yet.
+heuristic — ADR-009); the evidence-confidence formula (five weighted factors, mirrored by a DB
+`CHECK`); the honest gaps (unsafe support 0.05, structured-output tokens, two scope-inflation
+cases) and why they are not fixed yet. Walk the demo in `docs/DEMO.md` if you have a screen.
+
+## 5-minute version
+
+Add, after the 3-minute material: the failure-injection approach (a scripted provider that times
+out, hangs, 429s, emits malformed JSON, returns the wrong shape, crashes or exhausts a budget — and
+what each one proved about degradation); the coverage scope argument (why 91.9% of the _core_ and
+not 75% of the _repository_); and the two things you would do next with another week
+(the `structured_output` usage envelope, and the `SKILL_NOT_IN_GRAPH` false-positive audit).
 
 ---
 
@@ -157,6 +180,109 @@ are now regression-tested.
 
 The meta-lesson I would state out loud: **each test layer has a blind spot that looks like
 coverage.** If I had stopped at "1,025 tests pass", I would have shipped all three UI defects.
+
+## Q10 — Why not generate the whole résumé with an LLM?
+
+Because the failure mode is invisible and expensive. A generated sentence that reads well and is
+false is the one thing a résumé tool must never produce, and there is no way to notice it by
+looking at the output. So generation sits behind a gate (rules → retrieval → model verdict →
+arithmetic), the gate is evaluated on 60 hand-labelled cases, and the failure direction it guards
+against — accepting an unsupported claim — has its own metric.
+
+The LLM is not removed from the product; it is confined to the part it is good at: judging whether
+a given set of evidence supports a given sentence. It never produces a number, never sets a
+confidence, and never decides alone.
+
+## Q11 — Why a graph instead of just a vector database?
+
+They answer different questions. A vector index answers _"what text is similar to this text"_. The
+graph answers _"what supports this claim, how strongly, and can I audit the path?"_ Corroboration —
+the number of **independent** source kinds behind a skill — is a graph property that no embedding
+similarity can express: two files in one repository are one source, a file and a commit are two.
+Recency, authority and specificity are node attributes that compose along edges. And the answer has
+to be clickable: a recruiter can start at "FreeRTOS" and end at the commit that proves it.
+
+The vector store is still there — it is one of the two retrieval arms feeding the graph's evidence
+lookup.
+
+## Q12 — Your hybrid retrieval scores worse than BM25. Why didn't you fix it?
+
+Measured on the 59-query corpus: Hit@5 — keyword-only **0.9831**, hybrid **0.9661**, dense-only
+0.8983; one fusion loss, zero fusion wins. Equal-weight RRF (k=60) lets a strong lexical hit get
+outvoted by a weak dense one on exact-identifier queries.
+
+I did not "fix" it because the honest fixes are structural, not numerical: fit RRF weights (which on
+59 queries is overfitting with extra steps), or grow the corpus until the comparison means
+something. Both are real work with a real cost, and neither belongs in a phase whose job was to
+measure. The number is in `reports/README.md` and in the interview notes — a benchmark you tune
+until it flatters you is not a benchmark.
+
+## Q13 — What is the unsafe support rate, and why does it get its own metric?
+
+It is the share of claims that should **not** have been called supported but were — 2 of 40 in the
+current corpus, **0.0500**. The symmetric error, refusing to confirm an honest bullet, costs the
+candidate a review: they add a link and move on. Accepting an invented achievement writes fiction
+onto their CV, in their own voice, and they may never find out.
+
+Accuracy averages those two together; a résumé gate cannot. So the report carries a full confusion
+matrix, the fabricated-measurement rate is gated at exactly **0.00**, and the unsupported→supported
+cell currently reads **0**.
+
+The number was 0.10 before the evaluation existed in this form. It is now 0.05, and the remaining
+two cases are named individually.
+
+## Q14 — Why does confidence need calibration rather than just a threshold?
+
+A threshold answers "is this good enough to ship"; calibration answers "does 0.8 mean 80%". They are
+different questions, and only the second one tells you whether the number on screen is information
+or decoration.
+
+Measured: **ECE 0.0166**, Brier 0.1034. The 0.8–0.9 bucket is calibrated to ±0.001 across 45 cases;
+the 0.9–1.0 bucket is over-confident by 0.063, which is exactly the region a résumé gate operates
+in — high confidence, occasional error. ECE alone would have hidden that, so the reliability table is
+published beside it.
+
+## Q15 — Why does `structured_output` need to record tokens?
+
+Because most agent work goes through it, and it returned only the parsed schema — the provider's
+usage envelope was dropped on the floor. On a paid deployment the cost page would therefore report
+zero tokens for every agent while looking authoritative. "Zero" and "we were not told" are different
+facts; the fix is a usage envelope with an explicit `unavailable` status, so the UI can print
+"unavailable" instead of a number that reads as free.
+
+(This is the kind of defect a correctness test cannot catch: every response was correct, and the
+observability was quietly wrong.)
+
+## Q16 — Why does a _failed_ request need a run trace?
+
+Because that is when you need it most. The tracker wrote inside the request transaction, which rolls
+back on any exception, so a failed AI request left **no row at all** — contradicting the executor's
+own comment that observability is never lost. An operator diagnosing an outage would find an empty
+table.
+
+The fix has to survive the rollback (a separate short-lived session, or an explicit nested commit),
+and it has to sanitize: no API keys, no auth headers, no full résumé or JD text in the stored error.
+
+## Q17 — Node smoke tests passed 25/25 while the browser was completely blocked. How?
+
+Because Node's `fetch` does not implement CORS — it is a browser security policy, not a server one.
+Two origins on different ports are different origins, and the API's `CORS_ORIGINS` listed only the
+default dev origin. Every Node-level check was green and every browser request failed.
+
+The regression test now runs from page context, asserts a real authenticated fetch succeeds, and
+asserts a non-allowed origin is _not_ granted — including an explicit refusal of `*`, since a
+wildcard would make the test pass while disabling the protection it exists to check. It was verified
+to fail on a deliberately wrong configuration before being trusted.
+
+## Q18 — And why couldn't jsdom see the drawer covering itself?
+
+Because jsdom has no layout and no stacking context: it knows an element exists and that its styles
+say `z-index: 50`, not that another element with `z-index: 60` is painted on top of it and swallows
+pointer events. The component test passed, the DOM was correct, and the sidebar was unusable below
+768 px.
+
+Only a real browser at 375 px could see it — which is why the mobile Playwright project exists, and
+why it was promoted from opt-in to the default CI run after it had already found one real defect.
 
 ---
 
