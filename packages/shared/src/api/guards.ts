@@ -36,6 +36,23 @@ export function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * A stored count: a finite number, `null`, or **absent**.
+ *
+ * PHASE 13 made the usage columns nullable on purpose (migration `0009`): a count the provider
+ * never reported is `NULL`, and it must not be accepted as `0`. So the guards accept `null` (and a
+ * missing key) while still rejecting anything that is not a number — `'150'`, `NaN`, `Infinity` and
+ * an object all stay contract violations, because a page that prints those is printing fiction.
+ */
+export function isNullableNumber(value: unknown): boolean {
+  return value === null || value === undefined || isNumber(value);
+}
+
+/** A nullable string: present, `null`, or absent — but never the wrong type. */
+export function isNullableString(value: unknown): boolean {
+  return value === null || value === undefined || typeof value === 'string';
+}
+
 export function isString(value: unknown): value is string {
   return typeof value === 'string';
 }
@@ -286,8 +303,11 @@ export function isPublicSettingsResponse(value: unknown): value is PublicSetting
  * The guards below are deliberately about **presence and type**, not about totals.
  *
  * The pages must never invent a number, so what has to be guaranteed is that the fields it prints
- * exist and are the right kind; whether they are zero is a fact about the deployment (the zero-key
- * provider really does spend nothing) and not something a guard should reject.
+ * either hold a number or are honestly absent. Two shapes are therefore legal for a count: a finite
+ * number (which may be `0`, and may be negative — the sign of a number is not this guard's
+ * business), or `null`/missing, which the pages render as `—` and explain from `usageStatus`.
+ * A string, a `NaN` or an object is still rejected: that is a contract break, not a missing
+ * measurement.
  */
 
 function isAiRun(value: unknown): value is AiRun {
@@ -297,8 +317,13 @@ function isAiRun(value: unknown): value is AiRun {
     isString(value['workflow']) &&
     isString(value['agent']) &&
     isString(value['status']) &&
-    isNumber(value['totalTokens']) &&
-    isNumber(value['costUsd']) &&
+    isNullableNumber(value['promptTokens']) &&
+    isNullableNumber(value['completionTokens']) &&
+    isNullableNumber(value['totalTokens']) &&
+    isNullableNumber(value['cachedTokens']) &&
+    isNullableNumber(value['costUsd']) &&
+    isNullableNumber(value['costCny']) &&
+    isNullableString(value['usageStatus']) &&
     typeof value['cacheHit'] === 'boolean' &&
     isNumber(value['stepCount'])
   );
@@ -310,6 +335,17 @@ export function isAiRunList(value: unknown): value is AiRunList {
   return Array.isArray(items) && items.every(isAiRun) && isNumber(value['total']);
 }
 
+/** One step or call: the same nullable-count rule as a run, plus the fields the panel prints. */
+function isUsageBearingRow(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNullableNumber(value['tokens']) &&
+    isNullableNumber(value['totalTokens']) &&
+    isNullableNumber(value['costUsd']) &&
+    isNullableString(value['usageStatus'])
+  );
+}
+
 /** `GET /ai-runs/{id}` — requires the step chain, which is the whole reason to open the row. */
 export function isAiRunDetail(value: unknown): value is AiRunDetail {
   if (!isAiRun(value)) return false;
@@ -318,9 +354,9 @@ export function isAiRunDetail(value: unknown): value is AiRunDetail {
   const calls = detail['calls'];
   return (
     Array.isArray(steps) &&
-    steps.every((step) => isRecord(step) && isString(step['name'])) &&
+    steps.every((step) => isRecord(step) && isString(step['name']) && isUsageBearingRow(step)) &&
     Array.isArray(calls) &&
-    calls.every((call) => isRecord(call) && isString(call['provider']))
+    calls.every((call) => isRecord(call) && isString(call['provider']) && isUsageBearingRow(call))
   );
 }
 
@@ -333,7 +369,10 @@ export function isAiCosts(value: unknown): value is AiCosts {
   return (
     Array.isArray(days) &&
     days.every((day) => isRecord(day) && isString(day['day']) && isNumber(day['costUsd'])) &&
-    isNumber(value['dailyBudgetUsd'])
+    isNumber(value['dailyBudgetUsd']) &&
+    // `unaccountedRuns` says whether `totals` is a complete figure or a floor. Absent is tolerated
+    // (an older API), a non-number is not: the page prints this number.
+    isNullableNumber(value['unaccountedRuns'])
   );
 }
 

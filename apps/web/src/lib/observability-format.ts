@@ -4,6 +4,7 @@ import type {
   CacheStats,
   DailyCost,
   ObservabilityRange,
+  UsageStatus,
 } from '@careerforge/shared';
 
 /**
@@ -14,14 +15,16 @@ import type {
  *
  * Three rules the functions below enforce:
  *
- * 1. `null` is not `0`. `latencyMs` on an unfinished run and `hitRate` on a cache that has served
- *    nothing render as an em dash, never as a zero the reader would believe.
+ * 1. `null` is not `0`. `latencyMs` on an unfinished run, `hitRate` on a cache that has served
+ *    nothing, and — since PHASE 13 — every token/cost count the provider never reported render as
+ *    an em dash; a real `0` renders as `0`. `usageStatus` is what says *which* of the two a row is.
  * 2. Timestamps are read on the same clock they were written on. The API stores naive-UTC
  *    instants (`utcnow()`), and `new Date('2026-09-24T10:00:00')` in a browser parses that as
  *    *local* time — a silent 8-hour shift for a reader in UTC+8. `parseApiInstant` adds the missing
  *    `Z` and the formatter renders UTC, which is why every page labels the column "UTC".
  * 3. Tokens and cost come from the provider. A deployment on the zero-key heuristic provider
- *    reports 0 because it spent 0, so the page says *why* instead of hiding the column.
+ *    reports 0 because it spent 0, so the page says *why* instead of hiding the column — and where
+ *    the truth is "the provider said nothing", it says that instead of a zero nobody measured.
  */
 
 /** Group digits without depending on the runner's ICU data (`1,500`, always). */
@@ -156,23 +159,166 @@ export const SINCE_HOUR_FILTERS: readonly { value: number | null; label: string 
 ];
 
 /**
- * Why a whole page of runs can honestly report zero tokens.
+ * Why a whole page of runs can honestly report nothing, or nothing but zeros.
  *
- * The zero-key path is a first-class deployment (ADR-009), so the page names it rather than leaving
- * the reader to conclude the metering is broken. The note is aggregated: on such a deployment every
- * row is zero, and a note per row would double the table's height while saying the same thing. When
- * the list is mixed, the numbers speak for themselves and this returns `null`.
+ * Three cases, and they are three different sentences because they are three different facts:
+ *
+ * * **all counts `null`** — the provider returned no usage metadata. There is no number to print,
+ *   so the list says `—` and this note says why;
+ * * **all counts `0` on the zero-key heuristic provider** — a first-class deployment (ADR-009)
+ *   that really does spend nothing, named rather than left to be misread as broken metering;
+ * * **anything else with no positive count** — reported as a page of zeros with the providers
+ *   named, because the cause is no longer visible from the page alone.
+ *
+ * A single run with a positive count means the numbers speak for themselves and this returns
+ * `null`.
  */
 export function zeroSpendSummary(
   runs: readonly Pick<AiRun, 'provider' | 'totalTokens'>[],
 ): string | null {
   if (runs.length === 0) return null;
-  if (runs.some((run) => run.totalTokens > 0)) return null;
+  if (runs.some((run) => (run.totalTokens ?? 0) > 0)) return null;
+
+  if (runs.every((run) => run.totalTokens === null)) {
+    return '这些运行全部报告 null token：provider 没有返回 usage metadata（usageStatus=unavailable），因此没有可显示的用量 —— 这是「未知」，不是 0。延迟仍然被真实测量。';
+  }
+
   const providers = new Set(runs.map((run) => run.provider ?? '（未记录）'));
   if (providers.size === 1 && providers.has('heuristic')) {
     return '这些运行全部报告 0 token：零 Key 启发式 provider 用本地规则计算，不调用模型。延迟仍然被真实测量。';
   }
   return `这些运行报告的 token 均为 0（provider：${[...providers].join('、')}）——可能是未调用模型，也可能是上游没有返回用量。`;
+}
+
+/** One usage status, as a reader should read it. */
+export interface UsageStatusReading {
+  key: string;
+  /** `Reported` · `Estimated` · `Cached` · `Unavailable` · `Legacy`, plus a raw fallback. */
+  label: string;
+  /** One short line of *why*, printed as secondary text — never a badge wall. */
+  detail: string;
+  /** True when no number on the row can be trusted as a measurement. */
+  unmeasured: boolean;
+}
+
+const USAGE_STATUS_READINGS: Record<UsageStatus, UsageStatusReading> = {
+  reported: {
+    key: 'reported',
+    label: 'Reported',
+    detail: 'Provider returned usage metadata.',
+    unmeasured: false,
+  },
+  estimated: {
+    key: 'estimated',
+    label: 'Estimated',
+    detail: 'Computed locally — a bound, not a billed amount.',
+    unmeasured: false,
+  },
+  cached: {
+    key: 'cached',
+    label: 'Cached',
+    detail: 'Served from the cache, so nothing was billed.',
+    unmeasured: false,
+  },
+  unavailable: {
+    key: 'unavailable',
+    label: 'Unavailable',
+    detail: 'Provider did not return usage metadata.',
+    unmeasured: true,
+  },
+  legacy: {
+    key: 'legacy',
+    label: 'Legacy',
+    detail:
+      'Row written before the usage envelope existed; its 0s cannot be trusted as measurements.',
+    unmeasured: true,
+  },
+};
+
+/**
+ * The usage status a number came with, in the page's vocabulary.
+ *
+ * Order matters and is stated rather than implied: a `cached` run is *not* a measured spend, a
+ * `legacy` row is not a measured zero, and an unknown string is shown **as itself** — inventing a
+ * reading for a status this build does not know would be the same class of lie as printing 0.
+ */
+export function usageStatusReading(status: string | null | undefined): UsageStatusReading | null {
+  if (!status) return null;
+  const known = USAGE_STATUS_READINGS[status as UsageStatus];
+  if (known) return known;
+  return {
+    key: status,
+    label: status,
+    detail: 'Unknown to this build; shown as returned rather than translated.',
+    unmeasured: true,
+  };
+}
+
+/** The five states, in the order the glossary prints them. */
+export const USAGE_STATUS_GLOSSARY: readonly UsageStatusReading[] = [
+  USAGE_STATUS_READINGS.reported,
+  USAGE_STATUS_READINGS.estimated,
+  USAGE_STATUS_READINGS.cached,
+  USAGE_STATUS_READINGS.unavailable,
+  USAGE_STATUS_READINGS.legacy,
+];
+
+/** How many runs came with each status, for the one-line summary above the list. */
+export function usageStatusCounts(
+  runs: readonly Pick<AiRun, 'usageStatus'>[],
+): { reading: UsageStatusReading; count: number }[] {
+  const counts = new Map<string, { reading: UsageStatusReading; count: number }>();
+  for (const run of runs) {
+    const reading = usageStatusReading(run.usageStatus);
+    if (!reading) continue;
+    const current = counts.get(reading.key);
+    counts.set(reading.key, { reading, count: (current?.count ?? 0) + 1 });
+  }
+  return USAGE_STATUS_GLOSSARY.filter((entry) => counts.has(entry.key)).map(
+    (entry) => counts.get(entry.key) as { reading: UsageStatusReading; count: number },
+  );
+}
+
+export interface SpendSummary {
+  /** Sum of the costs the API actually reported; `0` only when every reported cost was `0`. */
+  usd: number;
+  /** How many rows carried a number at all. */
+  reported: number;
+  /** How many rows carried `null` — their spend is unknown and is *not* in `usd`. */
+  unavailable: number;
+}
+
+/**
+ * The spend of the rows on screen, with the rows that have no number counted separately.
+ *
+ * Summing a row whose `costUsd` is `null` as if it were `0` is the exact lie PHASE 13 removed from
+ * the backend, so the sum is over reported values only and the caller is told how many were left
+ * out. On a zero-key deployment `reported` is every row and the sum is a real `$0.0000`.
+ */
+export function spendSummary(runs: readonly Pick<AiRun, 'costUsd'>[]): SpendSummary {
+  let usd = 0;
+  let reported = 0;
+  let unavailable = 0;
+  for (const run of runs) {
+    if (run.costUsd === null || run.costUsd === undefined || !Number.isFinite(run.costUsd)) {
+      unavailable += 1;
+      continue;
+    }
+    usd += run.costUsd;
+    reported += 1;
+  }
+  return { usd, reported, unavailable };
+}
+
+/**
+ * What a total that skips unreported runs means.
+ *
+ * `unaccountedRuns === 0` returns `null`: the total is complete and needs no caveat. Anything else
+ * is a **floor**, and the page has to say so where the number is.
+ */
+export function unaccountedSummary(unaccountedRuns: number): string | null {
+  if (!Number.isFinite(unaccountedRuns) || unaccountedRuns <= 0) return null;
+  return `窗口内有 ${formatCount(unaccountedRuns)} 次运行的用量未被 provider 上报（token/成本为 null，未计入合计）——因此上面的合计是下限，不是确切值。`;
 }
 
 /** `5 天里有 3 天有运行` — the API does not zero-fill empty days, so the page says so (see UI.md). */

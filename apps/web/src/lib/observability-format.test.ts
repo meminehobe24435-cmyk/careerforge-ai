@@ -17,7 +17,12 @@ import {
   latestDay,
   parseApiInstant,
   shortDigest,
+  spendSummary,
   statusBadge,
+  unaccountedSummary,
+  usageStatusCounts,
+  usageStatusReading,
+  USAGE_STATUS_GLOSSARY,
   zeroSpendSummary,
 } from '@/lib/observability-format';
 
@@ -123,7 +128,7 @@ describe('status vocabulary', () => {
 describe('the zero-key deployment is explained, not hidden', () => {
   const run = (
     provider: string | null,
-    totalTokens: number,
+    totalTokens: number | null,
   ): Pick<AiRun, 'provider' | 'totalTokens'> => ({
     provider,
     totalTokens,
@@ -139,6 +144,8 @@ describe('the zero-key deployment is explained, not hidden', () => {
   it('says nothing when the numbers speak for themselves', () => {
     expect(zeroSpendSummary([run('heuristic', 0), run('deepseek', 1500)])).toBeNull();
     expect(zeroSpendSummary([])).toBeNull();
+    // One measured run among unreported ones is still enough for the column to be readable.
+    expect(zeroSpendSummary([run('heuristic', null), run('deepseek', 1500)])).toBeNull();
   });
 
   it('does not blame the heuristic provider for a different one', () => {
@@ -149,6 +156,114 @@ describe('the zero-key deployment is explained, not hidden', () => {
 
   it('admits when the provider was not recorded at all', () => {
     expect(zeroSpendSummary([run(null, 0)])).toContain('未记录');
+  });
+
+  /**
+   * The PHASE 13 case, and the reason this function was rewritten: a page of `null`s is **not** a
+   * page of zeros. Saying "these all reported 0 tokens" over `null` counters would re-tell the lie
+   * the migration removed from the database.
+   */
+  it('distinguishes unreported usage from a measured zero', () => {
+    const note = zeroSpendSummary([run('deepseek', null), run('deepseek', null)]);
+    expect(note).toContain('provider 没有返回 usage metadata');
+    expect(note).toContain('不是 0');
+    expect(note).not.toContain('零 Key 启发式');
+  });
+
+  it('still explains a mixed page of measured zeros', () => {
+    // Two providers reporting real zeros: not the zero-key story, and not the null one.
+    const note = zeroSpendSummary([run('heuristic', 0), run('scripted', 0)]);
+    expect(note).toContain('heuristic');
+    expect(note).toContain('scripted');
+    expect(note).toContain('均为 0');
+  });
+});
+
+describe('the usage status vocabulary', () => {
+  it('reads every status the API can send, including a row that predates the envelope', () => {
+    expect(usageStatusReading('reported')?.label).toBe('Reported');
+    expect(usageStatusReading('estimated')?.detail).toContain('not a billed amount');
+    expect(usageStatusReading('cached')?.detail).toContain('nothing was billed');
+    expect(usageStatusReading('unavailable')?.label).toBe('Unavailable');
+    expect(usageStatusReading('unavailable')?.detail).toBe(
+      'Provider did not return usage metadata.',
+    );
+    // The one that must never be silently re-labelled: those 0s cannot be trusted.
+    expect(usageStatusReading('legacy')?.label).toBe('Legacy');
+    expect(usageStatusReading('legacy')?.detail).toContain('cannot be trusted');
+  });
+
+  it('marks exactly the two states in which no measurement happened', () => {
+    expect(usageStatusReading('reported')?.unmeasured).toBe(false);
+    expect(usageStatusReading('estimated')?.unmeasured).toBe(false);
+    expect(usageStatusReading('cached')?.unmeasured).toBe(false);
+    expect(usageStatusReading('unavailable')?.unmeasured).toBe(true);
+    expect(usageStatusReading('legacy')?.unmeasured).toBe(true);
+  });
+
+  it('shows an unknown status as itself instead of guessing a meaning for it', () => {
+    const reading = usageStatusReading('throttled');
+    expect(reading?.label).toBe('throttled');
+    expect(reading?.unmeasured).toBe(true);
+  });
+
+  it('has nothing to say about a status that is absent', () => {
+    expect(usageStatusReading(null)).toBeNull();
+    expect(usageStatusReading(undefined)).toBeNull();
+  });
+
+  it('glossaries the five states in full, for the page that sums them', () => {
+    expect(USAGE_STATUS_GLOSSARY.map((entry) => entry.label)).toEqual([
+      'Reported',
+      'Estimated',
+      'Cached',
+      'Unavailable',
+      'Legacy',
+    ]);
+  });
+
+  it('counts the statuses present, in glossary order', () => {
+    const counts = usageStatusCounts([
+      { usageStatus: 'unavailable' },
+      { usageStatus: 'reported' },
+      { usageStatus: 'reported' },
+      { usageStatus: null },
+    ]);
+    expect(counts.map((entry) => [entry.reading.label, entry.count])).toEqual([
+      ['Reported', 2],
+      ['Unavailable', 1],
+    ]);
+    expect(usageStatusCounts([])).toEqual([]);
+  });
+});
+
+describe('totals that skip what was never measured', () => {
+  it('sums only the reported costs and counts the rest separately', () => {
+    const spend = spendSummary([{ costUsd: 0.0012 }, { costUsd: null }, { costUsd: 0.0008 }]);
+    expect(spend.usd).toBeCloseTo(0.002, 6);
+    expect(spend.reported).toBe(2);
+    expect(spend.unavailable).toBe(1);
+  });
+
+  it('keeps a measured zero as zero rather than treating it as missing', () => {
+    const spend = spendSummary([{ costUsd: 0 }, { costUsd: 0 }]);
+    expect(spend.usd).toBe(0);
+    expect(spend.reported).toBe(2);
+    expect(spend.unavailable).toBe(0);
+  });
+
+  it('does not add a non-finite cost to the sum', () => {
+    const spend = spendSummary([{ costUsd: Number.NaN }, { costUsd: 1 }]);
+    expect(spend.usd).toBe(1);
+    expect(spend.unavailable).toBe(1);
+  });
+
+  it('stays silent while the total is complete, and states the floor when it is not', () => {
+    expect(unaccountedSummary(0)).toBeNull();
+    expect(unaccountedSummary(-1)).toBeNull();
+    const note = unaccountedSummary(3);
+    expect(note).toContain('3 次运行');
+    expect(note).toContain('下限');
   });
 });
 

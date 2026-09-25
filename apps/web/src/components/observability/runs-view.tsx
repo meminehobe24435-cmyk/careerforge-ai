@@ -14,7 +14,7 @@ import {
   Input,
   Skeleton,
 } from '@careerforge/ui';
-import { isApiError, type AiRunFilters, type AiRunStatus } from '@careerforge/shared';
+import { isApiError, type AiRun, type AiRunFilters, type AiRunStatus } from '@careerforge/shared';
 import { Radar, RefreshCw, SlidersHorizontal } from 'lucide-react';
 
 import { RunTable } from '@/components/observability/run-table';
@@ -25,6 +25,8 @@ import {
   SINCE_HOUR_FILTERS,
   formatCount,
   formatUsd,
+  spendSummary,
+  usageStatusCounts,
 } from '@/lib/observability-format';
 
 /**
@@ -182,15 +184,61 @@ export function AiRunsView() {
         </CardContent>
       </Card>
 
+      {data && data.items.length > 0 ? <PageUsageNote runs={data.items} /> : null}
+
       {data && data.items.length > 0 ? (
         <p className="text-tertiary text-[11px] leading-relaxed">
-          本页返回的最新 {data.items.length} 条运行合计花费{' '}
-          {formatUsd(data.items.reduce((sum, run) => sum + run.costUsd, 0))}
-          。窗口化的成本汇总在{' '}
+          窗口化的成本汇总在{' '}
           <a href="/app/costs" className="text-signal underline underline-offset-2">
             成本看板
           </a>
-          ，那里按天、按 agent、按功能分组，并给出缓存命中率。
+          ，那里按天、按 agent、按功能分组，并给出缓存命中率与未计量的运行数。
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What this page's numbers are, and what they are not.
+ *
+ * Two things a reader of an *operations* page is entitled to be told before they scroll: how much
+ * the runs on screen cost, and how many of them came with a number at all. A single blended total
+ * would answer neither — summing a `null` cost as `0` is the same lie the backend stopped telling
+ * in PHASE 13.
+ */
+function PageUsageNote({ runs }: { runs: AiRun[] }) {
+  const spend = spendSummary(runs);
+  const statuses = usageStatusCounts(runs);
+  const unavailable = spend.unavailable;
+
+  return (
+    <div className="flex flex-col gap-1" data-page-usage>
+      <p className="text-tertiary text-[11px] leading-relaxed">
+        本页返回的最新 {formatCount(runs.length)} 条运行中，{formatCount(spend.reported)}{' '}
+        条带可用量， 合计花费 {formatUsd(spend.usd)}
+        {unavailable > 0
+          ? `；另有 ${formatCount(unavailable)} 条未上报用量（成本为 null，未计入合计——合计因此是下限）`
+          : ''}
+        。
+      </p>
+      {statuses.length > 0 ? (
+        <p className="text-tertiary text-[11px] leading-relaxed" data-usage-counts>
+          {/*
+            Two clauses, separated on purpose. The first screenshot of this page ran them together
+            — `Unavailable 9Unavailable（Provider did not…）` — which is exactly the kind of text a
+            reader stops trusting, so the counts and the reasons are joined by an explicit `；说明：`.
+          */}
+          用量状态：
+          {statuses
+            .map((entry) => `${entry.reading.label} ${formatCount(entry.count)}`)
+            .join(' · ')}
+          {statuses.some((entry) => entry.reading.unmeasured)
+            ? `；说明：${statuses
+                .filter((entry) => entry.reading.unmeasured)
+                .map((entry) => `${entry.reading.label} = ${entry.reading.detail}`)
+                .join(' ')}`
+            : ''}
         </p>
       ) : null}
     </div>

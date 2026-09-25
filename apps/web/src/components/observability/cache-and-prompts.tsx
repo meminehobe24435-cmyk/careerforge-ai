@@ -101,9 +101,14 @@ export function CachePanel({ stats }: CachePanelProps) {
             </tbody>
           </table>
         </div>
-        <p className="text-tertiary text-[11px]">
-          表中累计命中 {formatCount(stats?.persistedHits ?? 0)} 次；本次进程已落盘{' '}
-          {formatCount(stats?.process.eventsFlushed ?? 0)} 条缓存事件。
+        {/*
+          `stats === undefined` means the read failed, not that the cache served nothing: printing
+          `0` here would report a measurement nobody made. An absent counter is an em dash.
+        */}
+        <p className="text-tertiary text-[11px]" data-cache-footer>
+          {stats
+            ? `表中累计命中 ${formatCount(stats.persistedHits ?? null)} 次；本次进程已落盘 ${formatCount(stats.process.eventsFlushed ?? null)} 条缓存事件。`
+            : '缓存统计没有取到（GET /cache/stats 失败）—— 这里不显示任何替代数字。'}
         </p>
       </CardContent>
     </Card>

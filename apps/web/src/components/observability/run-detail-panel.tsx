@@ -20,6 +20,7 @@ import {
   formatUsd,
   shortDigest,
   statusBadge,
+  usageStatusReading,
 } from '@/lib/observability-format';
 
 interface RunDetailPanelProps {
@@ -63,9 +64,23 @@ export function RunDetailPanel({ runId }: RunDetailPanelProps) {
 
   const run = detail.data;
   const calls = run.calls;
+  const runUsage = usageStatusReading(run.usageStatus);
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {/*
+        The run's own usage status, first: every number below it — steps, calls, cost — is either a
+        measurement or an absence, and this line is what says which. Secondary text, not a badge.
+      */}
+      <p
+        className="text-tertiary text-[11px] leading-relaxed"
+        data-run-usage={runUsage?.key ?? 'none'}
+      >
+        {runUsage
+          ? `用量状态 ${runUsage.label} · ${runUsage.detail}`
+          : '这条运行没有记录用量状态（PHASE 13 之前的旧行）—— 因此下面每个计数都要当作未知来源，而不是测量值。'}
+      </p>
+
       <section aria-label="步骤链" className="flex flex-col gap-2">
         <h4 className="text-secondary text-xs font-medium">
           步骤链（{run.steps.length} 步，来自执行器的 trace）
@@ -79,6 +94,7 @@ export function RunDetailPanel({ runId }: RunDetailPanelProps) {
           <ol className="flex flex-col gap-1.5">
             {run.steps.map((step, index) => {
               const badge = statusBadge(step.status);
+              const usage = usageStatusReading(step.usageStatus);
               return (
                 <li
                   key={`${step.name}-${index}`}
@@ -93,9 +109,21 @@ export function RunDetailPanel({ runId }: RunDetailPanelProps) {
                   <span className="text-secondary font-mono tabular-nums">
                     {formatLatency(step.latencyMs)}
                   </span>
-                  {step.tokens > 0 ? (
+                  {/*
+                    `0` prints as `0`; a step whose usage was never reported prints `—` plus its
+                    status. Hiding the null would make "no model call" and "no measurement" the
+                    same row, which is the distinction PHASE 13 added the status for.
+                  */}
+                  {step.tokens !== null || usage ? (
                     <span className="text-secondary font-mono tabular-nums">
                       {formatCount(step.tokens)} tok
+                      {usage ? (
+                        <span className="text-tertiary" data-step-usage={usage.key}>
+                          {' '}
+                          · {usage.label}
+                          {usage.unmeasured ? `（${usage.detail}）` : ''}
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
                   {step.attempts > 1 ? (
@@ -148,33 +176,52 @@ export function RunDetailPanel({ runId }: RunDetailPanelProps) {
                   <th scope="col" className="py-1 pr-3 font-medium">
                     成本
                   </th>
+                  <th scope="col" className="py-1 pr-3 font-medium">
+                    用量
+                  </th>
                   <th scope="col" className="py-1 font-medium">
                     时间 (UTC)
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {calls.map((call) => (
-                  <tr key={call.id} className="border-subtle border-t">
-                    <td className="text-primary py-1.5 pr-3 font-mono">{call.operation}</td>
-                    <td className="text-secondary py-1.5 pr-3 font-mono">
-                      {call.provider}
-                      {call.model ? ` · ${call.model}` : ''}
-                    </td>
-                    <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
-                      {formatCount(call.totalTokens)}
-                    </td>
-                    <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
-                      {formatLatency(call.latencyMs)}
-                    </td>
-                    <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
-                      {formatUsd(call.costUsd)}
-                    </td>
-                    <td className="text-tertiary py-1.5 font-mono tabular-nums">
-                      {formatInstant(call.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                {calls.map((call) => {
+                  const usage = usageStatusReading(call.usageStatus);
+                  return (
+                    <tr key={call.id} className="border-subtle border-t">
+                      <td className="text-primary py-1.5 pr-3 font-mono">{call.operation}</td>
+                      <td className="text-secondary py-1.5 pr-3 font-mono">
+                        {call.provider}
+                        {call.model ? ` · ${call.model}` : ''}
+                      </td>
+                      <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
+                        {formatCount(call.totalTokens)}
+                      </td>
+                      <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
+                        {formatLatency(call.latencyMs)}
+                      </td>
+                      <td className="text-secondary py-1.5 pr-3 font-mono tabular-nums">
+                        {formatUsd(call.costUsd)}
+                      </td>
+                      <td
+                        className="text-tertiary py-1.5 pr-3 text-[11px]"
+                        data-call-usage={usage?.key ?? 'none'}
+                      >
+                        {usage ? (
+                          <>
+                            {usage.label}
+                            {usage.unmeasured ? ` · ${usage.detail}` : ''}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="text-tertiary py-1.5 font-mono tabular-nums">
+                        {formatInstant(call.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

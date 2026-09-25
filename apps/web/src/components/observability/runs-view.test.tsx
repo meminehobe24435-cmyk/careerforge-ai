@@ -52,17 +52,35 @@ function runOf(overrides: Partial<AiRun> = {}): AiRun {
     promptTokens: 0,
     completionTokens: 0,
     totalTokens: 0,
+    cachedTokens: 0,
     costUsd: 0,
     costCny: 0,
+    // The zero-key heuristic provider reports a real `0`: it computed locally and spent nothing.
+    usageStatus: 'reported',
     latencyMs: 93,
     cacheHit: false,
     requestId: 'req_abc',
     error: null,
+    errorCode: null,
     stepCount: 4,
     startedAt: '2026-09-24T10:00:00',
     finishedAt: '2026-09-24T10:00:00.093',
     ...overrides,
   };
+}
+
+/** A run whose provider never returned usage metadata: counts are `null`, not `0` (PHASE 13). */
+function unmeasuredRun(overrides: Partial<AiRun> = {}): AiRun {
+  return runOf({
+    promptTokens: null,
+    completionTokens: null,
+    totalTokens: null,
+    cachedTokens: null,
+    costUsd: null,
+    costCny: null,
+    usageStatus: 'unavailable',
+    ...overrides,
+  });
 }
 
 function listOf(items: AiRun[]): AiRunList {
@@ -84,6 +102,7 @@ function detailOf(run: AiRun): AiRunDetail {
         cacheHit: false,
         tokens: 0,
         costUsd: 0,
+        usageStatus: 'reported',
         inputDigest: 'aaaa1111bbbb2222',
         outputDigest: 'cccc3333dddd4444',
         errorCode: null,
@@ -101,6 +120,7 @@ function detailOf(run: AiRun): AiRunDetail {
         cacheHit: false,
         tokens: 0,
         costUsd: 0,
+        usageStatus: 'reported',
         inputDigest: 'eeee5555ffff6666',
         outputDigest: '9999aaaa1111bbbb',
         errorCode: null,
@@ -190,6 +210,93 @@ describe('the AI runs page', () => {
     await renderReady();
     expect(screen.getByText(/零 Key 启发式 provider/)).toBeInTheDocument();
     expect(screen.getByText(/延迟仍然被真实测量/)).toBeInTheDocument();
+    // …and the row says the 0 is a measurement, not an absence.
+    const row = document.querySelector(`table [data-run="${runOf().id}"]`);
+    expect(within(row as HTMLElement).getByText('Reported')).toBeInTheDocument();
+  });
+
+  /**
+   * PHASE 13's core rule, on the page a reader checks it with: a count the provider never reported
+   * is `—`, never `0`, and the row says *why* in words rather than leaving a bare em dash.
+   */
+  it('renders an unreported count as a dash and says why, instead of inventing a zero', async () => {
+    mocked.aiRuns.mockResolvedValue(listOf([unmeasuredRun()]));
+    await renderReady();
+
+    const row = document.querySelector(`table [data-run="${runOf().id}"]`);
+    const scope = within(row as HTMLElement);
+    // Tokens and cost: both unreported, both a dash. `$0.0000` here would be a fabricated number.
+    expect(scope.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    expect(scope.queryByText('0')).toBeNull();
+    expect(scope.queryByText('$0.0000')).toBeNull();
+    // The reason travels with the number.
+    expect(scope.getByText('Unavailable')).toBeInTheDocument();
+    expect(scope.getByText(/Provider did not return usage metadata/)).toBeInTheDocument();
+    // And the page-level summary counts the row as unreported rather than adding it as $0.
+    const summary = document.querySelector('[data-page-usage]') as HTMLElement;
+    expect(summary.textContent).toContain('1 条未上报用量');
+    expect(summary.textContent).toContain('未计入合计');
+  });
+
+  it('counts the usage status of every row on the page', async () => {
+    mocked.aiRuns.mockResolvedValue(
+      listOf([
+        runOf({ id: 'aaaaaaaa-0000-0000-0000-000000000000' }),
+        unmeasuredRun({ id: 'bbbbbbbb-0000-0000-0000-000000000000' }),
+      ]),
+    );
+    await renderReady();
+    const counts = document.querySelector('[data-usage-counts]') as HTMLElement;
+    expect(counts.textContent).toContain('Reported 1');
+    expect(counts.textContent).toContain('Unavailable 1');
+    // The counts and the reasons are two clauses, not one run-on string: the first draft of this
+    // line read `Unavailable 9Unavailable（Provider did not…）` on the live stack.
+    expect(counts.textContent).toContain('；说明：');
+    expect(counts.textContent).toMatch(/Unavailable = Provider did not return usage metadata\./);
+    expect(counts.textContent).not.toMatch(/\dUnavailable/);
+    // The page totals only what was reported: two rows, one of them carrying a number.
+    const summary = document.querySelector('[data-page-usage]') as HTMLElement;
+    expect(summary.textContent).toContain('1 条带可用量');
+    expect(summary.textContent).toContain('$0.0000');
+  });
+
+  it('names every usage status the run detail can carry, per step and per call', async () => {
+    mocked.aiRun.mockResolvedValue({
+      ...detailOf(unmeasuredRun()),
+      calls: [
+        {
+          id: 'call-1',
+          agent: 'job',
+          provider: 'heuristic',
+          model: '',
+          operation: 'structured',
+          promptVersion: null,
+          promptTokens: null,
+          completionTokens: null,
+          totalTokens: null,
+          cachedTokens: null,
+          costUsd: null,
+          costCny: null,
+          usageStatus: 'unavailable',
+          latencyMs: 12,
+          status: 'ok',
+          requestId: null,
+          createdAt: '2026-09-24T10:00:00',
+        },
+      ],
+    });
+    const user = await renderReady();
+    // Resolved *before* the click: expanding the row mounts the calls table, and `getByRole('table')`
+    // would then match two.
+    const table = within(desktop());
+    await user.click(table.getByRole('button', { name: /jd_analysis/ }));
+
+    const panelUsage = await table.findByText(/用量状态 Unavailable/);
+    expect(panelUsage).toBeInTheDocument();
+    expect(table.getAllByText(/Provider did not return usage metadata/).length).toBeGreaterThan(0);
+    // The call table gets its own column, because a call can be unmeasured while the run is not.
+    const callUsage = document.querySelector('[data-call-usage="unavailable"]');
+    expect(callUsage).not.toBeNull();
   });
 
   it('opens the row and fetches that run’s step chain, not the list', async () => {

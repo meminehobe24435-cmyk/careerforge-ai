@@ -8,6 +8,8 @@ import { activityWindowNote, formatCount, formatUsd, latestDay } from '@/lib/obs
 interface DailyCostChartProps {
   days: DailyCost[];
   range: ObservabilityRange | (string & {});
+  /** Runs in the window whose usage was never reported — their days are `0` for want of a number. */
+  unaccountedRuns?: number;
 }
 
 const WIDTH = 320;
@@ -25,10 +27,16 @@ const PAD = 8;
  * When nothing was spent the chart is not drawn as a flat line at zero: a flat line looks like a
  * measurement, and the truth is that there is nothing to measure.
  */
-export function DailyCostChart({ days, range }: DailyCostChartProps) {
+export function DailyCostChart({ days, range, unaccountedRuns = 0 }: DailyCostChartProps) {
   const note = activityWindowNote(days, range);
   const total = days.reduce((sum, day) => sum + day.costUsd, 0);
   const peak = days.reduce((max, day) => Math.max(max, day.costUsd), 0);
+  // `0` here is two different facts, and the sentence below has to pick the right one: a zero-key
+  // provider really spends nothing, while an unreported run's `0` is a hole the day-sum closed.
+  const floorNote =
+    unaccountedRuns > 0
+      ? `其中 ${unaccountedRuns} 次运行的用量未被 provider 上报，接口的按日合计把它们的 null 当作 0 —— 因此这些天的成本是下限。`
+      : null;
 
   if (days.length === 0 || peak === 0) {
     return (
@@ -40,9 +48,12 @@ export function DailyCostChart({ days, range }: DailyCostChartProps) {
           <p className="text-secondary text-xs leading-relaxed">
             {days.length === 0
               ? '这个窗口内没有运行记录，因此没有成本曲线可画。'
-              : '这个窗口内的运行成本都是 0：零 Key 启发式 provider 不产生费用，延迟与调用次数仍然被记录。'}
+              : unaccountedRuns > 0
+                ? '这个窗口内的运行成本都是 0 —— 但其中一部分运行的用量并未被 provider 上报，因此这里没有可画的曲线，而不是「花费为 0」。'
+                : '这个窗口内的运行成本都是 0：零 Key 启发式 provider 不产生费用，延迟与调用次数仍然被记录。'}
           </p>
           {note ? <p className="text-tertiary text-[11px]">{note}</p> : null}
+          {floorNote ? <p className="text-weak text-[11px]">{floorNote}</p> : null}
         </CardContent>
       </Card>
     );
@@ -111,6 +122,7 @@ export function DailyCostChart({ days, range }: DailyCostChartProps) {
           }
           ） ，合计 {formatUsd(total)}。{note ?? '窗口为全部历史，只显示有运行记录的日期。'}
         </p>
+        {floorNote ? <p className="text-weak text-[11px] leading-relaxed">{floorNote}</p> : null}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">

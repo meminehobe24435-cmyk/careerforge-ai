@@ -12,6 +12,7 @@ import {
   formatLatency,
   formatUsd,
   statusBadge,
+  usageStatusReading,
   zeroSpendSummary,
 } from '@/lib/observability-format';
 
@@ -43,7 +44,11 @@ interface RunRowsProps {
  *   every row — on a zero-key deployment every row is zero, and a note per row would double the
  *   height while adding no information;
  * * `latencyMs` of `null` renders as an em dash: `0 ms` would be a claim about a run that never
- *   finished.
+ *   finished;
+ * * the **usage status** (`Reported` / `Estimated` / `Cached` / `Unavailable` / `Legacy`) is printed
+ *   as secondary text under the token count — not as a badge. It is the field that says whether the
+ *   number beside it is a measurement, so a `0` and a `—` are never left to be read as the same
+ *   thing; `unavailable` carries its reason ("Provider did not return usage metadata") in words.
  */
 export function RunTable({ runs }: RunTableProps) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -147,7 +152,8 @@ function RunTableDesktop({ runs, openId, onToggle, panelPrefix }: RunRowsProps) 
                     {run.model ?? run.provider ?? '—'}
                   </td>
                   <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
-                    {formatCount(run.totalTokens)}
+                    <span className="block">{formatCount(run.totalTokens)}</span>
+                    <UsageNote status={run.usageStatus} />
                   </td>
                   <td className="text-secondary py-2 pr-3 font-mono tabular-nums">
                     {formatLatency(run.latencyMs)}
@@ -185,6 +191,27 @@ function RunTableDesktop({ runs, openId, onToggle, panelPrefix }: RunRowsProps) 
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The usage status under a token count, in secondary text.
+ *
+ * `—` and `0` are different claims; this is the line that says which one a row is making. When the
+ * status is one of the two that mean "no measurement happened" it also prints *why*, because
+ * "Unavailable" on its own invites the reader to guess between a provider that said nothing and an
+ * instrument that is broken.
+ */
+function UsageNote({ status }: { status: string | null | undefined }) {
+  const reading = usageStatusReading(status);
+  if (!reading) return null;
+  return (
+    <span className="text-tertiary block text-[10px] leading-snug" data-usage-status={reading.key}>
+      {/* Two spans on purpose: the status word stays findable on its own, so "Unavailable" is not
+          buried inside the sentence that explains it. */}
+      <span>{reading.label}</span>
+      {reading.unmeasured ? <span> · {reading.detail}</span> : null}
+    </span>
   );
 }
 
@@ -235,6 +262,9 @@ function RunListMobile({ runs, openId, onToggle, panelPrefix }: RunRowsProps) {
               </span>
               <span className="text-tertiary">{formatInstant(run.startedAt)}</span>
             </div>
+            {/* Same field as the table's, in the narrow layout's own line — the card list carries
+                the same facts rather than a subset of them. */}
+            <UsageNote status={run.usageStatus} />
             {expanded ? (
               <div id={panelId} className="border-subtle bg-surface rounded-sm border">
                 <RunDetailPanel runId={run.id} />

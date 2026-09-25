@@ -7,6 +7,8 @@ import { costShares, formatCount, formatLatency, formatUsd } from '@/lib/observa
 
 interface AgentCostPanelProps {
   rows: CostByAgent[];
+  /** Runs the API could not attribute a usage number to, so these rows are a floor as well. */
+  unaccountedRuns?: number;
 }
 
 /**
@@ -19,7 +21,7 @@ interface AgentCostPanelProps {
  * stacked column would have encoded (cache hits, average latency), which is what a reader actually
  * compares.
  */
-export function AgentCostPanel({ rows }: AgentCostPanelProps) {
+export function AgentCostPanel({ rows, unaccountedRuns = 0 }: AgentCostPanelProps) {
   const { rows: shares, total } = costShares(
     rows.map((row) => ({ key: row.agent, label: row.agent, value: row.costUsd })),
   );
@@ -39,6 +41,12 @@ export function AgentCostPanel({ rows }: AgentCostPanelProps) {
             <p className="text-tertiary text-[11px] leading-relaxed">
               合计 {formatUsd(total)}。占比以本窗口内所有 agent 的花费为分母。
             </p>
+            {unaccountedRuns > 0 ? (
+              <p className="text-weak text-[11px] leading-relaxed">
+                这个窗口还有 {unaccountedRuns} 次运行的用量未被上报，它们不在这张表里 ——
+                每行都是下限。
+              </p>
+            ) : null}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <caption className="sr-only">
@@ -116,6 +124,7 @@ export function AgentCostPanel({ rows }: AgentCostPanelProps) {
 
 interface FeatureCostPanelProps {
   rows: CostByFeature[];
+  unaccountedRuns?: number;
 }
 
 /**
@@ -128,7 +137,7 @@ interface FeatureCostPanelProps {
  * mapping from `workflow` (what the executor ran) to feature (what the candidate pressed) is visible
  * rather than buried in the backend.
  */
-export function FeatureCostPanel({ rows }: FeatureCostPanelProps) {
+export function FeatureCostPanel({ rows, unaccountedRuns = 0 }: FeatureCostPanelProps) {
   const { rows: shares, total } = costShares(
     rows.map((row) => ({ key: row.feature, label: row.feature, value: row.costUsd })),
   );
@@ -163,6 +172,12 @@ export function FeatureCostPanel({ rows }: FeatureCostPanelProps) {
             <p className="text-tertiary text-[11px] leading-relaxed">
               合计 {formatUsd(total)}；占比按成本计算，颜色交替只为区分相邻区块。
             </p>
+            {unaccountedRuns > 0 ? (
+              <p className="text-weak text-[11px] leading-relaxed">
+                这个窗口还有 {unaccountedRuns} 次运行的用量未被上报，它们不在这张图里 ——
+                每段都是下限。
+              </p>
+            ) : null}
             <ul className="flex flex-col gap-1 text-xs">
               {shares.map((share, index) => {
                 const row = rows[index] as CostByFeature;

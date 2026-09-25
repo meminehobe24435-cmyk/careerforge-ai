@@ -26,12 +26,14 @@ import { DailyCostChart } from '@/components/observability/daily-cost-chart';
 import { useCosts } from '@/hooks/use-observability';
 import { API_BASE_URL } from '@/lib/api';
 import {
+  USAGE_STATUS_GLOSSARY,
   budgetUsage,
   formatCny,
   formatCount,
   formatLatency,
   formatUsd,
   latestDay,
+  unaccountedSummary,
 } from '@/lib/observability-format';
 
 const RANGE_LABELS: Record<ObservabilityRange, string> = {
@@ -51,6 +53,12 @@ const RANGE_LABELS: Record<ObservabilityRange, string> = {
  * What the page will not do is convert tokens into money it was not told about. When the deployment
  * runs the zero-key heuristic provider the honest answer really is "$0.0000 spent and 0 tokens", and
  * the API's `notes` travel with the numbers so the reader knows why.
+ *
+ * **The one word that changes with the data.** `totals` is a `SUM`, and `SUM` skips the runs whose
+ * usage was never reported (`NULL`, PHASE 13). So while `unaccountedRuns` is 0 the headline is a
+ * *Total cost*; the moment it is not, the same number becomes a *Known cost* — a floor — and
+ * `unaccountedRuns` gets its own card instead of a footnote. A page that kept saying "Total" over a
+ * SUM with holes in it would be reporting a plausible number rather than a true one.
  */
 export function CostsView() {
   const [range, setRange] = useState<ObservabilityRange>('7d');
@@ -72,6 +80,8 @@ export function CostsView() {
 
   const apiError = isApiError(costs.error) ? costs.error : null;
   const summary = costs.costs.data;
+  const unaccounted = summary?.unaccountedRuns ?? 0;
+  const floorNote = summary ? unaccountedSummary(unaccounted) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,16 +135,20 @@ export function CostsView() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <TotalCard
-              label="花费（USD）"
+              label={unaccounted > 0 ? 'Known cost（USD）' : 'Total cost（USD）'}
               value={formatUsd(summary.totals.costUsd)}
-              hint={`约 ${formatCny(summary.totals.costCny)} · 窗口 ${RANGE_LABELS[range]}`}
+              hint={
+                unaccounted > 0
+                  ? `约 ${formatCny(summary.totals.costCny)} · 已知下限，不含 ${formatCount(unaccounted)} 次未上报用量的运行`
+                  : `约 ${formatCny(summary.totals.costCny)} · 窗口 ${RANGE_LABELS[range]}`
+              }
             />
             <TotalCard
               label="Token"
               value={formatCount(summary.totals.tokens)}
-              hint="provider 自报用量，未经推算"
+              hint="provider 自报用量，未经推算；未上报的运行不计入"
             />
             <TotalCard
               label="运行 / 模型调用"
@@ -146,7 +160,22 @@ export function CostsView() {
               value={formatLatency(summary.totals.latencyMs)}
               hint="所有运行自报延迟之和，不是平均"
             />
+            {/*
+              Its own card rather than a footnote: "the total is a floor" is only actionable if the
+              reader can see how many runs are missing from it.
+            */}
+            <TotalCard
+              label="Unaccounted runs"
+              value={formatCount(unaccounted)}
+              hint={
+                unaccounted > 0
+                  ? '这些运行的用量未被 provider 上报（usageStatus=unavailable/legacy），token 与成本为 null 而非 0'
+                  : '窗口内每次运行的用量都有来源：没有 null 计数被当成 0 计入合计'
+              }
+            />
           </div>
+
+          <UsageStatusGlossary />
 
           <BudgetCard
             range={range}
@@ -154,11 +183,11 @@ export function CostsView() {
             latest={latestDay(summary.days)}
           />
 
-          <DailyCostChart days={summary.days} range={range} />
+          <DailyCostChart days={summary.days} range={range} unaccountedRuns={unaccounted} />
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <AgentCostPanel rows={costs.byAgent.data ?? []} />
-            <FeatureCostPanel rows={costs.byFeature.data ?? []} />
+            <AgentCostPanel rows={costs.byAgent.data ?? []} unaccountedRuns={unaccounted} />
+            <FeatureCostPanel rows={costs.byFeature.data ?? []} unaccountedRuns={unaccounted} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -166,12 +195,35 @@ export function CostsView() {
             <PromptPanel prompts={costs.prompts.data ?? []} />
           </div>
 
+          {floorNote ? (
+            <p className="text-weak text-[11px] leading-relaxed" data-unaccounted-note>
+              {floorNote}
+            </p>
+          ) : null}
+
           {summary.notes.length > 0 ? (
             <p className="text-tertiary text-[11px] leading-relaxed">{summary.notes.join(' ')}</p>
           ) : null}
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The five usage states, once, in secondary text.
+ *
+ * On a page made of `SUM`s this is the only thing that can tell a reader whether a `0` is a measured
+ * zero or the absence of a measurement. It is a one-line glossary rather than a badge on every
+ * figure: the vocabulary is small, fixed, and belongs to the API — repeating it eight times would
+ * turn a caveat into decoration.
+ */
+function UsageStatusGlossary() {
+  return (
+    <p className="text-tertiary text-[11px] leading-relaxed" data-usage-glossary>
+      用量状态（usageStatus）：
+      {USAGE_STATUS_GLOSSARY.map((entry) => `${entry.label} = ${entry.detail}`).join(' ')}
+    </p>
   );
 }
 

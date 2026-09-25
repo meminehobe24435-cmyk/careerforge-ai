@@ -170,6 +170,13 @@ export interface DashboardRecentJob {
   role: string;
   matchScore: number;
   status: string;
+  /**
+   * When the posting was stored (naive-UTC ISO-8601, like every instant in this API).
+   *
+   * Optional because the row is part of an older payload shape too; the narrow layout renders an
+   * absent value as an em dash rather than as a made-up date.
+   */
+  createdAt?: string | null;
 }
 
 export interface DashboardNextAction {
@@ -232,6 +239,51 @@ export interface SystemHealthResponse {
   checkedAt?: string;
   version?: Record<string, string> | null;
   meta?: ApiMeta;
+}
+
+/**
+ * `GET /system/ready` (API.md §2.13) — the one probe an orchestrator may act on.
+ *
+ * `ready` is `false` only when the **gate** (`database`) is unreachable, and that answer comes
+ * back as `503 DEPENDENCY_UNAVAILABLE` with the per-dependency detail in `error.details`. A
+ * degraded optional dependency is named in `degraded` instead of flipping the status: the
+ * zero-key deployment serves the whole product on the deterministic provider, so it is ready.
+ */
+export interface SystemReadinessResponse {
+  status: 'ready' | 'not_ready';
+  ready: boolean;
+  /** Which dependency decides readiness — named so a reader does not have to guess. */
+  gate: string;
+  environment: string;
+  checkedAt: string;
+  dependencies: ServiceHealthEntry[];
+  /** Degraded or down, but not unready. */
+  degraded: string[];
+  version?: Record<string, string> | null;
+  meta?: ApiMeta;
+}
+
+/**
+ * `GET /system/version` (API.md §2.13) — build identity, safe to serve anonymously.
+ *
+ * Four facts plus runtime versions, and deliberately narrower than `GET /system/info`: the info
+ * endpoint is the configuration dump and legitimately reports the database URL, which on SQLite
+ * *is* an absolute path. Nothing here may describe the host.
+ */
+export interface SystemVersionResponse {
+  app: string;
+  version: string;
+  /** Full commit hash, or `null` when the deployment recorded none. */
+  commit: string | null;
+  commitShort: string | null;
+  /** ISO-8601, injected at image build time; `null` when no build recorded one. */
+  buildTimestamp: string | null;
+  environment: string;
+  pythonVersion: string;
+  nodeVersion: string | null;
+  schemaVersion: string;
+  taxonomyVersion: string;
+  checkedAt: string;
 }
 
 /* ------------------------------------------------------------------ *

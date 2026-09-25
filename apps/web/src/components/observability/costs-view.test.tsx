@@ -51,6 +51,7 @@ const COSTS: AiCosts = {
   ],
   totals: { runs: 5, modelCalls: 5, tokens: 0, costUsd: 0, costCny: 0, latencyMs: 268 },
   dailyBudgetUsd: 1,
+  unaccountedRuns: 0,
   notes: [
     'token 与成本来自 provider 自报的用量；零 Key 的 heuristic 路径不产生 token，因此这些运行的 token/成本为 0 而延迟仍被测量。',
   ],
@@ -120,11 +121,11 @@ function renderView() {
 describe('the cost dashboard', () => {
   it('shows the window totals and repeats the provider caveat next to them', async () => {
     renderView();
-    await screen.findByText('花费（USD）');
+    await screen.findByText('Total cost（USD）');
 
     // Scoped to the card: `$0.0000` is legitimately on screen several times (totals, budget guard,
     // per-agent rows), so an unscoped query would pass for the wrong reason.
-    const spendCard = document.querySelector('[data-total="花费（USD）"]');
+    const spendCard = document.querySelector('[data-total="Total cost（USD）"]');
     expect(spendCard).not.toBeNull();
     expect(within(spendCard as HTMLElement).getByText('$0.0000')).toBeInTheDocument();
     expect(within(spendCard as HTMLElement).getByText(/约 ¥0\.0000/)).toBeInTheDocument();
@@ -132,6 +133,51 @@ describe('the cost dashboard', () => {
     expect(screen.getByText('268 ms')).toBeInTheDocument();
     // The note that explains why the tokens are zero travels with the numbers.
     expect(screen.getByText(/零 Key 的 heuristic 路径不产生 token/)).toBeInTheDocument();
+  });
+
+  it('names every usage status once rather than badging every figure', async () => {
+    renderView();
+    await screen.findByText('Total cost（USD）');
+    const glossary = document.querySelector('[data-usage-glossary]') as HTMLElement;
+    for (const word of ['Reported', 'Estimated', 'Cached', 'Unavailable', 'Legacy']) {
+      expect(glossary.textContent).toContain(word);
+    }
+    expect(glossary.textContent).toContain('0s cannot be trusted');
+  });
+
+  /**
+   * The one word that changes with the data. `totals` is a `SUM`, and `SUM` skips the runs whose
+   * usage is `NULL` — so while anything is unaccounted for, the same figure is a *floor* and the
+   * page has to say so. If it kept saying "Total cost" over a SUM with holes in it, the number
+   * would be plausible rather than true.
+   */
+  it('calls the total a floor once runs are unaccounted for, and counts them', async () => {
+    mocked.aiCosts.mockResolvedValue({ ...COSTS, unaccountedRuns: 3 });
+    renderView();
+    await screen.findByText('Known cost（USD）');
+
+    expect(document.querySelector('[data-total="Total cost（USD）"]')).toBeNull();
+    const spendCard = document.querySelector('[data-total="Known cost（USD）"]') as HTMLElement;
+    expect(within(spendCard).getByText(/已知下限，不含 3 次未上报用量的运行/)).toBeInTheDocument();
+
+    // The number is actionable on its own card, not buried in the notes.
+    const unaccounted = document.querySelector('[data-total="Unaccounted runs"]') as HTMLElement;
+    expect(within(unaccounted).getByText('3')).toBeInTheDocument();
+    expect(within(unaccounted).getByText(/token 与成本为 null 而非 0/)).toBeInTheDocument();
+
+    // …and the panels that are also a floor say so.
+    expect(document.querySelector('[data-unaccounted-note]')?.textContent).toContain(
+      '因此上面的合计是下限，不是确切值',
+    );
+  });
+
+  it('says the total is complete when nothing was left out', async () => {
+    renderView();
+    await screen.findByText('Total cost（USD）');
+    expect(document.querySelector('[data-unaccounted-note]')).toBeNull();
+    const unaccounted = document.querySelector('[data-total="Unaccounted runs"]') as HTMLElement;
+    expect(within(unaccounted).getByText('0')).toBeInTheDocument();
+    expect(within(unaccounted).getByText(/每次运行的用量都有来源/)).toBeInTheDocument();
   });
 
   it('keeps the cost answer honest when the window spent nothing', async () => {
@@ -203,7 +249,7 @@ describe('the cost dashboard', () => {
 
   it('switches the window and refetches every panel', async () => {
     const user = renderView();
-    await screen.findByText('花费（USD）');
+    await screen.findByText('Total cost（USD）');
     expect(mocked.aiCosts).toHaveBeenCalledWith('7d');
 
     await user.click(screen.getByRole('button', { name: '90 天' }));
