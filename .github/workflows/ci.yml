@@ -70,18 +70,37 @@ jobs:
         working-directory: apps/api
         run: pytest -q
 
+      - name: Tests — evaluation metrics
+        # The metric implementations have their own tests: a confusion matrix that counts every pair
+        # once per declared label produces a plausible, wrong number, and PHASE 12 is where that
+        # happened. Metrics are code.
+        run: pytest evals/tests -q
+
       - name: Datasets are in sync with the generator
         run: python evals/generate_datasets.py --check
 
       - name: Evaluation suites
+        # Exits 2 when a *gate* threshold is missed; `report`-severity misses are printed and do not
+        # fail the build. No API key is needed: the suite runs the zero-key provider chain.
         run: python evals/run.py
 
-      - name: Upload the evaluation report
+      - name: Core-domain coverage gate
+        # 75% of the modules whose behaviour the product is (scope declared in the script), not 75%
+        # of the repository — the difference is the difference between a target and a vanity metric.
+        run: python scripts/coverage_report.py --min-core 75
+
+      - name: Upload quality artefacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-report
-          path: reports/eval-report.json
+          name: quality-reports
+          path: |
+            reports/eval-report.json
+            reports/eval-report.md
+            reports/confidence-calibration.json
+            reports/confidence-calibration.md
+            reports/coverage-summary.md
+            reports/coverage.xml
           if-no-files-found: warn
 
       - name: Migrations apply cleanly on SQLite
@@ -203,3 +222,86 @@ jobs:
         run: pnpm build
         env:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+
+      - name: Tests — components and runtime guards
+        run: pnpm --filter @careerforge/web test
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The browser. Everything below the end-to-end layer has a blind spot that looks
+  # like coverage: jsdom has no layout engine, and Node's fetch does not enforce
+  # CORS. PHASE 12 shipped three defects that 1,000 passing tests could not see —
+  # a 375px table that hid its own cost column, a browser origin the API refused,
+  # and a mobile drawer rendered underneath its own overlay. This job is those
+  # three, permanently.
+  # ───────────────────────────────────────────────────────────────────────────
+  e2e:
+    name: E2E · Playwright · real Chrome
+    runs-on: ubuntu-latest
+    env:
+      USE_SQLITE: "true"
+      SQLITE_PATH: data/ci-e2e.db
+      ENVIRONMENT: development
+      LLM_PROVIDER: heuristic
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
+      CORS_ORIGINS: http://127.0.0.1:3318,http://localhost:3318
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8318/api/v1
+      NEXT_TELEMETRY_DISABLED: "1"
+      E2E_BASE_URL: http://127.0.0.1:3318
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/ai[dev]"
+          pip install -e "apps/api[dev]"
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start the API
+        working-directory: apps/api
+        run: |
+          nohup uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8318 --log-level warning &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8318/api/v1/system/health >/dev/null && break
+            sleep 1
+          done
+
+      - name: Build and start the web app
+        run: |
+          pnpm --filter @careerforge/web build
+          nohup pnpm --filter @careerforge/web start --port 3318 > /tmp/web.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3318/login >/dev/null && break
+            sleep 1
+          done
+
+      - name: End-to-end flows
+        # `channel: chrome` uses the runner's preinstalled Chrome — no browser download, which is
+        # also why the config never calls `playwright install`.
+        run: pnpm --filter @careerforge/web test:e2e
+
+      - name: Upload the failure artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+          if-no-files-found: ignore
