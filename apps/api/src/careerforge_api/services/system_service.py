@@ -454,7 +454,7 @@ def collect_info(
             "readPerMinutePerUser": settings.rate_limit_read_per_min,
             "writePerMinutePerUser": settings.rate_limit_write_per_min,
             "aiPerMinutePerUser": settings.rate_limit_ai_per_min,
-            "uploadPerHourPerUser": 20,
+            "uploadPerHourPerUser": settings.rate_limit_upload_per_hour,
             "enabled": settings.rate_limit_enabled,
         },
         prompts={

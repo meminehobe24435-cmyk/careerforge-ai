@@ -145,14 +145,25 @@ async def test_info_reports_prompts_and_redacted_configuration(
     assert data["vector"]["implemented"] is False
     # Every block has to be populated: an alias typo would silently produce an empty
     # dict, because pydantic ignores unknown construction keywords.
+    #
+    # Every value comes from *settings*, and this assertion is written against them rather than
+    # against literals. It used to read `"uploadPerHourPerUser": 20` while the service hard-coded
+    # that same 20, so the line could not fail and the drift it should have caught — `/system/info`
+    # announcing the default while the limiter enforced the configured value — survived PHASE 14's
+    # own "make the upload budget configurable" change (the middleware was fixed, the reporting site
+    # was missed). The fixture sets 10_000, so a hard-coded 20 fails here.
     assert data["rateLimits"] == {
         "authPerMinutePerIp": settings.rate_limit_auth_per_min,
         "readPerMinutePerUser": settings.rate_limit_read_per_min,
         "writePerMinutePerUser": settings.rate_limit_write_per_min,
         "aiPerMinutePerUser": settings.rate_limit_ai_per_min,
-        "uploadPerHourPerUser": 20,
+        "uploadPerHourPerUser": settings.rate_limit_upload_per_hour,
         "enabled": settings.rate_limit_enabled,
     }
+    assert settings.rate_limit_upload_per_hour != 20, (
+        "the fixture must override the documented default, or this assertion cannot tell a "
+        "configured budget from a hard-coded one"
+    )
     for block in ("database", "queue", "vector", "providers", "prompts"):
         assert data[block], f"/system/info reported an empty {block} block"
 
