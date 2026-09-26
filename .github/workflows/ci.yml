@@ -355,3 +355,76 @@ jobs:
             apps/web/test-results
             apps/web/playwright-report
           if-no-files-found: ignore
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The container path. PHASE 15's first task, and the reason it exists: every
+  # Dockerfile and compose file in this repository was written on a machine with
+  # no container runtime, so until this job runs for the first time the image
+  # path is *unwitnessed*. `reports/release-proof.md` says exactly that in its
+  # NOT RUN table, and this job is what converts it into evidence.
+  #
+  # It builds and inspects; it does not push and it does not deploy. Pushing needs
+  # registry credentials this project does not hold, and a release should not
+  # depend on a secret a reviewer cannot see.
+  # ───────────────────────────────────────────────────────────────────────────
+  images:
+    name: Images · docker build (api + web) and compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Compose file is valid and resolves
+        # `config -q` parses the file, resolves every `env_file`/variable and fails on a
+        # malformed service, so a broken compose file is caught in seconds rather than at
+        # deploy time. No daemon is needed for this step.
+        run: docker compose config -q
+
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          push: false
+          load: true
+          tags: careerforge-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: false
+          load: true
+          tags: careerforge-web:ci
+          # The web bundle inlines this at build time; `next build` fails loudly if it is
+          # absent, which is the behaviour we want rather than a bundle pointing at localhost.
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: The API image boots and answers its own health check
+        # Building an image proves it has layers; it does not prove the process starts. The
+        # container runs the zero-key provider and an ephemeral SQLite database, so this needs
+        # no services and no secrets.
+        run: |
+          docker run -d --name cf-api -p 8000:8000 \
+            -e USE_SQLITE=true \
+            -e ENVIRONMENT=development \
+            -e JWT_SECRET=ci-only-secret-not-used-anywhere-else-0000 \
+            -e LLM_PROVIDER=heuristic \
+            careerforge-api:ci
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/api/v1/system/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/api/v1/system/health | head -c 400
+          echo
+          curl -sf http://127.0.0.1:8000/api/v1/system/ready | head -c 400
+          echo
+          docker logs cf-api --tail 20
+          docker rm -f cf-api
