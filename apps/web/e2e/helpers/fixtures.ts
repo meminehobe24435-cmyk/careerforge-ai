@@ -46,7 +46,7 @@ export interface WorkerFixtures {
    * an empty account.
    */
   evidenceBase: EvidenceBase;
-  /** A stored posting: the jobs result, the interview target and one application all need one. */
+  /** A stored posting **with a stored match**: the jobs page, the interview target, one application. */
   jobId: string;
 }
 
@@ -90,8 +90,28 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
   jobId: [
-    async ({ api }, provide) => {
-      await provide(await ensureJob(api));
+    // The evidence base is a dependency, not a convenience: the match is scored *against* the
+    // account's evidence, so computing it before the fixture has built any would store a match with
+    // every requirement treated as a gap — a figure that is real but measured on an empty account.
+    async ({ api, evidenceBase }, provide) => {
+      if (evidenceBase.total === 0) {
+        throw new Error(
+          'the match fixture needs the account evidence: a match scored against an empty account ' +
+            'reports every requirement as a gap, and the gates would then be guard-testing a page ' +
+            'that is populated with the wrong kind of data',
+        );
+      }
+      const jobId = await ensureJob(api);
+      // A stored posting is not a *populated* one: `/app/jobs?job=` renders the analysis, and its
+      // `Match figures` panel reads `GET /jobs/{id}/match`, which is a separate stored row produced
+      // by `POST /jobs/{id}/match`. Until PHASE 14 the fixture only analysed, so the panel existed
+      // only if some earlier spec had happened to compute a match first. On a fresh database the
+      // desktop project runs `a11y.spec.ts` before `jd-analysis.spec.ts`, the stored read returned
+      // `404 This job has not been matched yet`, and the accessibility gate timed out waiting for a
+      // panel that could not exist. Two full runs and an isolated `overflow.spec.ts` run reproduced
+      // it; the suite must not depend on spec order.
+      await api.matchJob(jobId);
+      await provide(jobId);
     },
     { scope: 'worker' },
   ],

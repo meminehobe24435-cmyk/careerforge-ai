@@ -247,6 +247,30 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8318/api/v1
       NEXT_TELEMETRY_DISABLED: "1"
       E2E_BASE_URL: http://127.0.0.1:3318
+      # The budgets this stack runs with, and why they are not the shipped ones.
+      #
+      # The suite is one user driving ~45 flows in about ninety seconds. That is not a load a human
+      # produces, and the shipped AI budget is 20 requests per minute per user: measured in PHASE 14,
+      # the last sixty seconds of a full run contained 33 requests to AI-marked paths against a
+      # bucket of 20, and the bucket ran dry — the last specs failed with a 429 that renders in the
+      # app as "Rate limit exceeded for ai requests" on a failed job analysis. A red build that reads
+      # like a product bug is worse than no build.
+      #
+      # Correcting the classification (GET /jobs/{id}/match and GET /ai/interview/{id} are reads, not
+      # model spend) removed ten of those thirty-three; the remaining 23 spending calls per minute are
+      # still above 20, so the stack declares its own budget.
+      #
+      # `apps/api/tests/conftest.py` declares the same kind of budget for the unit suite
+      # (rate_limit_ai_per_min = 10_000) for the same reason. The shipped defaults are untouched and
+      # are asserted in `apps/api/tests/test_rate_limit.py`; `docs/API.md` §1.7 documents them, and
+      # `apps/web/e2e/README.md` explains this stack.
+      RATE_LIMIT_AI_PER_MIN: "600"
+      RATE_LIMIT_READ_PER_MIN: "10000"
+      RATE_LIMIT_WRITE_PER_MIN: "10000"
+      # 20 uploads per hour is the product's limit and this suite needs about two per run — but a
+      # developer re-running the suite against a database they keep would otherwise spend the hourly
+      # budget in a few runs and then debug a 429 that is not a regression.
+      RATE_LIMIT_UPLOAD_PER_HOUR: "500"
     steps:
       - uses: actions/checkout@v4
 

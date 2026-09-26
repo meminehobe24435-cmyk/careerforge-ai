@@ -185,6 +185,17 @@ export async function startInterviewViaUi(
   answer: string,
 ): Promise<void> {
   await page.goto('/app/interview');
+  // Two waits rather than one, because they fail for different reasons and the difference *is* the
+  // diagnosis. The account menu is rendered by the app shell only after the client session has been
+  // read out of `localStorage`, so a page that never shows it has not hydrated at all — a different
+  // fault from an account with no parsed posting, which renders the real page with an honest empty
+  // state (「还没有已解析的岗位（GET /jobs → 0）」) and simply has no `#target-job`. PHASE 14 hit the
+  // first kind once in two full runs, where the bare 10s wait on the select reported only "waiting
+  // for #target-job" while the page snapshot showed skeletons and the API log showed no request at
+  // all. The marker is *not* the sidebar navigation, which is tempting and wrong: below `md` the
+  // drawer mounts it only when it is opened, so it is absent from an otherwise healthy 375px page.
+  await page.getByRole('button', { name: /^账户菜单/ }).waitFor({ timeout: 30_000 });
+  await page.locator('#target-job').waitFor();
   await page.locator('#target-job').selectOption(jobId);
   await page.getByRole('button', { name: '开始面试' }).click();
   await page.waitForURL(/[?&]session=/);
