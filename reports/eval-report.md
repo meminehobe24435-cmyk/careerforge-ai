@@ -1,7 +1,7 @@
 # Evaluation report
 
-- schema `1.0` · generated `2026-09-26T04:31:27.282486+00:00`
-- commit `96f5d33` (working tree dirty)
+- schema `1.0` · generated `2026-09-26T04:32:37.849730+00:00`
+- commit `7bbce49` (working tree dirty)
 - provider `heuristic` × chain heuristic
 - suites 4/4 executed · cases **242** · gated pass **4** / fail **0** · reported misses 0
 
@@ -9,14 +9,14 @@
 
 | suite | cases | gated | reported misses | duration |
 | --- | ---: | --- | --- | ---: |
-| `jd_extraction` | 120 | PASS | — | 437 ms |
-| `evidence_validation` | 60 | PASS | — | 293 ms |
-| `rag_retrieval` | 59 | PASS | — | 44 ms |
-| `interview_relevance` | 3 | PASS | — | 29 ms |
+| `jd_extraction` | 120 | PASS | — | 418 ms |
+| `evidence_validation` | 60 | PASS | — | 276 ms |
+| `rag_retrieval` | 59 | PASS | — | 42 ms |
+| `interview_relevance` | 3 | PASS | — | 27 ms |
 
 ## jd_extraction
 
-Dataset `jd_extraction` @ `jd1.0` · 120 cases · 437 ms
+Dataset `jd_extraction` @ `jd1.0` · 120 cases · 418 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -56,7 +56,7 @@ Counters: `company_hits`=120, `distractor_cases`=72, `distractor_leaks`=0, `educ
 
 ## evidence_validation
 
-Dataset `evidence_validation` @ `ev2.1` · 60 cases · 293 ms
+Dataset `evidence_validation` @ `ev2.1` · 60 cases · 276 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -128,7 +128,7 @@ Counters: `cases`=60, `degraded_cases`=0, `false_negatives`=1, `false_positives`
 
 ## rag_retrieval
 
-Dataset `rag_retrieval` @ `rag1.0` · 59 cases · 44 ms
+Dataset `rag_retrieval` @ `rag1.0` · 59 cases · 42 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
@@ -166,7 +166,7 @@ Counters: `dense_arm_available`=1, `dense_top5_hits`=53, `documents`=20, `fusion
 
 ## interview_relevance
 
-Dataset `interview_relevance` @ `iv1.0` · 3 cases · 29 ms
+Dataset `interview_relevance` @ `iv1.0` · 3 cases · 27 ms
 
 | metric | value | threshold | status |
 | --- | ---: | --- | --- |
