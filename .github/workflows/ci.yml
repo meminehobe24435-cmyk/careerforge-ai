@@ -490,6 +490,11 @@ jobs:
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
       POSTGRES_PASSWORD: careerforge
       ENVIRONMENT: development
+      # The build identity the images bake in, so `/system/version` can name the commit under test.
+      # Without these the API answers `"commit": null` and the version-proof step below has nothing to
+      # check — which is what happened on this job's first successful start.
+      GIT_SHA: ${{ github.sha }}
+      BUILD_TIME: ${{ github.event.repository.updated_at }}
       # The browser talks to `localhost:3000`, so that is the origin the API must allow. Getting this
       # wrong is the failure mode `e2e/cors.spec.ts` exists to catch, and it shows up in the browser only.
       CORS_ORIGINS: http://localhost:3000

@@ -11,6 +11,19 @@
 
 name: careerforge
 
+# The API image is built three times (migrate, api, worker), so its build block is declared once.
+x-api-build: &api-build
+  context: .
+  dockerfile: infra/docker/Dockerfile.api
+  args:
+    # The deployment's identity, and the reason it is here: `Dockerfile.api` declares `GIT_SHA` and
+    # `BUILD_TIME`, nothing passed them, so every container answered `/system/version` with
+    # `"commit": null`. That endpoint is the one a release gate reads to confirm the running build is
+    # the commit under test — `docker-compose.yml` could not satisfy its own version proof. Measured by
+    # CI's `compose-stack` job on its first successful start.
+    GIT_SHA: ${GIT_SHA:-}
+    BUILD_TIME: ${BUILD_TIME:-}
+
 x-api-env: &api-env
   ENVIRONMENT: ${ENVIRONMENT:-development}
   DEBUG: ${DEBUG:-false}
@@ -98,9 +111,7 @@ services:
   # Runs once, then exits. api and worker wait for it to finish successfully so
   # they never start against an unmigrated schema.
   migrate:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.api
+    build: *api-build
     environment: *api-env
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -109,9 +120,7 @@ services:
     restart: "no"
 
   api:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.api
+    build: *api-build
     restart: unless-stopped
     environment: *api-env
     command:
@@ -147,9 +156,7 @@ services:
       start_period: 30s
 
   worker:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.api
+    build: *api-build
     restart: unless-stopped
     environment:
       <<: *api-env
