@@ -48,13 +48,16 @@ data/
 uploads/
 
 # 鈹€鈹€ Generated artifacts 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-# Generated reports are ignored, except the evaluation report: the README quotes
-# its numbers, and a quoted number must be checkable in the repository.
+# Generated reports are ignored, except the ones the documentation quotes: a quoted
+# number must be checkable in the repository. `scripts/check_readme_metrics.py` reads
+# these files and fails if the README stops matching them, so an artefact missing from
+# this list is a guard that crashes in a fresh clone rather than a check that runs.
 reports/*
 !reports/eval-report.json
 !reports/eval-report.md
 !reports/baseline-eval-report.json
 !reports/confidence-calibration.md
+!reports/confidence-calibration.json
 !reports/coverage-summary.md
 !reports/README.md
 !reports/release-proof.json

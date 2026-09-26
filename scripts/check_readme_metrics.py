@@ -74,6 +74,27 @@ def _metrics() -> dict[str, float]:
     return out, report["summary"]  # type: ignore[return-value]
 
 
+def _read(path: Path, *, regenerate: str) -> str:
+    """The artefact's text, or a message that says what to run — never a traceback.
+
+    The guard's first CI run died on `FileNotFoundError` for `reports/confidence-calibration.json`,
+    which `.gitignore` covered with `reports/*` and never un-ignored: the file existed on the machine
+    that wrote the guard and not in a fresh clone. A guard that crashes is worse than one that
+    reports, because the crash says nothing about what to do. Both halves were needed — the artefact
+    is tracked now as well.
+    """
+    if not path.exists():
+        print(
+            f"missing artefact: {path.relative_to(REPO_ROOT)}\n"
+            f"  regenerate it with: {regenerate}\n"
+            f"  (if it is generated but absent from a fresh clone, check .gitignore: an ignored "
+            f"artefact cannot be checked)",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return path.read_text(encoding="utf-8")
+
+
 def main() -> int:
     if not README.exists():
         print("README.md is missing", file=sys.stderr)
@@ -81,9 +102,11 @@ def main() -> int:
     text = README.read_text(encoding="utf-8")
 
     metrics, summary = _metrics()
-    calibration = json.loads(CALIBRATION.read_text(encoding="utf-8"))
-    coverage = COVERAGE.read_text(encoding="utf-8")
-    proof = json.loads(PROOF.read_text(encoding="utf-8"))
+    calibration = json.loads(
+        _read(CALIBRATION, regenerate="python evals/run.py  (writes confidence-calibration.json)")
+    )
+    coverage = _read(COVERAGE, regenerate="python scripts/coverage_report.py")
+    proof = json.loads(_read(PROOF, regenerate="python scripts/release_proof.py"))
 
     # `**core domain: 92.5%** (1556/1683 statements)` — the emphasis markers sit between the figure and
     # the counts, so they are part of the pattern rather than an accident to strip first.

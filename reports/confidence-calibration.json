@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0",
+  "suite": "evidence_validation",
+  "generated_from": {
+    "cases": 60,
+    "dataset": "evidence_validation",
+    "dataset_version": "ev2.1"
+  },
+  "bins": 10,
+  "expected_calibration_error": 0.031555,
+  "brier_score": 0.090405,
+  "accuracy": 0.9,
+  "mean_confidence": 0.899888,
+  "buckets": [
+    {
+      "low": 0.0,
+      "high": 0.1,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.1,
+      "high": 0.2,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.2,
+      "high": 0.3,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.3,
+      "high": 0.4,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.4,
+      "high": 0.5,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.5,
+      "high": 0.6,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.6,
+      "high": 0.7,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.7,
+      "high": 0.8,
+      "count": 0,
+      "mean_confidence": 0.0,
+      "accuracy": 0.0,
+      "gap": 0.0
+    },
+    {
+      "low": 0.8,
+      "high": 0.9,
+      "count": 45,
+      "mean_confidence": 0.89,
+      "accuracy": 0.911111,
+      "gap": -0.021111
+    },
+    {
+      "low": 0.9,
+      "high": 1.0,
+      "count": 15,
+      "mean_confidence": 0.929553,
+      "accuracy": 0.866667,
+      "gap": 0.062887
+    }
+  ],
+  "unsafe_support_cases": 2,
+  "confident_wrong_cases": 6,
+  "git_commit": "3fc4f69",
+  "generated_at": "2026-09-26T04:34:53.483992+00:00"
+}
