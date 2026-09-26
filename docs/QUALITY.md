@@ -11,17 +11,21 @@ Related: [`reports/README.md`](../reports/README.md) (the current numbers) ·
 
 ## 1. Testing strategy: four layers, each earning its cost
 
-| layer                                       | runs | what only it can catch                                                                             |
-| ------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- |
-| **unit** (`packages/ai/tests`)              | 504  | arithmetic: confidence factors, match weights, RRF fusion, rule severities, PII patterns           |
-| **integration** (`apps/api/tests`)          | 348  | the contract as shipped: envelope, auth, ownership, migrations, failure injection, cost arithmetic |
-| **component** (`apps/web`, Vitest)          | 143  | rendering rules (null ≠ 0), keyboard coordinates, runtime guards against a drifted payload         |
-| **end-to-end** (`apps/web/e2e`, Playwright) | 11   | the browser: stacking order, focus, real CORS, a real session, a real page with real data          |
+| layer                                       | runs             | what only it can catch                                                                             |
+| ------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| **unit** (`packages/ai/tests`)              | 553 (+4 skipped) | arithmetic: confidence factors, match weights, RRF fusion, rule severities, PII patterns           |
+| **integration** (`apps/api/tests`)          | 400              | the contract as shipped: envelope, auth, ownership, migrations, failure injection, cost arithmetic |
+| **component** (`apps/web`, Vitest)          | 365              | rendering rules (null ≠ 0), keyboard coordinates, runtime guards against a drifted payload         |
+| **metric** (`evals/tests`)                  | 22               | the measurement itself: hand-computed ECE/Brier/F1, and that calibration reaches the compared set  |
+| **end-to-end** (`apps/web/e2e`, Playwright) | 45               | the browser: stacking order, focus, real CORS, a real session, a real page with real data          |
+
+Counts are from the release-candidate run (`v1.0.0-rc.1`); the E2E figure is both projects together
+(desktop 27 + mobile 18), because the mobile project is a real second look rather than a repeat.
 
 The layering is not decoration — each layer has caught something the others structurally cannot:
 
 - jsdom has no layout engine, so the 375 px table that pushed cost and status off-screen was
-  invisible to 143 passing component tests and obvious in the first screenshot.
+  invisible to 365 passing component tests and obvious in the first screenshot.
 - Node's `fetch` does not enforce CORS, so a browser origin the API refuses was invisible to a
   25-check API smoke suite and to every unit test.
 - A DOM-level test cannot see stacking order, so a drawer rendered _below_ its own overlay looked
@@ -78,14 +82,20 @@ score. The current measurement (60 cases):
 
 | bucket  | cases | mean confidence | actual accuracy |     gap |
 | ------- | ----: | --------------: | --------------: | ------: |
-| 0.8–0.9 |    45 |          0.8900 |          0.8889 | +0.0011 |
+| 0.8–0.9 |    45 |          0.8900 |          0.9111 | -0.0211 |
 | 0.9–1.0 |    15 |          0.9296 |          0.8667 | +0.0629 |
 
-**ECE 0.0166 · Brier 0.1034.** Read together they say: the confidence is well calibrated on
-average, and specifically over-confident in its top bucket — which is exactly the region a résumé
-gate operates in, and the reason the metric is reported rather than assumed. Two implementation
-notes: ECE is sample-weighted (so ten empty buckets cannot flatter it), and `confidence == 1.0`
-falls in the last bucket rather than outside every bucket.
+**ECE 0.0316 · Brier 0.0904.** Read together they say: the confidence is well calibrated on
+average — the low bucket slightly _under_-confident, which is the safe direction for a gate — and
+specifically over-confident in its top bucket, which is exactly the region a résumé gate operates in
+and the reason the metric is reported rather than assumed. Two implementation notes: ECE is
+sample-weighted (so ten empty buckets cannot flatter it), and `confidence == 1.0` falls in the last
+bucket rather than outside every bucket.
+
+Both figures are emitted into `reports/eval-report.json` as `evidence.ece` and `evidence.brier` since
+PHASE 14, so `evals/compare.py` can see a calibration change at all; before that they existed only in
+this section's source artefact and no diff could show them moving. They are `report`-severity, not
+gates — at 60 cases a calibration figure moves on one reclassified example.
 
 ## 4. Thresholds, gates and the two severities
 
@@ -188,9 +198,10 @@ breaking the production code it protects and watching it go red —
 6. **Calibration covers the zero-key path only.** With a real provider the model's verdict changes
    the confidence distribution; the calibration artefact is regenerated by
    `python evals/run.py --provider deepseek`, which needs a key and is therefore not in CI.
-7. **The E2E suite runs the desktop project by default**; the mobile project is opt-in
-   (`pnpm --filter @careerforge/web test:e2e --project=mobile`) because it triples the runtime for
-   a project whose mobile surface is still thin.
+7. **The E2E suite runs both projects by default** (desktop 27 flows + mobile 18). Until PHASE 13 the
+   mobile project was inert unless `E2E_MOBILE=1` was set, so the one regression it existed to catch —
+   the drawer whose backdrop sat above its own panel — only fired when somebody remembered the flag.
+   A guard that has to be remembered is not a guard. `--project=mobile` still selects it alone.
 8. **`cached_tokens` is only reported by vendors that report it** (OpenAI's
    `prompt_tokens_details.cached_tokens`, DeepSeek's `prompt_cache_hit_tokens`). Ollama and the
    heuristic provider do not, so their envelopes carry `cachedTokens: null` with

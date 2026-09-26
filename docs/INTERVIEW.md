@@ -16,7 +16,7 @@ reproducible from the repository — that is the point of the file.
 > sentence traceable to evidence you actually have.
 >
 > To keep the AI from being confidently wrong, I evaluate it independently: evidence F1, an **unsafe
-> support rate**, RAG Hit@K and confidence calibration. 1,025 tests, four evaluation suites, and it
+> support rate**, RAG Hit@K and confidence calibration. 1,385 tests, four evaluation suites, and it
 > all runs with no API key.
 
 ## 60-second version
@@ -33,7 +33,7 @@ reproducible from the repository — that is the point of the file.
 > both fixable in the decision policy. It now accepts 5%, and the fabricated-number rate is zero.
 >
 > Everything runs with no API key: the default provider is a deterministic rule engine, so CI,
-> 1,025 tests and 11 end-to-end flows all pass for free.
+> 1,385 tests and 45 browser flows all pass for free.
 
 ## 3-minute version
 
@@ -47,9 +47,9 @@ cases) and why they are not fixed yet. Walk the demo in `docs/DEMO.md` if you ha
 
 Add, after the 3-minute material: the failure-injection approach (a scripted provider that times
 out, hangs, 429s, emits malformed JSON, returns the wrong shape, crashes or exhausts a budget — and
-what each one proved about degradation); the coverage scope argument (why 91.9% of the _core_ and
-not 75% of the _repository_); and the two things you would do next with another week
-(the `structured_output` usage envelope, and the `SKILL_NOT_IN_GRAPH` false-positive audit).
+what each one proved about degradation); the coverage scope argument (why 92.5% of the _core_ and
+not 75% of the _repository_); and the two things you would do next with another week (a durable
+pgvector index, and the `SKILL_NOT_IN_GRAPH` false-positive audit).
 
 ---
 
@@ -106,15 +106,18 @@ can be 88% accurate and systematically over-confident.
 
 I bucket the 60 evidence cases by predicted confidence and compare mean confidence with actual
 accuracy, then compute ECE (sample-weighted mean gap) and Brier score (mean squared error).
-Measured: **ECE 0.0166, Brier 0.1034**, with 45 cases in the 0.8–0.9 bucket calibrated to within
-0.001 and the 0.9–1.0 bucket over-confident by 0.063. The top bucket is where the interesting
-failure lives, so it is the one I quote.
+Measured: **ECE 0.0316, Brier 0.0904**, with the 0.8–0.9 bucket (45 cases) running 0.021
+_under_-confident and the 0.9–1.0 bucket (15 cases) over-confident by 0.063. The top bucket is where
+the interesting failure lives, so it is the one I quote.
 
 ## Q5 — Why not just report accuracy?
 
 Because the two error directions are not equally bad, and accuracy averages them away. On the
-60-case claim set: accuracy 0.8833, macro F1 0.8306 — and 12 of the 60 cases are judged
-_unsupported_ where I labelled them _partially supported_, which is the gate being conservative.
+60-case claim set: accuracy 0.9000, macro F1 0.8481. The matrix says which errors those are: of 20
+supported claims, 19 were confirmed (one was under-called); of 31 unsupported claims, 29 were
+rejected; 6 of 9 partially-supported ones landed exactly. The two over-calls are the
+`unsafe_support_rate` of 0.050, and they are the only errors that would write fiction onto a CV —
+which is why they get their own metric and their own gate rather than being folded into accuracy.
 Averaging that in with "an invented achievement was accepted" hides the only asymmetry that
 matters. So the report carries a full confusion matrix and three separate rates.
 
@@ -179,7 +182,7 @@ blockers because retrieval returned _some_ document. Both were fixed in the deci
 are now regression-tested.
 
 The meta-lesson I would state out loud: **each test layer has a blind spot that looks like
-coverage.** If I had stopped at "1,025 tests pass", I would have shipped all three UI defects.
+coverage.** If I had stopped at "1,385 tests pass", I would have shipped all three UI defects.
 
 ## Q10 — Why not generate the whole résumé with an LLM?
 
@@ -237,10 +240,10 @@ A threshold answers "is this good enough to ship"; calibration answers "does 0.8
 different questions, and only the second one tells you whether the number on screen is information
 or decoration.
 
-Measured: **ECE 0.0166**, Brier 0.1034. The 0.8–0.9 bucket is calibrated to ±0.001 across 45 cases;
-the 0.9–1.0 bucket is over-confident by 0.063, which is exactly the region a résumé gate operates
-in — high confidence, occasional error. ECE alone would have hidden that, so the reliability table is
-published beside it.
+Measured: **ECE 0.0316**, Brier 0.0904. The 0.8–0.9 bucket (45 cases) runs 0.021 _under_-confident;
+the 0.9–1.0 bucket (15 cases) is over-confident by 0.063, which is exactly the region a résumé gate
+operates in — high confidence, occasional error. ECE alone would have hidden that, so the reliability
+table is published beside it.
 
 ## Q15 — Why does `structured_output` need to record tokens?
 
@@ -288,12 +291,17 @@ why it was promoted from opt-in to the default CI run after it had already found
 
 ## Numbers to have ready
 
-|                       |                                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| tests                 | 1,025 (504 AI core · 348 API · 143 web · 11 E2E · 19 metrics)                                                    |
-| eval                  | 4 suites · 242 cases · 39 metrics · all gates pass in 763 ms                                                     |
-| claim gate            | accuracy 0.8833 · macro F1 0.8306 · unsafe support 0.0500 · numeric unsafe 0.0000                                |
-| retrieval             | Hit@1 0.8475 · Hit@5 0.9661 · MRR 0.9011                                                                         |
-| calibration           | ECE 0.0166 · Brier 0.1034                                                                                        |
-| coverage              | core domain 91.9% (claim gate 95.0 · matching 96.2 · RAG 91.2 · parsing 95.7 · interview 94.3 · accounting 80.7) |
-| cost to run all of it | **$0** — the default provider is deterministic and keyless                                                       |
+Every value below is generated by `python evals/run.py`, `python scripts/coverage_report.py` and
+`python -m pytest`, and lives in a committed artefact — `reports/eval-report.json`,
+`reports/confidence-calibration.md`, `reports/coverage-summary.md`, `reports/release-proof.json`.
+
+|                       |                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| tests                 | 1,385 (553 AI core · 400 API · 365 web · 45 browser · 22 metric)                                                                      |
+| eval                  | 4 suites · 242 cases · 41 metrics · all gates pass in 839 ms                                                                          |
+| claim gate            | accuracy 0.9000 · macro F1 0.8481 · support recall 0.9500 · unsupported recall 0.9355 · unsafe support 0.0500 · numeric unsafe 0.0000 |
+| retrieval             | Hit@1 0.8475 · Hit@5 0.9661 · MRR 0.9011 (keyword-only Hit@5 0.9831 — better, and published)                                          |
+| calibration           | ECE 0.0316 · Brier 0.0904 (0.9–1.0 bucket +0.063 over-confident, 15 cases)                                                            |
+| coverage              | core domain 92.5% (claim gate 95.2 · matching 96.2 · RAG 91.2 · parsing 95.7 · interview 94.6 · accounting 83.6)                      |
+| release proof         | 7/7 steps on the native path — fresh DB, migrate, seed twice, production-mode API, built frontend, 25 smoke checks, restart           |
+| cost to run all of it | **$0** — the default provider is deterministic and keyless                                                                            |

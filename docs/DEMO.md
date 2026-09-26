@@ -117,7 +117,7 @@ one I'd bring up myself — an unsafe support rate of 5%. That is the share of u
 gate wrongly accepted. It was 10% before the evaluation found two specific defects in the decision
 policy, and I'd rather show you the remaining 5% than hide it."_
 
-**Close with:** _"1,025 tests, four evaluation suites, confidence calibration, and none of it needs
+**Close with:** _"1,385 tests, four evaluation suites, confidence calibration, and none of it needs
 an API key to reproduce. `python evals/run.py` on a fresh clone gives you the same table."_
 
 ---
