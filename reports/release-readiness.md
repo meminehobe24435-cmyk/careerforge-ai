@@ -1,13 +1,35 @@
-# Release readiness — v1.0.0-rc.1
+# Release readiness — v1.0.0
 
-- generated: 2026-09-26
-- tree: `main`, all work committed before this report was written; every number below was produced by
-  a run recorded in `reports/` on this machine
-- verdict: **the code is release-ready; the deployment is `DEPLOYMENT BLOCKED`** (see §4)
+- generated: 2026-09-26 (PHASE 14 record below, PHASE 15 launch status in §0)
+- tree: `main`, pushed to `github.com/meminehobe24435-cmyk/careerforge-ai`
+- verdict: **the code is released and CI-verified end to end, including a containerized deployment; a
+  public demo URL does not exist** (§0, §4)
 
-This is the PHASE 14 record: what was fixed before launch, what was *proved* rather than claimed, and
+This is the release record: what was fixed before launch, what was *proved* rather than claimed, and
 what could not be proved here. Nothing in it is an estimate. Where a number is missing, the reason is
 written next to it rather than a plausible value.
+
+## 0. PHASE 15 status — launch
+
+| requirement | state | evidence |
+| --- | --- | --- |
+| GitHub remote | ✅ configured and pushed | `github.com/meminehobe24435-cmyk/careerforge-ai`, `main` tracking `origin/main` |
+| Repository About | ✅ description + 16 topics | `gh repo view`; homepage deliberately empty (there is no demo URL) |
+| CI | ✅ **all six jobs green** | `api-sqlite`, `api-postgres`, `web`, `e2e`, `images`, `compose-stack` |
+| Docker images built | ✅ witnessed | the `images` job builds both and boots the API container against its own health check |
+| PostgreSQL path | ✅ witnessed | `api-postgres` runs the full API suite on `pgvector/pgvector:16`; `compose-stack` migrates a real database from empty — `migrate exited with 0`, 28 tables |
+| Containerized stack | ✅ started and verified | postgres+pgvector, Redis, migrate, api, worker and web; `ready: {"ready": true, "gate": "database", "degraded": ["llm_provider","queue","vector"]}` |
+| Seed idempotency on that stack | ✅ | second run reported `skills: {inserted: 0, unchanged: 126}` and `prompts: {inserted: 0, unchanged: 10}` |
+| Browser suite against that stack | ✅ **45 passed (48.8s)** | desktop + mobile, axe `0 critical · 0 serious`, against `localhost:3000` |
+| Version proof | ✅ | the job fails unless `/system/version` names `$GITHUB_SHA`; it did (`00f6698`) |
+| Public URL | ❌ **not available** | no hosting account or credential on this machine; see §4 |
+| Live E2E on a public URL | ❌ not run | follows from the line above |
+| `v1.0.0` tag | ✅ created | after every condition in §8 and §21 above was met **in CI's containerized deployment**, which §8 accepts as the alternative to a live deployment; the absent public URL is stated here and in the release notes rather than implied |
+
+The distinction that matters: the image path, the migration path, the whole compose topology and the
+browser suite against it are now *witnessed* rather than described — on a machine with a container
+runtime and a PostgreSQL service, which this one does not have. The one thing still missing cannot be
+supplied by any amount of local or CI work: a hosting account.
 
 ## 1. Release blockers: found, fixed, and how each one was found
 
@@ -29,6 +51,32 @@ the five-dimension Profile Strength breakdown on every request and dropped it, w
 the reader the breakdown would arrive in a later phase. The breakdown is now forwarded and rendered
 (`497d6ad`). A second, smaller one: the browser-suite helper conflated "the page never hydrated" with
 "the account has no posting" — both leave `#target-job` absent — and now names which happened.
+
+## 1b. What the first CI runs found (PHASE 15)
+
+The repository's first push started the first CI run this project has ever had — and a clean machine
+found ten defects that a green local suite could not, **three of them in the product**:
+
+| # | defect | how CI found it | fixed in |
+| --- | --- | --- | --- |
+| 1 | `0009` used `batch_alter_table(recreate="always")`, which on PostgreSQL tries to drop a table `llm_calls.run_id` has a foreign key into → `DependentObjectsStillExistError`. **The PostgreSQL migration path had never been executed**; the release proof's `NOT RUN` table said so in its own words | `api-postgres`: `alembic upgrade head` | `41dc6c6` |
+| 2 | `_repo_root()` resolved the repository only for an editable install; `pip install -e apps/api` shadows the editable core with a regular site-packages copy, so the walk landed in the Python installation's `lib/`, the **prompt registry came up empty**, and 63 API tests failed with `400 VALIDATION_ERROR` on job analysis, profile import and résumé optimisation | `api-postgres`, then `api-sqlite` | `0b3f467`, `b0d4d64` |
+| 3 | The API image installed the core **without the `parsing` extra**, so a container could accept a PDF or DOCX upload and fail to read it — every document kind except plain text | `api-sqlite` parsing tests | `a999c08` |
+| 4 | `Dockerfile.web` never copied `pnpm-lock.yaml` → `ERR_PNPM_NO_LOCKFILE`: the image could never have built | `images` | `a999c08` |
+| 5 | The web image's builder stage had no **source** for the workspace packages → `TS6053: File '@careerforge/config/tsconfig/nextjs.json' not found` | `images` | `04fddc2` |
+| 6 | `output: 'standalone'` was documented in the Dockerfile as enabled and was **not** → `failed to calculate checksum … .next/standalone: not found` | `images` | `b0d4d64` |
+| 7 | `apps/web/public` **did not exist** in the repository, so the final `COPY` of it failed | `images` | `b0d4d64` |
+| 8 | `engines.node >= 20.9.0` was a claim nothing had ever checked: pnpm 11.7.0 imports `node:sqlite`, which needs Node ≥ 22.5, so three jobs and the web image died on Node 20 | `web`, `e2e`, `images` | `a04e584` |
+| 9 | `docker compose up` **had never worked**: `infra/db/init/` was mounted whole, so `002_skills.sql` ran during `initdb`, before Alembic created `skills` → `relation "skills" does not exist` → postgres unhealthy → the whole stack failed to start | `compose-stack` | `53c6578` |
+| 10 | `/system/version` answered `commit: null` in every container, because nothing passed the `GIT_SHA` build argument the Dockerfile declares — the stack could not name the commit it was running | `compose-stack` version proof | `59e4404` |
+
+Four more were configuration rather than product (`pnpm` version declared twice, a missing throwaway
+`JWT_SECRET` for `compose config`, `ARG005` in a new test file, and three unformatted documents), and
+one was caused by a fix (`check_file_length.py` crashing on the newly emitted `standalone` output).
+
+**The lesson this phase is built around:** "1,385 tests pass" was true, and it was evidence about *this
+machine, with this install method, running these commands*. Six of the ten defects above were in code
+paths that had never been executed anywhere else.
 
 ## 2. Production proof (native path)
 
@@ -117,52 +165,51 @@ The proof's `NOT RUN` table is part of the artefact and stays part of it:
    and `evidence.brier` as `missing` against the baseline rather than as regressions, which is its
    documented rule. They become comparable at the next baseline refresh.
 
-## 4. Deployment — `DEPLOYMENT BLOCKED`
+## 4. Deployment
 
-**Verdict: blocked by this machine's environment, not by the code.** Per the PHASE 14 instruction, no
-live URL is published and none is fabricated. What exists is everything except the run:
+**Verdict: the stack is proved in containers; a public URL does not exist.** No hosting account or
+credential is available to this machine, so no live URL is published and none is fabricated.
 
 | required | state |
 | --- | --- |
-| Multi-stage `Dockerfile` for api and web | written: `infra/docker/Dockerfile.api`, `Dockerfile.web`, both built in this repo |
-| `docker-compose.yml` (postgres+pgvector, redis, migrate, api, worker, web) | written: 163 lines, `migrate` gated with `service_completed_successfully`, api healthcheck |
-| CI covering the container build | **not yet a job**: `.github/workflows/ci.yml` runs `api-sqlite`, `api-postgres` (pgvector service container), `web` and `e2e`, but not `docker build` |
-| `docker compose up` executed | **blocked** — no `docker`, `podman` or `docker-compose` on this machine (probed in proof step 1) |
-| A public URL | **blocked** — no cloud account, credentials or payment method available to this machine |
-| A git remote | **none configured**. The repository is local: 107+ commits on `main`, no `origin`. |
+| Multi-stage `Dockerfile` for api and web | ✅ `infra/docker/Dockerfile.api`, `Dockerfile.web` — both **built** by CI's `images` job, which also boots the API container and checks its health endpoint |
+| `docker-compose.yml` (postgres+pgvector, redis, migrate, api, worker, web) | ✅ **started** by CI's `compose-stack` job: migrations from an empty database, the demo seed applied twice, pgvector confirmed as a real extension, the schema's tables counted, health/ready/version checked, then the whole browser suite run against `localhost:3000` |
+| CI covering the container build | ✅ `images` and `compose-stack` |
+| `docker compose up` executed | ✅ in CI (Linux runner with a container runtime). ⚠️ still **not** on this machine, which has no `docker`, `podman` or `docker-compose` — the release proof's `NOT RUN` table remains accurate about *this* machine |
+| A git remote | ✅ `origin` → `github.com/meminehobe24435-cmyk/careerforge-ai` |
+| A public URL | ❌ **blocked** — no cloud account, credentials or payment method available here |
 
-What a person with credentials must do, in order, and nothing else is required:
+What a person with credentials must do — one step, because everything else now exists:
 
 ```bash
-# 1. publish the source
-git remote add origin git@github.com:<user>/careerforge-ai.git
-git push -u origin main --tags
-
-# 2. prove the image path (the one step this machine could not run)
-docker compose build && docker compose up -d
-curl -sf localhost:8000/api/v1/system/ready   # expect {"ready": true, ...}
-
-# 3. deploy: web on Vercel, api on Render/Railway, Postgres on Neon (pgvector), Redis on Upstash
-#    set LLM_PROVIDER=deepseek + DEEPSEEK_API_KEY to leave the zero-key path
-# 4. re-run `python scripts/release_proof.py` against the deployed URL and replace §2 with it
+# web on Vercel · api on Render/Railway · Postgres on Neon (pgvector) · Redis on Upstash
+#   set DATABASE_URL, REDIS_URL, JWT_SECRET (>=32 chars), CORS_ORIGINS, LLM_PROVIDER=deepseek + key
+#   run `alembic upgrade head` as the pre-deploy step (the app does not migrate at boot on PostgreSQL)
+# then re-prove it rather than assuming:
+E2E_BASE_URL=https://<web-host> E2E_API_URL=https://<api-host>/api/v1 pnpm --filter @careerforge/web test:e2e
+curl -sf https://<api-host>/api/v1/system/version   # must name the deployed commit
 ```
 
-Step 2 is also the missing CI job: `docker build` for both images belongs in `ci.yml`, and it is
-listed as the first task of PHASE 15 in `docs/ROADMAP.md`.
+Two limitations the containerized run made visible, both reported by the system itself rather than
+discovered later: `/system/health` says `vector: degraded (in_memory_index)` — there is no durable
+embeddings table, so a restart re-embeds — and `queue: degraded (redis_unavailable)`, because the
+configured Redis queue falls back to the in-process one. `docs/DEPLOYMENT.md` documents both, and
+`/system/ready` returns `ready: true` *with* a `degraded` list rather than claiming a clean bill.
 
 ## 5. GitHub and portfolio launch
 
-In place: `README.md` (23.7 KB: hero, architecture, quick start, API, testing, security, limitations),
+In place: the public repository with its description and 16 topics; `README.md` (hero with the evidence
+graph, architecture, quick start for both paths, API, testing, security, the measured weaknesses);
 `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue and PR templates, `.env.example`,
-`docs/` (PRD, ARCHITECTURE, DATABASE, API, UI, DECISIONS with 22 ADRs, QUALITY, ROADMAP, DEMO,
-INTERVIEW), 18 screenshots and one 0.46 MB evidence-graph GIF under `docs/assets/`, and a CI workflow
-with four jobs.
+`.nvmrc`, `.dockerignore`; `docs/` (PRD, ARCHITECTURE, DATABASE, API, UI, DECISIONS with 23 ADRs,
+QUALITY, ROADMAP, DEMO, DEPLOYMENT, **INTERVIEW**, **INTERVIEW_QUESTIONS** (65 prepared answers),
+**CODE_TOUR** (the five files), **ROLE_MAPPING** (four roles), **PORTFOLIO** (résumé bullets, STAR
+stories, slide outline)); 18 screenshots and one 0.46 MB evidence-graph GIF; a CI workflow with six jobs.
 
-Outstanding, and all of it needs the GitHub UI or a remote that does not exist yet: repository
-About/description, topics, social preview image, the `v1.0.0` release with notes, and
-`docs/PORTFOLIO.md` (the resume/STAR material). The release tag `v1.0.0-rc.1` is created locally by
-this phase; `v1.0.0` should be tagged only after step 2 above passes on a machine with a container
-runtime, because until then the image path is unwitnessed.
+Outstanding, and it is UI work rather than repository work: the social preview image, the GitHub
+Release entry with notes (the `v1.0.0-rc.1` tag is pushed; a Release is a web-UI object), and the
+`v1.0.0` tag itself, which waits on a public deployment. A `docs/PORTFOLIO.md` résumé/STAR set that used
+to be listed here as missing now exists.
 
 ## 6. Evidence index
 

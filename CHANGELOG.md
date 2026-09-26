@@ -50,6 +50,59 @@ actually did, not by reviewing the code. `reports/release-readiness.md` §1 carr
   button, and a stat card rendering a missing 7-day delta as `7d trend · PHASE 10`. The dashboard
   guard test now fails on any `PHASE \d` or 「尚未接入」 a reader can see.
 
+### Fixed — PHASE 15 · what the first CI runs found
+
+The repository's first push started the first CI run this project has ever had. A clean machine found
+ten defects that a green local suite could not, **three of them in the product**. The per-defect table
+is in `docs/ROADMAP.md`; this is the summary of what it cost and what it taught.
+
+- **The PostgreSQL migration path had never been executed.** `0009` used
+  `batch_alter_table(recreate="always")`, which on PostgreSQL drops the table being rebuilt — and
+  `llm_calls.run_id` has a foreign key into `agent_runs`. `DependentObjectsStillExistError: cannot drop
+constraint pk_agent_runs`. The release proof's `NOT RUN` table had said in its own words that the
+  PostgreSQL path was unproven; this is what the proof looked like. Now `recreate="auto"`: rebuild
+  where the dialect requires it (SQLite), alter in place where it does not (PostgreSQL).
+- **The prompt registry resolved only for an editable install.** `_repo_root()` walked up from the
+  imported `config.py`, which is correct for development and wrong everywhere else: `pip install -e
+apps/api` installs its sibling core as a _regular_ package, shadowing the editable one, so the walk
+  landed in the Python installation's `lib/`, the registry came up **empty**, and 63 API tests failed
+  with `400 VALIDATION_ERROR` on job analysis, profile import and résumé optimisation. Fixed by also
+  walking up from the working directory — which is also how the container resolves `/app/prompts`.
+- **The API image could not read a PDF.** It installed the core without the `parsing` extra, so a
+  deployed container would accept a résumé upload and fail to parse it for every kind except plain
+  text. The image installs `./packages/ai[parsing]` now, and every CI job installs `[dev,parsing]` so
+  the suite runs with the dependencies the deployment has.
+- **Two images that could never have built.** `Dockerfile.web` never copied `pnpm-lock.yaml`
+  (`ERR_PNPM_NO_LOCKFILE`), and its builder stage had no _source_ for the workspace packages
+  (`TS6053: File '@careerforge/config/tsconfig/nextjs.json' not found`). `output: 'standalone'` was
+  documented in the Dockerfile as enabled and was not; `apps/web/public` did not exist at all. There is
+  now a `.dockerignore`, which the source-copy fix made necessary rather than optional.
+- **`docker compose up` had never worked.** `infra/db/init/` was mounted whole into
+  `docker-entrypoint-initdb.d`, so the taxonomy seed ran during `initdb` — before Alembic creates the
+  table it inserts into: `relation "skills" does not exist`, postgres unhealthy, whole stack down.
+- **Containers could not name the commit they were running.** `/system/version` answered
+  `"commit": null`, because nothing passed the `GIT_SHA` build argument `Dockerfile.api` declares — so
+  the deployment could not satisfy the version proof a release gate depends on.
+- **`engines.node >= 20.9.0` was a claim nothing had checked.** pnpm 11.7.0 imports `node:sqlite`,
+  which needs Node ≥ 22.5; three jobs and the web image died on Node 20. Now `>=22.5.0`, with `.nvmrc`.
+
+### Added — PHASE 15
+
+- **A `compose-stack` CI job** that brings the whole topology up — postgres+pgvector, Redis, the
+  one-shot migration service, the API, the worker, the built frontend — and then, in order: requires
+  the migration container to have exited 0, waits for both services, confirms `vector` is a real
+  PostgreSQL extension and counts the migrated tables, checks `/system/health`, `/system/ready` and
+  `/system/version` (failing if the build does not name `$GITHUB_SHA`), applies the demo seed twice to
+  prove it is idempotent, and runs the full browser suite — desktop and mobile, accessibility gate
+  included — against the containerized URLs.
+- `docs/INTERVIEW_QUESTIONS.md` (65 answers, each with the artefact its numbers came from, plus the
+  three questions about how the project was built), `docs/CODE_TOUR.md` (the five files to open in an
+  interview, with the ADR each one implements), `docs/ROLE_MAPPING.md` (four roles: what to lead with,
+  what not to claim), and a rewritten `docs/PORTFOLIO.md` (six STAR stories, résumé bullets in Chinese
+  and English for four roles, 150/300-character project descriptions, screenshots, slide outline).
+- `.dockerignore`, `.nvmrc`, and a root `pytest.ini` that makes the eval suite importable however
+  pytest was invoked.
+
 ### Added — PHASE 14
 
 - `GET /dashboard` → `profileStrength.dimensions` and `algorithmVersion`: the five weighted
