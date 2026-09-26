@@ -12,7 +12,7 @@
      updated by hand and must match docs/ROADMAP.md. -->
 
 [![CI](https://github.com/meminehobe24435-cmyk/careerforge-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/meminehobe24435-cmyk/careerforge-ai/actions/workflows/ci.yml)
-![Status](https://img.shields.io/badge/status-release%20candidate%20v1.0.0--rc.1-orange)
+[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/meminehobe24435-cmyk/careerforge-ai/releases/tag/v1.0.0)
 ![Phase](https://img.shields.io/badge/phase-15%20%2F%2015-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB)
@@ -21,9 +21,13 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1)
 
-**Live demo:** not deployed — this machine has no hosting credential, and that is stated rather than
-worked around. Run the whole product locally in two commands (see [Quick start](#quick-start)), or
-watch the recorded interaction below.
+**Live demo:** **none yet** — this machine has no hosting credential, so no URL is published and none is
+faked; that absence is stated here, in the [release notes](https://github.com/meminehobe24435-cmyk/careerforge-ai/releases/tag/v1.0.0)
+and in [`reports/release-readiness.md`](./reports/release-readiness.md) §4. What _is_ verified is the
+whole stack in containers: CI builds both images, starts PostgreSQL + pgvector, Redis, the migrations,
+the API, the worker and the built frontend, and runs the entire browser suite against them
+(`45 passed`). Run it locally in two commands — see [Quick start](#quick-start) — or watch the recorded
+interaction below.
 
 **[→ Three-minute demo script](./docs/DEMO.md)** · **[→ The five files to read](./docs/CODE_TOUR.md)** ·
 **[→ Quality & evaluation](./docs/QUALITY.md)** · **[→ The numbers](./reports/README.md)** ·

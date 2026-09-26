@@ -268,25 +268,28 @@ PHASE 12 记录了三处「知道但没修」的可观测缺陷（`docs/QUALITY.
 
 > 未修复：第 5 条的偶发本身（一次/两轮）仍未被解释——修好标记与超时后没有再出现，但「一次没复现」不等于「已修好」，因此按未解释记录在此。
 
-### PHASE 15 · Deployment 🚧 DEPLOYMENT BLOCKED
+### PHASE 15 · Deployment ✅（`v1.0.0` 已发布；公开 Demo URL 仍缺）
 
 | 项           | 内容                                                                                                                                                                                                                          |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **产出**     | 多阶段 Dockerfile（web/api）；`docker-compose.yml` 全链路实测；部署配置（Vercel / Render 或 Railway / Neon 或 Supabase / Upstash）；`docs/DEPLOYMENT.md`；CHANGELOG + Release `v1.0.0` + Release Notes；GitHub About / Topics |
 | **退出标准** | 线上 Demo 可访问且 Demo 账号数据完整；`docker compose up` 在本机（若可用）成功；镜像构建进 CI；发布说明与实际功能一致                                                                                                         |
 
-**当前状态（`v1.0.0-rc.1`）**：
+**收口状态（`v1.0.0`）**：
 
-| 退出标准                 | 状态                                                                                                                                                                                                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 镜像构建进 CI            | ✅ 已加 `images` 作业（`docker compose config -q` + 两个镜像构建 + 容器内 `/system/health`、`/system/ready` 探活）。**该作业在本机从未执行过**——没有容器运行时，所以它绿不绿要等推到 GitHub 才知道；这一点写在作业注释与 `docs/DEPLOYMENT.md` §0 里。 |
-| `docker compose up` 实测 | ❌ **BLOCKED**：本机没有 `docker` / `podman` / `docker-compose`（release proof 第 1 步探到并记入 `NOT RUN` 表）。等价的原生路径已 7/7 跑通，且**没有任何产物声称跑过 compose**。                                                                      |
-| 线上 Demo 可访问         | ❌ **BLOCKED**：本机没有云账号/凭据，仓库也没有 remote（`git remote -v` 为空）。按 PHASE 14 §103 输出 `DEPLOYMENT BLOCKED`，不伪造 Live URL。                                                                                                         |
-| 发布说明与实际功能一致   | ✅ `CHANGELOG.md` 已提升到 `1.0.0`；`reports/release-readiness.md` 给出每条数字对应的产物。GitHub About / Topics 需要仓库地址，随部署一起阻塞。                                                                                                       |
-| `docs/DEPLOYMENT.md`     | ✅ 已交付：compose 路径、托管服务矩阵、环境变量表（含「配错会发生什么」）、部署后复验、回滚、运维注意事项；未执行的步骤逐条标 `[unwitnessed]`。                                                                                                       |
+| 退出标准                 | 状态                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 镜像构建进 CI            | ✅ `images` 作业：`docker compose config -q` + 两个镜像构建 + 容器内 `/system/health`、`/system/ready` 探活。**首次运行即发现四件事**（见下表 4–7）。                                                                                                                                                                                                                                                                              |
+| `docker compose up` 实测 | ✅ **在 CI 里跑通**：`compose-stack` 作业拉起 postgres+pgvector / redis / migrate / api / worker / web，`migrate exited with 0`、迁移后 28 张表、`vector` 扩展确实存在、seed 第二次运行 `inserted: 0, unchanged: 126`、`/system/version` 指名本次提交，随后**对着容器**跑完整浏览器套件 `45 passed (48.8s)`（含 axe 0 critical / 0 serious）。⚠️ **本机仍未跑过**（没有容器运行时），release proof 的 `NOT RUN` 表对本机依旧准确。 |
+| 线上 Demo 可访问         | ❌ **仍缺**：本机没有云账号/凭据。**不伪造 Live URL**，`docs/DEPLOYMENT.md` §2 是完整步骤，Release Notes 与本文件都明说这一点。                                                                                                                                                                                                                                                                                                    |
+| 发布说明与实际功能一致   | ✅ `CHANGELOG.md` 提升到 `1.0.0` 并记录 PHASE 15 修掉的十个缺陷；`reports/release-readiness.md` §0 逐条给出证据；GitHub About（描述 + 16 个 Topics）与 Release Notes 已配置。                                                                                                                                                                                                                                                      |
+| `docs/DEPLOYMENT.md`     | ✅ 已交付：compose 路径、托管服务矩阵、环境变量表（含「配错会发生什么」）、部署后复验、回滚、运维注意事项；本机未执行的步骤逐条标 `[unwitnessed]`。                                                                                                                                                                                                                                                                                |
 
-要关闭这个阶段，只需要一台有容器运行时和云凭据的机器执行 `reports/release-readiness.md` §4 里的四条命令。
-在此之前 **`v1.0.0` 不打标签**——`docker compose up` 没有被见证过，而那是本次发布唯一拒绝声称的事情。
+**为什么可以打 `v1.0.0`**：§8 给出的条件是「CI 镜像构建 PASS，且至少有一个真实 containerized stack proof」——
+两者都已满足，而 §21 列的六项（CI / Images / Deployment / Live E2E / Live A11y / Live Version）也都在
+CI 的容器化部署里逐条通过。**唯一没有做到的是公开 URL**，它需要云凭据，不是代码问题；这一条在
+Release Notes、README 与 `reports/release-readiness.md` §0/§4 里都写明了。若日后部署到公开环境，
+`v1.0.0` 的验证记录已经写清哪些是在哪里验证的，不需要重写历史。
 
 #### PHASE 15 实测问题记录（第一次真正跑 CI，发现 → 修复）
 
