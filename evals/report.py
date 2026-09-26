@@ -18,7 +18,7 @@ to the cases it came from.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -36,6 +36,7 @@ __all__ = [
     "SuiteOutcome",
     "build_report",
     "calibration_artifacts",
+    "calibration_metrics",
     "render_markdown",
 ]
 
@@ -260,6 +261,26 @@ def _compact_json(payload: Any, limit: int = 240) -> str:
 
     text = json.dumps(payload, ensure_ascii=False, default=str)
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def calibration_metrics(payload: Mapping[str, Any]) -> dict[str, float]:
+    """Calibration numbers as **compared metrics**, for the suite's ``metrics`` mapping.
+
+    ECE and Brier used to exist only inside ``reports/confidence-calibration.json``/``.md``, which
+    made them un-comparable: ``evals/compare.py`` declares lower-is-better rules for the names
+    ``ece`` and ``brier``, so the tool expected these metrics in the report and nothing emitted them.
+    A calibration change could not appear in a diff and could not fail a gate; the number was
+    published and invisible to every automated check. PHASE 14 wires them in here.
+
+    The names are spelled in full rather than derived from ``payload["suite"]`` because the metric
+    prefix convention in this project is the short one (``evidence.``, ``jd.``, ``retrieval.``) and
+    the suite key is ``evidence_validation``; deriving it would produce a name no threshold in
+    ``evals/config.py`` is keyed by.
+    """
+    return {
+        "evidence.ece": float(payload["expected_calibration_error"]),
+        "evidence.brier": float(payload["brier_score"]),
+    }
 
 
 def calibration_artifacts(

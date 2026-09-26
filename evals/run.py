@@ -63,6 +63,7 @@ from evals.report import (  # noqa: E402
     SuiteOutcome,
     build_report,
     calibration_artifacts,
+    calibration_metrics,
     render_markdown,
 )
 from evals.suites import DATASET_FOR_SUITE, SUITES  # noqa: E402
@@ -192,6 +193,23 @@ def main() -> int:
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     manifest = _dataset_manifest()
+
+    # Calibration is computed *before* the report is built, because ECE and Brier belong in the
+    # compared metric set and not only in the side artefact.
+    #
+    # They were missing from `metrics` until PHASE 14, which made them un-comparable: `compare.py`
+    # carries explicit lower-is-better rules for the names `ece` and `brier`, so the tool was
+    # written expecting these metrics in the report and nothing emitted them. A calibration change
+    # could therefore not appear in a diff or fail a gate — the numbers were published in
+    # `reports/confidence-calibration.md` and invisible to every automated check. Measured on the
+    # release candidate: ECE 0.0316 and Brier 0.0904.
+    calibrated = outcomes.get(_CALIBRATED_SUITE)
+    calibration: tuple[dict[str, Any], str] | None = None
+    if calibrated is not None and not args.no_calibration and calibrated.confidence_rows:
+        payload, markdown = calibration_artifacts(calibrated, bins=args.bins)
+        calibration = (payload, markdown)
+        calibrated.metrics.update(calibration_metrics(payload))
+
     report = build_report(
         outcomes=list(outcomes.values()),
         provider=settings.llm_provider,
@@ -221,9 +239,8 @@ def main() -> int:
     md_path.write_text(render_markdown(report), encoding="utf-8", newline="\n")
 
     calibration_written = False
-    calibrated = outcomes.get(_CALIBRATED_SUITE)
-    if calibrated is not None and not args.no_calibration and calibrated.confidence_rows:
-        payload, markdown = calibration_artifacts(calibrated, bins=args.bins)
+    if calibration is not None:
+        payload, markdown = calibration
         payload["git_commit"] = report["git_commit"]
         payload["generated_at"] = report["generated_at"]
         CALIBRATION_PATH.write_text(

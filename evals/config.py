@@ -178,6 +178,28 @@ SUITE_THRESHOLDS: dict[str, tuple[Threshold, ...]] = {
             severity="report",
             rationale="实测 0.8833；类别不均衡时它不如 macro F1 有信息量，仅作对照。",
         ),
+        Threshold(
+            "evidence.ece",
+            maximum=0.05,
+            severity="report",
+            rationale=(
+                "期望校准误差（10 桶：置信度 vs 实际正确率）。实测 0.0316（"
+                "reports/confidence-calibration.md）。"
+                "PHASE 14 之前这个数字只写在旁路产物里、不进 metrics，因此 compare 看不见它，"
+                "校准漂移既不会出现在 diff 里也不会失败——本阶段把它并入被比较的指标集。"
+                "仅记录不门禁：60 个用例上的校准指标做门禁会把噪声当回归；"
+                "0.05 是文献里常用的宽松界，越过它才值得讨论。"
+            ),
+        ),
+        Threshold(
+            "evidence.brier",
+            maximum=0.15,
+            severity="report",
+            rationale=(
+                "Brier 分数（概率预测的均方误差），实测 0.0904。"
+                "与 ECE 互补：它对单个高置信度的错误惩罚更重。同样只记录。"
+            ),
+        ),
     ),
     "rag_retrieval": (
         Threshold(
