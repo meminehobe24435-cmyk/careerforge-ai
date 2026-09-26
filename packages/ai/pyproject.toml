@@ -62,6 +62,15 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 filterwarnings = ["error::DeprecationWarning:careerforge_ai.*"]
+# `packages/ai` goes on `sys.path` explicitly, so four test modules can `from tests.x import y`.
+#
+# They relied on pytest's rootdir insertion, which only puts `packages/ai` on the path when the
+# invocation makes that directory the rootdir. CI runs `pytest packages/ai/tests`, and there the
+# insertion is `packages/ai/tests` instead — so `import tests` raised ModuleNotFoundError. Locally it
+# passed because the editable install happened to contribute `packages/ai` to `sys.path`, which is a
+# property of how the package was installed rather than of the tests. Declaring it here makes the
+# suite independent of both.
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.12"

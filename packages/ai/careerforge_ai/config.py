@@ -26,12 +26,33 @@ StorageBackend = Literal["local", "s3"]
 
 
 def _repo_root() -> Path:
-    """Locate the repository root so defaults work from any working directory."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "pnpm-workspace.yaml").exists() or (parent / ".git").exists():
-            return parent
-    return here.parents[3]
+    """Locate the repository root so defaults work from any working directory.
+
+    Two starting points, in order, and both are needed:
+
+    1. **the installed package's location** — correct for an editable install, which is how
+       development and the unit suite run;
+    2. **the current working directory** — needed because an editable install is not guaranteed to
+       be the copy that gets imported. `apps/api`'s build hook resolves its sibling dependency to an
+       absolute `file://` URL, so `pip install -e apps/api` also installs `careerforge-ai` as a
+       *regular* package into `site-packages`, and that copy shadows the editable one. The imported
+       `config.py` then lives in `site-packages`, the walk from (1) finds no `.git` and no
+       `pnpm-workspace.yaml`, and this function used to fall back to `here.parents[3]` — which is the
+       Python installation's `lib/` directory. The product then started with an **empty prompt
+       registry** and returned `400 VALIDATION_ERROR` for job analysis, profile import and résumé
+       optimisation, with nothing louder than a startup warning. Measured in CI on 2026-09-26: 63
+       API tests failed on the PostgreSQL job for exactly this reason.
+
+    The container is the same shape, deliberately: `infra/docker/Dockerfile.api` copies
+    `pnpm-workspace.yaml` and `prompts/` into `/app`, so with the worker directory at
+    `/app/apps/api` the walk from (2) resolves `/app/prompts`. That is why the marker file matters
+    more than the path it marks.
+    """
+    for start in (Path(__file__).resolve(), Path.cwd().resolve()):
+        for parent in start.parents:
+            if (parent / "pnpm-workspace.yaml").exists() or (parent / ".git").exists():
+                return parent
+    return Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
