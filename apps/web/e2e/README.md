@@ -47,7 +47,7 @@ convenience.
 The suite is **one user driving ~45 flows in about ninety seconds** — a load no human produces. The
 shipped AI budget is 20 requests per minute per user (`docs/API.md` §1.7). On a full run the bucket
 ran dry near the end and the last two specs failed with a `429` that surfaces in the app as a failed
-job analysis: *"Rate limit exceeded for ai requests"*. A red build that reads like a product bug is
+job analysis: _"Rate limit exceeded for ai requests"_. A red build that reads like a product bug is
 worse than no build, so the stack the suite runs against declares its budgets explicitly.
 
 This is the same decision `apps/api/tests/conftest.py` already makes for the unit suite
