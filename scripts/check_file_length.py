@@ -4,6 +4,12 @@
 Small files are the cheapest structural defence against the "one giant module"
 failure mode, and the rule is only credible if something checks it.
 
+The scan covers the repository's own source (`.py`, `.ts`, `.tsx`) and deliberately excludes build
+output, caches, local scratch and the generated Alembic migrations — the last of those because a
+migration's length is a property of its schema change, not of somebody's module design. The count this
+prints is therefore "tracked source minus the migrations" and should reconcile with
+`git ls-files "*.py" "*.ts" "*.tsx"`: 542 tracked against 532 scanned at the time of writing.
+
 Usage::
 
     python scripts/check_file_length.py            # check
@@ -12,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 
@@ -30,9 +37,20 @@ SKIP_DIR_PARTS = {
     "migrations",
     "__pycache__",
     ".ruff_cache",
+    ".mypy_cache",
     ".pytest_cache",
     "data",
     "reports",
+    # Local scratch and generated trees. They are gitignored, so counting them made the reported
+    # "files scanned" a number about this machine rather than about the repository — and a copy of a
+    # package left in `.tmp/` was being scanned as if it were source.
+    ".git",
+    ".tmp",
+    ".pytest-tmp",
+    ".pytest-p14",
+    "coverage",
+    "test-results",
+    "playwright-report",
 }
 
 #: Files that are legitimately long because they are data, not logic.
@@ -44,13 +62,23 @@ ALLOWLIST = {
 
 
 def _iter_sources() -> list[Path]:
+    """Every source file under the repository, with build output pruned rather than filtered.
+
+    `rglob("*")` used to enumerate first and filter afterwards, which is too late: it descends into
+    every directory before the `SKIP_DIR_PARTS` check can skip it, and descending into
+    `apps/web/.next/standalone/**/node_modules` raises `PermissionError` on Windows from a pnpm symlink
+    before any filter runs. That became reachable the moment the web build started emitting standalone
+    output (`output: 'standalone'`, needed by the image), so a guard documented in the README crashed
+    for anyone who had built the web app. Pruning during the walk fixes the crash and stops the scanner
+    from walking tens of thousands of dependency files.
+    """
     out: list[Path] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file() or path.suffix not in SCAN_SUFFIXES:
-            continue
-        if any(part in SKIP_DIR_PARTS for part in path.parts):
-            continue
-        out.append(path)
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT, onerror=lambda _: None):
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIR_PARTS]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.suffix in SCAN_SUFFIXES:
+                out.append(path)
     return out
 
 

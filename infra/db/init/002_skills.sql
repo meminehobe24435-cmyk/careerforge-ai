@@ -12,8 +12,19 @@
 -- taxonomy version: taxonomy@1.0.0
 -- skill count:      126
 --
--- Executed by the postgres container on first initialisation
--- (docker-compose mounts infra/db/init as /docker-entrypoint-initdb.d).
+-- NOT EXECUTED BY `docker-entrypoint-initdb.d`.
+--
+-- This file lives beside the initialisation scripts, but postgres must not run it: initdb happens
+-- before Alembic creates any table, and this INSERTs into `skills`, which migration 0001 creates.
+-- Mounting the whole directory made the container fail its initialisation with
+-- `relation "skills" does not exist` and took the entire compose stack down (measured: CI's
+-- `compose-stack` job, `docker compose up` → "container careerforge-postgres-1 is unhealthy").
+-- `docker-compose.yml` therefore mounts `001_extensions.sql` alone, and the taxonomy reaches the
+-- database through the API's own startup sync (`sync_skill_taxonomy`, idempotent) — which is how it
+-- is maintained in every other environment too. This file stays because
+-- `scripts/gen_skills_sql.py --check` and `apps/api/tests/test_skills_sql.py` keep it isomorphic with
+-- the taxonomy module, and a deployment that wants the rows before the API starts can apply it with
+-- `psql -f` after `alembic upgrade head`.
 
 INSERT INTO skills (id, canonical_id, display_name, category, aliases, is_active, created_at, updated_at)
 VALUES

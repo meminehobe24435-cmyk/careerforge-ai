@@ -58,7 +58,20 @@ services:
       POSTGRES_DB: careerforge
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+      # Only the extensions script is mounted, not the whole directory it lives in.
+      #
+      # `002_skills.sql` also sits in `infra/db/init/`, and postgres must not run it: `initdb` happens
+      # before Alembic creates any table, while that file INSERTs into `skills` — created by migration
+      # 0001. Mounting the directory made initialisation fail with
+      # `ERROR: relation "skills" does not exist`, postgres never became healthy, and the whole stack
+      # came down with it (`docker compose up` → "container careerforge-postgres-1 is unhealthy").
+      # Measured by CI's `compose-stack` job, which is the first thing that ever ran this topology.
+      #
+      # The taxonomy has a working path already: the API mirrors it at startup through
+      # `sync_skill_taxonomy` (idempotent, and how every other environment gets it). The SQL file is
+      # kept because the generator's `--check` and `apps/api/tests/test_skills_sql.py` hold it
+      # isomorphic with the taxonomy module; its own header says all of this where a reader will look.
+      - ./infra/db/init/001_extensions.sql:/docker-entrypoint-initdb.d/001_extensions.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:

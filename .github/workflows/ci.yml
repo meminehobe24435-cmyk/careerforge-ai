@@ -44,10 +44,18 @@ jobs:
           cache: pip
 
       - name: Install packages
+        # Order matters, and it is not alphabetical: `apps/api`'s build hook declares its sibling core
+        # as an absolute `file://` URL, so installing the API also installs `careerforge-ai` as a
+        # *regular* package into site-packages. The editable core afterwards replaces that copy, which
+        # keeps `careerforge_ai.__file__` inside the checkout — where `--source=careerforge_ai` can
+        # measure it and `_repo_root()` resolves the repository rather than the Python installation.
+        # Measured: with the core first, this job's coverage gate read 37.6% instead of 92.5%, because
+        # the measured files were the site-packages copies.
         run: |
           python -m pip install --upgrade pip
-          pip install -e "packages/ai[dev,parsing]"
+          # The API first, the core second — see the note above for why the order is load-bearing.
           pip install -e "apps/api[dev]"
+          pip install -e "packages/ai[dev,parsing]"
 
       - name: Lint (ruff)
         # The whole repository, not just the two packages: `scripts/` and `evals/`
@@ -178,10 +186,18 @@ jobs:
           cache: pip
 
       - name: Install packages
+        # Order matters, and it is not alphabetical: `apps/api`'s build hook declares its sibling core
+        # as an absolute `file://` URL, so installing the API also installs `careerforge-ai` as a
+        # *regular* package into site-packages. The editable core afterwards replaces that copy, which
+        # keeps `careerforge_ai.__file__` inside the checkout — where `--source=careerforge_ai` can
+        # measure it and `_repo_root()` resolves the repository rather than the Python installation.
+        # Measured: with the core first, this job's coverage gate read 37.6% instead of 92.5%, because
+        # the measured files were the site-packages copies.
         run: |
           python -m pip install --upgrade pip
-          pip install -e "packages/ai[dev,parsing]"
+          # The API first, the core second — see the note above for why the order is load-bearing.
           pip install -e "apps/api[dev]"
+          pip install -e "packages/ai[dev,parsing]"
 
       - name: Enable pgvector
         run: |
@@ -297,8 +313,9 @@ jobs:
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-          pip install -e "packages/ai[dev,parsing]"
+          # The API first, the core second — see the note above for why the order is load-bearing.
           pip install -e "apps/api[dev]"
+          pip install -e "packages/ai[dev,parsing]"
 
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
@@ -505,8 +522,9 @@ jobs:
         # image deliberately does not ship `scripts/` — it is the deployment image, not the repository.
         run: |
           python -m pip install --upgrade pip
-          pip install -e "packages/ai[dev,parsing]"
+          # The API first, the core second — see the note above for why the order is load-bearing.
           pip install -e "apps/api[dev]"
+          pip install -e "packages/ai[dev,parsing]"
 
       - name: Install Node dependencies (for the browser suite)
         run: pnpm install --frozen-lockfile
