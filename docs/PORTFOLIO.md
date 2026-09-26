@@ -3,29 +3,29 @@
 Everything an interviewer, an ATS or a résumé needs, in one file. Every number here is reproduced by
 the commands in §13 and lives in a committed artefact — **if a figure is not in `reports/`, it is not in
 this file.** Spoken versions are in [`INTERVIEW.md`](./INTERVIEW.md); the per-role routing (what to lead
-with, what *not* to claim) is in [`ROLE_MAPPING.md`](./ROLE_MAPPING.md); 61 prepared answers are in
+with, what _not_ to claim) is in [`ROLE_MAPPING.md`](./ROLE_MAPPING.md); 61 prepared answers are in
 [`INTERVIEW_QUESTIONS.md`](./INTERVIEW_QUESTIONS.md); the five files to open in an interview are in
 [`CODE_TOUR.md`](./CODE_TOUR.md).
 
-| | |
-| --- | --- |
-| Release | **`v1.0.0-rc.1`** (tagged and pushed) |
-| Repository | [github.com/meminehobe24435-cmyk/careerforge-ai](https://github.com/meminehobe24435-cmyk/careerforge-ai) |
-| Live demo | **none yet** — no hosting credential is available to this machine; see §11 |
-| Verified locally | 1,385 tests · 45 browser flows · 4/4 evaluation gates · 92.5% core coverage · release proof 7/7 |
+|                  |                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| Release          | **`v1.0.0-rc.1`** (tagged and pushed)                                                                    |
+| Repository       | [github.com/meminehobe24435-cmyk/careerforge-ai](https://github.com/meminehobe24435-cmyk/careerforge-ai) |
+| Live demo        | **none yet** — no hosting credential is available to this machine; see §11                               |
+| Verified locally | 1,385 tests · 45 browser flows · 4/4 evaluation gates · 92.5% core coverage · release proof 7/7          |
 
 ---
 
 ## 1. Project summary
 
-| | |
-| --- | --- |
-| **Name** | CareerForge AI |
-| **Category** | Evidence-Driven AI Career Operating System |
-| **One line** | An AI career platform that refuses to write a sentence the candidate's own evidence cannot support |
-| **Stack** | Next.js 15 · FastAPI · PostgreSQL 16 + pgvector · Redis · Python 3.12 AI core |
-| **Scale** | 117 commits · 1,385 automated tests · 242 evaluation cases · 41 gated metrics |
-| **Status** | Release candidate, verified end to end on the native path; containerized proof running in CI; no public URL |
+|              |                                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| **Name**     | CareerForge AI                                                                                              |
+| **Category** | Evidence-Driven AI Career Operating System                                                                  |
+| **One line** | An AI career platform that refuses to write a sentence the candidate's own evidence cannot support          |
+| **Stack**    | Next.js 15 · FastAPI · PostgreSQL 16 + pgvector · Redis · Python 3.12 AI core                               |
+| **Scale**    | 117 commits · 1,385 automated tests · 242 evaluation cases · 41 gated metrics                               |
+| **Status**   | Release candidate, verified end to end on the native path; containerized proof running in CI; no public URL |
 
 > **Most resumes describe what you claim to know. CareerForge shows the evidence.**
 
@@ -82,12 +82,12 @@ the 23 decisions with their rejected alternatives in [`DECISIONS.md`](./DECISION
 
 **The claim gate.** A résumé sentence becomes publishable only through a four-stage decision:
 
-| Stage | Who decides | Why it is there |
-| --- | --- | --- |
-| Rule blockers | deterministic code | quantified claims without quantitative evidence, unbacked superlatives, technologies absent from the taxonomy |
-| Hybrid retrieval | BM25 + vector + RRF over the user's own evidence | technical nouns (`STM32F407`) need lexical recall; intent needs semantics |
-| Model verdict | the LLM, and only about *support* | it may say "the evidence does not support this", never "confidence 0.8" |
-| Arithmetic | a versioned formula (`confidence@1.0.0`) | 0.30 source authority + 0.15 recency + 0.20 specificity + 0.20 corroboration + 0.15 extraction quality, mirrored by a database CHECK |
+| Stage            | Who decides                                      | Why it is there                                                                                                                      |
+| ---------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Rule blockers    | deterministic code                               | quantified claims without quantitative evidence, unbacked superlatives, technologies absent from the taxonomy                        |
+| Hybrid retrieval | BM25 + vector + RRF over the user's own evidence | technical nouns (`STM32F407`) need lexical recall; intent needs semantics                                                            |
+| Model verdict    | the LLM, and only about _support_                | it may say "the evidence does not support this", never "confidence 0.8"                                                              |
+| Arithmetic       | a versioned formula (`confidence@1.0.0`)         | 0.30 source authority + 0.15 recency + 0.20 specificity + 0.20 corroboration + 0.15 extraction quality, mirrored by a database CHECK |
 
 ## 6. Quality
 
@@ -97,25 +97,25 @@ The project treats "does the AI work" as a measurement problem with published ga
   written rationale; missing a `gate` fails the build, missing a `report` prints and continues.
 - **A committed baseline** so a change is a diff (`improved 4 · same 35 · regressed 0`) rather than an
   argument — and calibration is wired into that diff.
-- **1,385 automated tests** across four layers chosen for what *only* that layer can observe: pure
+- **1,385 automated tests** across four layers chosen for what _only_ that layer can observe: pure
   arithmetic, the contract as shipped, rendering rules, and a real browser.
 - **The gaps stay published**: `unsafe_support_rate` 5% against a target of 2%, keyword-only retrieval
   beating the hybrid at Hit@5, no durable vector index, no live provider run.
 
 ## 7. Key metrics
 
-| Metric | Value | Artefact |
-| --- | --- | --- |
-| Tests | 1,385 (553 AI core · 400 API · 365 web · 45 browser · 22 metric) | test runs |
-| Browser E2E | 45 passed (desktop 27 · mobile 18), axe 0 critical / 0 serious | Playwright |
-| Evaluation | 4/4 suites, 242 cases, 41 metrics, gates pass | `reports/eval-report.json` |
-| Unsafe support rate | 0.0500 (gate ≤ 0.075; target 0.02 **not met**) | `reports/eval-report.json` |
-| Fabricated-number acceptance | 0.0000 | `reports/eval-report.json` |
-| Evidence macro F1 | 0.8481 (accuracy 0.9000 · unsupported recall 0.9355) | `reports/eval-report.json` |
-| RAG retrieval | Hit@1 0.8475 · Hit@5 0.9661 · MRR 0.9011 (keyword-only Hit@5 0.9831 — better) | `reports/eval-report.json` |
-| Calibration | ECE 0.0316 · Brier 0.0904 (top bucket +0.063 over-confident) | `reports/confidence-calibration.md` |
-| Core-domain coverage | 92.5% (1,556/1,683 statements) | `reports/coverage-summary.md` |
-| Release proof | 7/7 native steps | `reports/release-proof.json` |
+| Metric                       | Value                                                                         | Artefact                            |
+| ---------------------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
+| Tests                        | 1,385 (553 AI core · 400 API · 365 web · 45 browser · 22 metric)              | test runs                           |
+| Browser E2E                  | 45 passed (desktop 27 · mobile 18), axe 0 critical / 0 serious                | Playwright                          |
+| Evaluation                   | 4/4 suites, 242 cases, 41 metrics, gates pass                                 | `reports/eval-report.json`          |
+| Unsafe support rate          | 0.0500 (gate ≤ 0.075; target 0.02 **not met**)                                | `reports/eval-report.json`          |
+| Fabricated-number acceptance | 0.0000                                                                        | `reports/eval-report.json`          |
+| Evidence macro F1            | 0.8481 (accuracy 0.9000 · unsupported recall 0.9355)                          | `reports/eval-report.json`          |
+| RAG retrieval                | Hit@1 0.8475 · Hit@5 0.9661 · MRR 0.9011 (keyword-only Hit@5 0.9831 — better) | `reports/eval-report.json`          |
+| Calibration                  | ECE 0.0316 · Brier 0.0904 (top bucket +0.063 over-confident)                  | `reports/confidence-calibration.md` |
+| Core-domain coverage         | 92.5% (1,556/1,683 statements)                                                | `reports/coverage-summary.md`       |
+| Release proof                | 7/7 native steps                                                              | `reports/release-proof.json`        |
 
 ## 8. Engineering stories
 
@@ -126,11 +126,11 @@ Six, each with the lesson. Every one is a real commit — the defect, the diagno
 
 - **Situation.** The first evidence evaluation reported a beautiful **100% support recall**.
 - **Task.** Decide whether that number meant anything before quoting it.
-- **Action.** Read the dataset generator: the corpus was labelled *by the same rules under test*. The
+- **Action.** Read the dataset generator: the corpus was labelled _by the same rules under test_. The
   evaluation was grading its own homework. Replaced it with 60 hand-authored adversarial cases
   (fabricated metrics, scope inflation, vague magnitude, out-of-scope claims) with human gold labels.
 - **Result.** The honest number was `support_recall 0.0000` — and behind it, two real defects in the
-  decision policy: scope-inflated claims were granted *supported*, and a model-reported blocker was
+  decision policy: scope-inflated claims were granted _supported_, and a model-reported blocker was
   softened by the mere presence of retrieval hits. After the fixes: unsupported recall **0.350 →
   0.935**, unsafe acceptance **0.100 → 0.050**.
 - **Lesson.** A benchmark generated from your own implementation measures your implementation, not the
@@ -142,13 +142,13 @@ Six, each with the lesson. Every one is a real commit — the defect, the diagno
   unusable in a browser.
 - **Task.** Explain why every request worked from Node and none from the page.
 - **Action.** Reproduced it in a real browser: the web app's origin was not in the API's
-  `CORS_ORIGINS`, so the browser blocked every response *before* the app could read it. Node's `fetch`
+  `CORS_ORIGINS`, so the browser blocked every response _before_ the app could read it. Node's `fetch`
   does not enforce CORS, which is exactly why the smoke suite was blind to it.
 - **Result.** A permanent regression spec asserting both directions — the allowed origin can read the
   API from page context (including a preflighted authenticated call), a non-allowed origin is not
   granted, and a wildcard is explicitly refused.
 - **Lesson.** "It passes from the terminal" is not a statement about the browser. Choose the harness for
-  what it *enforces*, not for what it can reach.
+  what it _enforces_, not for what it can reach.
 
 ### S3 — The AI budget that charged for page reads
 
@@ -171,7 +171,7 @@ Six, each with the lesson. Every one is a real commit — the defect, the diagno
   had just been verified clean.
 - **Task.** Explain the contradiction before publishing an artefact that would look careless.
 - **Action.** Called the helper directly: `git status --porcelain` on a clean tree returned the string
-  `"unknown"`, because the helper replaced *any* empty output with that sentinel — and the caller read it
+  `"unknown"`, because the helper replaced _any_ empty output with that sentinel — and the caller read it
   with `bool(...)`, where a non-empty string is true.
 - **Result.** Three cases distinguished instead of two (text = dirty, empty = clean, `None` = git could
   not answer, which counts as dirty because cleanliness was not proved), with a test per case.
@@ -183,7 +183,7 @@ Six, each with the lesson. Every one is a real commit — the defect, the diagno
 - **Situation.** The observability layer promised every failed AI run was recorded. A 500 produced no
   run row at all.
 - **Task.** Make failure visible without breaking the transaction that the failure rolled back.
-- **Action.** Traced it to the write happening *inside* the request transaction, which `get_db` rolls
+- **Action.** Traced it to the write happening _inside_ the request transaction, which `get_db` rolls
   back on any exception — erasing the evidence of the failure along with the failure. Wrote the record
   to a **failure journal** instead, flushed by the outermost middleware on its own short-lived session,
   after the request transaction has settled.
@@ -238,7 +238,7 @@ a result — no 熟悉 / 了解 / 掌握, and no adjective standing in for evide
 - Built a four-layer test strategy and six CI jobs: **1,385 automated tests**, **45 real-browser flows**,
   **92.5%** core-domain coverage.
 - Made observability a product surface: per-call metering, a failure journal that survives the request's
-  rollback, and cost accounting that separates *reported* from *unknown*.
+  rollback, and cost accounting that separates _reported_ from _unknown_.
 
 ### 9.3 AI 应用工程师 — 中文
 
@@ -252,7 +252,7 @@ a result — no 熟悉 / 了解 / 掌握, and no adjective standing in for evide
 - Designed the claim gate: deterministic rules run first, the model may only judge support, confidence
   comes from arithmetic — fabricated-number acceptance **0.000**.
 - Built hybrid retrieval (BM25 + vector + RRF) and put it under evaluation: **Hit@1 0.8475 · Hit@5
-  0.9661 · MRR 0.9011**, with keyword-only retrieval published as *better* rather than tuned away.
+  0.9661 · MRR 0.9011**, with keyword-only retrieval published as _better_ rather than tuned away.
 - Built four evaluation suites (**242 cases, 41 metrics**, each with a threshold and a written
   rationale): evidence macro F1 **0.8481**, unsafe acceptance down to **5.00%**.
 - Wired calibration into the compared metric set (**ECE 0.0316 · Brier 0.0904**) so a drift appears in a
@@ -369,15 +369,15 @@ CI 与发布流程。」把嵌入式深度的话头留给无人机项目。
 
 ## 11. Links and current state
 
-| | |
-| --- | --- |
-| Repository | https://github.com/meminehobe24435-cmyk/careerforge-ai |
-| Release | `v1.0.0-rc.1` — tagged, pushed, and the reason it is not `v1.0.0` is written down |
-| About / Topics | description + 16 topics set (ai, llm, rag, agents, career, resume, job-search, interview, nextjs, fastapi, typescript, python, postgresql, pgvector, evaluation, observability) |
-| Live demo | **none yet.** No hosting account or credential is available to this machine, so no URL is published and none is faked. `docs/DEPLOYMENT.md` §2 is the exact procedure; CI now runs the whole stack in containers as the closest available proof. |
-| Offline demo assets | `assets/evidence-graph-demo.gif` (0.46 MB) + the four screenshots in §12.1 |
-| What is verified | local: 1,385 tests · 45 browser flows · 4/4 eval gates · 92.5% core coverage · release proof 7/7 |
-| What is not | a public URL, and a real-provider (DeepSeek/OpenAI) evaluation run |
+|                     |                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Repository          | https://github.com/meminehobe24435-cmyk/careerforge-ai                                                                                                                                                                                           |
+| Release             | `v1.0.0-rc.1` — tagged, pushed, and the reason it is not `v1.0.0` is written down                                                                                                                                                                |
+| About / Topics      | description + 16 topics set (ai, llm, rag, agents, career, resume, job-search, interview, nextjs, fastapi, typescript, python, postgresql, pgvector, evaluation, observability)                                                                  |
+| Live demo           | **none yet.** No hosting account or credential is available to this machine, so no URL is published and none is faked. `docs/DEPLOYMENT.md` §2 is the exact procedure; CI now runs the whole stack in containers as the closest available proof. |
+| Offline demo assets | `assets/evidence-graph-demo.gif` (0.46 MB) + the four screenshots in §12.1                                                                                                                                                                       |
+| What is verified    | local: 1,385 tests · 45 browser flows · 4/4 eval gates · 92.5% core coverage · release proof 7/7                                                                                                                                                 |
+| What is not         | a public URL, and a real-provider (DeepSeek/OpenAI) evaluation run                                                                                                                                                                               |
 
 ## 12. Presentation kit
 
@@ -393,13 +393,13 @@ Eighteen exist in `assets/screenshots/`; a résumé or portfolio should use four
 
 ### 12.2 Five-slide deck outline (content only)
 
-| Slide | Title | Content |
-| --- | --- | --- |
-| 1 | Problem + product | "A beautiful résumé is free; proof is not." The loop diagram (§3), one screenshot |
-| 2 | Architecture | The layer diagram (§4) + the rule that the AI core cannot import the web framework |
-| 3 | Evidence graph | One candidate's graph: node → evidence → the confidence factors that produced the number |
-| 4 | Evaluation & reliability | The 4-suite/242-case/41-metric table, macro F1, unsafe support 5% **and the 2% target it misses**, calibration ECE/Brier |
-| 5 | Engineering lessons | Three of the six stories in one line each — the self-referential benchmark, the quota that charged reads, `null` ≠ `0` |
+| Slide | Title                    | Content                                                                                                                  |
+| ----- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 1     | Problem + product        | "A beautiful résumé is free; proof is not." The loop diagram (§3), one screenshot                                        |
+| 2     | Architecture             | The layer diagram (§4) + the rule that the AI core cannot import the web framework                                       |
+| 3     | Evidence graph           | One candidate's graph: node → evidence → the confidence factors that produced the number                                 |
+| 4     | Evaluation & reliability | The 4-suite/242-case/41-metric table, macro F1, unsafe support 5% **and the 2% target it misses**, calibration ECE/Brier |
+| 5     | Engineering lessons      | Three of the six stories in one line each — the self-referential benchmark, the quota that charged reads, `null` ≠ `0`   |
 
 ### 12.3 If the demo fails in the room
 

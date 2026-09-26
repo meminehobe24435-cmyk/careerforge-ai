@@ -39,8 +39,13 @@ COPY apps/api/src ./apps/api/src
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# `[parsing]` is not optional in a deployed image: it carries pypdf, python-docx, beautifulsoup4 and
+# lxml, which are what read an uploaded PDF or DOCX. Installing the core bare meant a container could
+# accept a résumé upload and then fail to parse it — every document kind except plain text. Found by
+# CI's `api-sqlite` job, where the AI-core parsing tests failed with
+# `DOCUMENT_PARSE_FAILED: reading this file type needs the optional 'pypdf' package`.
 RUN pip install --upgrade pip \
- && pip install ./packages/ai \
+ && pip install "./packages/ai[parsing]" \
  && pip install ./apps/api
 
 # ── runtime stage ────────────────────────────────────────────────────────────

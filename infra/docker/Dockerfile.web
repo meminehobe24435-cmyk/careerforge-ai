@@ -10,7 +10,12 @@ RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 WORKDIR /repo
 
 # Copy only what the lockfile resolution needs, so this layer caches well.
-COPY package.json pnpm-workspace.yaml .npmrc ./
+#
+# `pnpm-lock.yaml` is part of "what the lockfile resolution needs" — omitting it made this stage fail
+# with `ERR_PNPM_NO_LOCKFILE: Cannot install with "frozen-lockfile" because pnpm-lock.yaml is absent`,
+# which is a build that could never have succeeded. CI's `images` job found it the first time the
+# image was actually built anywhere.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/ui/package.json ./packages/ui/

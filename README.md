@@ -8,11 +8,12 @@
   <b>把经历变成证据，把证据变成竞争力。</b>
 </p>
 
-<!-- Badges: the CI/coverage badges activate in PHASE 15 with the remote repository; the phase
-     badge below is updated by hand and must match docs/ROADMAP.md. -->
+<!-- Badges: the CI badge reads the workflow on the public repository. The status and phase badges are
+     updated by hand and must match docs/ROADMAP.md. -->
 
-![Status](https://img.shields.io/badge/status-in%20development-orange)
-![Phase](https://img.shields.io/badge/phase-13%20%2F%2015-blue)
+[![CI](https://github.com/meminehobe24435-cmyk/careerforge-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/meminehobe24435-cmyk/careerforge-ai/actions/workflows/ci.yml)
+![Status](https://img.shields.io/badge/status-release%20candidate%20v1.0.0--rc.1-orange)
+![Phase](https://img.shields.io/badge/phase-15%20%2F%2015-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
@@ -20,16 +21,20 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1)
 
-**[→ Three-minute demo script](./docs/DEMO.md)** · **[→ Quality & evaluation](./docs/QUALITY.md)** ·
-**[→ The numbers](./reports/README.md)** · **[→ Why it is built this way](./docs/ARCHITECTURE.md)**
+**Live demo:** not deployed — this machine has no hosting credential, and that is stated rather than
+worked around. Run the whole product locally in two commands (see [Quick start](#quick-start)), or
+watch the recorded interaction below.
+
+**[→ Three-minute demo script](./docs/DEMO.md)** · **[→ The five files to read](./docs/CODE_TOUR.md)** ·
+**[→ Quality & evaluation](./docs/QUALITY.md)** · **[→ The numbers](./reports/README.md)** ·
+**[→ Why it is built this way](./docs/ARCHITECTURE.md)**
 
 ![Evidence Graph](./docs/assets/evidence-graph-demo.gif)
 
-_Clicking a skill focuses its node and opens the evidence behind it — the chain from a résumé claim to the file that proves it. ([1440px still](./docs/assets/screenshots/evidence-graph-1440.png).)_
-
-_The Evidence Graph: a claim is not a string in a database — it is connected to the project that
-used it, the repository that contains it, and the files that prove it, each with a confidence
-computed from five weighted factors. (Screenshot from the running app, demo account.)_
+_The Evidence Graph, recorded from the running app: clicking a skill focuses its node and opens the
+evidence behind it. A claim is not a string in a database — it is connected to the project that used
+it, the repository that contains it and the files that prove it, each with a confidence computed from
+five weighted factors. ([1440px still](./docs/assets/screenshots/evidence-graph-1440.png).)_
 
 ---
 
@@ -214,24 +219,31 @@ careerforge-ai/
 
 ## Quick start
 
-> ⚠️ Available from PHASE 1. Two supported paths:
+Two supported paths. Both run the whole product; neither needs an API key.
 
-**With Docker (full stack)**
+**With Docker (the full stack: PostgreSQL + pgvector, Redis, worker, API, web)**
 
 ```bash
-git clone <repo> && cd careerforge-ai
-cp .env.example .env
+git clone https://github.com/meminehobe24435-cmyk/careerforge-ai.git
+cd careerforge-ai
+cp .env.example .env          # set JWT_SECRET (openssl rand -hex 32); the compose file requires it
 docker compose up --build
 # web → http://localhost:3000 · api → http://localhost:8000/docs
 ```
 
-**Without Docker (SQLite + in-process queue + heuristic provider — no API key needed)**
+**Without Docker (SQLite + in-process queue + heuristic provider — nothing to install but Python and Node)**
 
 ```bash
+git clone https://github.com/meminehobe24435-cmyk/careerforge-ai.git
+cd careerforge-ai
+pip install -e "packages/ai[dev]" -e "apps/api[dev]"
 pnpm install
 pnpm --filter api dev            # FastAPI on :8000
 pnpm --filter web dev            # Next.js on :3000
 ```
+
+Requires **Node ≥ 22.5** (pnpm 11 imports `node:sqlite`) and **Python 3.12**; `.nvmrc` records the Node
+version. `apps/web/e2e/README.md` has the exact two-process recipe the browser suite expects.
 
 **Demo account**
 

@@ -1,17 +1,17 @@
 # Role mapping — how to present CareerForge to four different interviewers
 
 The repository is the same; the **order of the story** is not. This file decides which part of the
-project leads, which measurement gets quoted, and — just as important — what *not* to claim to a
+project leads, which measurement gets quoted, and — just as important — what _not_ to claim to a
 given audience. The material itself lives in [`PORTFOLIO.md`](./PORTFOLIO.md) (bullets, STAR stories,
 descriptions) and [`INTERVIEW_QUESTIONS.md`](./INTERVIEW_QUESTIONS.md) (45+ prepared answers).
 
 ## 0. Positioning, fixed
 
-| | |
-| --- | --- |
-| Name | **CareerForge AI** |
-| Category | **Evidence-Driven AI Career Operating System** |
-| Brand line | *Most resumes describe what you claim to know. CareerForge shows the evidence.* |
+|                    |                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Name               | **CareerForge AI**                                                                                                                                                                   |
+| Category           | **Evidence-Driven AI Career Operating System**                                                                                                                                       |
+| Brand line         | _Most resumes describe what you claim to know. CareerForge shows the evidence._                                                                                                      |
 | Never described as | "a résumé assistant", "a job board", "an AI agent demo" — the project is one thing, and calling it three things in three sentences is how an interviewer stops believing any of them |
 
 The differentiator is not that it uses an LLM. It is that **the LLM is not trusted**: nothing is
@@ -21,12 +21,12 @@ variant below is a different emphasis on it.
 
 ## 1. Routing table
 
-| Role | Project order | Lead with | Lead story | Do **not** claim |
-| --- | --- | --- | --- | --- |
-| **AI Application Engineer** | CareerForge **first** | Evidence graph → claim validator → evaluation → cost accounting | The benchmark that measured itself | That the public demo runs a real LLM (it runs the deterministic zero-key provider; real providers are a configuration switch) |
-| **Software Engineer (backend/full-stack)** | CareerForge first if the JD is API/data-heavy, otherwise second | Architecture, API contract, migrations, transactions, CI, observability | The failed run that left no trace | That it is deployed and serving traffic (the image path has never been witnessed) |
-| **Embedded / firmware** | Drone / STM32 project **first**, CareerForge second or third | Engineering breadth: Python, backend, testing discipline, CI, debugging | Browser CORS vs green Node smoke (a real-environment debugging story) | That CareerForge is an embedded project — it is not, and saying so costs credibility with the one interviewer who can tell |
-| **Solution / Product Engineer** | CareerForge first | Product loop, explainability, documentation, demo, deployment thinking | The 375 px table that jsdom could not see | Business impact: there are no users, no revenue, no retention numbers, and inventing one ends the interview |
+| Role                                       | Project order                                                   | Lead with                                                               | Lead story                                                            | Do **not** claim                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **AI Application Engineer**                | CareerForge **first**                                           | Evidence graph → claim validator → evaluation → cost accounting         | The benchmark that measured itself                                    | That the public demo runs a real LLM (it runs the deterministic zero-key provider; real providers are a configuration switch) |
+| **Software Engineer (backend/full-stack)** | CareerForge first if the JD is API/data-heavy, otherwise second | Architecture, API contract, migrations, transactions, CI, observability | The failed run that left no trace                                     | That it is deployed and serving traffic (the image path has never been witnessed)                                             |
+| **Embedded / firmware**                    | Drone / STM32 project **first**, CareerForge second or third    | Engineering breadth: Python, backend, testing discipline, CI, debugging | Browser CORS vs green Node smoke (a real-environment debugging story) | That CareerForge is an embedded project — it is not, and saying so costs credibility with the one interviewer who can tell    |
+| **Solution / Product Engineer**            | CareerForge first                                               | Product loop, explainability, documentation, demo, deployment thinking  | The 375 px table that jsdom could not see                             | Business impact: there are no users, no revenue, no retention numbers, and inventing one ends the interview                   |
 
 ## 2. AI Application Engineer
 
@@ -35,7 +35,7 @@ something, and an honest account of where the model fails.
 
 **Lead with.** `packages/ai/careerforge_ai/agents/validator.py` (rules first, model may only judge
 support), the hybrid retriever (`rag/retriever.py`), `evals/run.py` with its declared gates, and the
-usage envelope that separates *reported* cost from *unknown* cost.
+usage envelope that separates _reported_ cost from _unknown_ cost.
 
 **Quote these measurements.**
 
@@ -43,7 +43,7 @@ usage envelope that separates *reported* cost from *unknown* cost.
 - fabricated-number acceptance **0.0000**
 - evidence macro F1 **0.8481**, accuracy **0.9000**, unsupported recall **0.9355**
 - RAG Hit@1 **0.8475**, Hit@5 **0.9661**, MRR **0.9011** — and keyword-only Hit@5 **0.9831**, which is
-  *better*, reported rather than tuned away
+  _better_, reported rather than tuned away
 - calibration ECE **0.0316**, Brier **0.0904**, top bucket **+0.063 over-confident**
 
 **Open with story 1** ("the benchmark that measured itself") and keep story 6 (`null` ≠ `0`) for the
@@ -89,13 +89,13 @@ goes second or third, described as a software-engineering breadth project.
 
 **What transfers, and is worth naming explicitly:**
 
-| Embedded habit | Where it shows up in CareerForge |
-| --- | --- |
-| Determinism over vibes | Scoring is arithmetic with a versioned formula; the model never produces a number (ADR-014) |
-| Bus/protocol contracts | One response envelope, cross-tenant reads return `404` not `403` |
-| Timing and retry discipline | Provider chain ends at a zero-key fallback; timeouts, malformed JSON and 429s are injected in tests |
-| Debugging with instruments, not guesses | Every API response carries a request id; every AI run has a step trace |
-| Bounded resource use | Rate-limit budgets per group, cost accounting per call, upload caps |
+| Embedded habit                          | Where it shows up in CareerForge                                                                    |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Determinism over vibes                  | Scoring is arithmetic with a versioned formula; the model never produces a number (ADR-014)         |
+| Bus/protocol contracts                  | One response envelope, cross-tenant reads return `404` not `403`                                    |
+| Timing and retry discipline             | Provider chain ends at a zero-key fallback; timeouts, malformed JSON and 429s are injected in tests |
+| Debugging with instruments, not guesses | Every API response carries a request id; every AI run has a step trace                              |
+| Bounded resource use                    | Rate-limit budgets per group, cost accounting per call, upload caps                                 |
 
 **Quote these measurements.** 45 browser flows; 4/4 evaluation gates; the six real defects found at
 release (the quota mis-count, the always-true provenance flag) — these are debugging stories, not AI
@@ -120,7 +120,7 @@ a severity and a written rationale; 92.5% core coverage; the release-readiness r
 `DEPLOYMENT BLOCKED` section — a delivery document that names what it could not prove is the single
 most persuasive artefact for this role.
 
-**Open with story 3** (the AI quota charged for page reads) — it is a *product* insight: the budget
+**Open with story 3** (the AI quota charged for page reads) — it is a _product_ insight: the budget
 was supposed to bound cost and was instead taxing page views. Then story 2 (CORS) as the
 "we tested the wrong environment" lesson.
 
@@ -129,21 +129,21 @@ product, a documented quality system, and a release process.
 
 ## 6. Vendor / ATS keyword map
 
-The repository genuinely covers these; they can appear in a résumé *because the code is there*.
+The repository genuinely covers these; they can appear in a résumé _because the code is there_.
 
-| Keyword | Where it is real |
-| --- | --- |
-| Python · FastAPI · Pydantic · SQLAlchemy · Alembic | `apps/api`, `packages/ai` (editable installs, no framework imports in the core) |
-| TypeScript · React · Next.js (App Router) · Tailwind · React Flow · Recharts | `apps/web`, `packages/ui`, `packages/shared` |
-| PostgreSQL · pgvector · Redis · SQLite parity | migrations `0001`–`0009`, CI's `api-postgres` job, compose file |
-| RAG · hybrid retrieval · BM25 · RRF · embeddings | `careerforge_ai/rag/` |
-| LLM · prompt engineering · structured output · provider fallback | `careerforge_ai/providers/`, prompt registry |
-| AI agents · orchestration · DAG | `careerforge_ai/orchestrator/` |
-| Evaluation · benchmarks · calibration · gates | `evals/`, `reports/` |
-| Observability · tracing · cost accounting · metering | `/app/ai-runs`, `/app/costs`, usage envelope |
-| Testing · pytest · Vitest · Playwright · axe | 1,385 tests, 45 browser flows, a11y gate |
-| CI/CD · GitHub Actions · Docker · docker compose | `.github/workflows/ci.yml` (5 jobs), `infra/docker/` **[image path CI-unverified until the `images` job has run — check before claiming it]** |
-| Security · JWT · RBAC · prompt injection · PII redaction | `docs/ARCHITECTURE.md` §10, `services/public_service.py` |
+| Keyword                                                                      | Where it is real                                                                                                                              |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Python · FastAPI · Pydantic · SQLAlchemy · Alembic                           | `apps/api`, `packages/ai` (editable installs, no framework imports in the core)                                                               |
+| TypeScript · React · Next.js (App Router) · Tailwind · React Flow · Recharts | `apps/web`, `packages/ui`, `packages/shared`                                                                                                  |
+| PostgreSQL · pgvector · Redis · SQLite parity                                | migrations `0001`–`0009`, CI's `api-postgres` job, compose file                                                                               |
+| RAG · hybrid retrieval · BM25 · RRF · embeddings                             | `careerforge_ai/rag/`                                                                                                                         |
+| LLM · prompt engineering · structured output · provider fallback             | `careerforge_ai/providers/`, prompt registry                                                                                                  |
+| AI agents · orchestration · DAG                                              | `careerforge_ai/orchestrator/`                                                                                                                |
+| Evaluation · benchmarks · calibration · gates                                | `evals/`, `reports/`                                                                                                                          |
+| Observability · tracing · cost accounting · metering                         | `/app/ai-runs`, `/app/costs`, usage envelope                                                                                                  |
+| Testing · pytest · Vitest · Playwright · axe                                 | 1,385 tests, 45 browser flows, a11y gate                                                                                                      |
+| CI/CD · GitHub Actions · Docker · docker compose                             | `.github/workflows/ci.yml` (5 jobs), `infra/docker/` **[image path CI-unverified until the `images` job has run — check before claiming it]** |
+| Security · JWT · RBAC · prompt injection · PII redaction                     | `docs/ARCHITECTURE.md` §10, `services/public_service.py`                                                                                      |
 
 **Do not** repeat a keyword three times to please a parser. An ATS scores a keyword that appears in
 context; a human reads the same line and notices the padding.
