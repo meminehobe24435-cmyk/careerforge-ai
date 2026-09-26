@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "phase": "PHASE 14",
-  "generatedAt": "2026-09-25T19:27:42+00:00",
+  "generatedAt": "2026-09-26T04:24:47+00:00",
   "containerized": false,
   "containerizedReason": "No container runtime on this machine: `docker`, `podman` and `docker-compose` are all absent (probed and recorded in the `container-runtime` step), so `docker compose up` could not be executed. Every step below was run natively.",
   "containerRuntimeProbe": {
@@ -40,7 +40,7 @@
     "passed": 7,
     "failed": 0,
     "notRun": 0,
-    "durationSeconds": 49.912
+    "durationSeconds": 48.669
   },
   "steps": [
     {
@@ -48,9 +48,9 @@
       "title": "Container runtime probe (expect: absent)",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:26:51+00:00",
-      "finishedAt": "2026-09-25T19:26:51+00:00",
-      "durationSeconds": 0.129,
+      "startedAt": "2026-09-26T04:23:58+00:00",
+      "finishedAt": "2026-09-26T04:23:58+00:00",
+      "durationSeconds": 0.101,
       "commands": [],
       "observations": {
         "runtimeProbe": {
@@ -83,15 +83,15 @@
       "title": "Fresh database: delete the SQLite file, migrate 0 \u2192 head",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:26:51+00:00",
-      "finishedAt": "2026-09-25T19:26:56+00:00",
-      "durationSeconds": 4.461,
+      "startedAt": "2026-09-26T04:23:58+00:00",
+      "finishedAt": "2026-09-26T04:24:01+00:00",
+      "durationSeconds": 3.277,
       "commands": [
         {
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m alembic -c alembic.ini upgrade head",
           "cwd": "D:\\workspace\\epan\\apps\\api",
           "exitCode": 0,
-          "durationSeconds": 1.772,
+          "durationSeconds": 1.243,
           "stdoutTail": "",
           "stderrTail": "INFO  [alembic.runtime.migration] Context impl SQLiteImpl.\nINFO  [alembic.runtime.migration] Will assume non-transactional DDL.\nINFO  [alembic.runtime.migration] Running upgrade  -> 0001, PHASE 1 baseline: users, profiles, public_profiles, skills, prompt_versions,\nagent_runs, llm_calls, background_jobs, ai_caches.\nINFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, PHASE 2: documents and document_chunks.\nINFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, PHASE 3: evidence and evidence_links.\nINFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, PHASE 4: jobs, job_skills and job_matches.\nINFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, PHASE 2b: the structured career entities.\nINFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, PHASE 6: resume versions, claims and the claim\u2192evidence links.\nINFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, PHASE 8: the application tracker, its event log and the career timeline.\nINFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, PHASE 10: the stored public projection and its PII findings.\nINFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, PHASE 13: usage status, cached tokens, a failure code \u2014 and counters that may be ``NULL``."
         },
@@ -99,7 +99,7 @@
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m alembic -c alembic.ini current",
           "cwd": "D:\\workspace\\epan\\apps\\api",
           "exitCode": 0,
-          "durationSeconds": 1.521,
+          "durationSeconds": 1.169,
           "stdoutTail": "0009 (head)",
           "stderrTail": "INFO  [alembic.runtime.migration] Context impl SQLiteImpl.\nINFO  [alembic.runtime.migration] Will assume non-transactional DDL."
         },
@@ -107,7 +107,7 @@
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m alembic -c alembic.ini heads",
           "cwd": "D:\\workspace\\epan\\apps\\api",
           "exitCode": 0,
-          "durationSeconds": 1.155,
+          "durationSeconds": 0.855,
           "stdoutTail": "0009 (head)",
           "stderrTail": ""
         }
@@ -132,24 +132,24 @@
       "title": "Seed twice: identical row counts, no duplicates, exit 0",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:26:56+00:00",
-      "finishedAt": "2026-09-25T19:27:00+00:00",
-      "durationSeconds": 4.051,
+      "startedAt": "2026-09-26T04:24:01+00:00",
+      "finishedAt": "2026-09-26T04:24:04+00:00",
+      "durationSeconds": 3.069,
       "commands": [
         {
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe scripts/seed.py",
           "cwd": "D:\\workspace\\epan",
           "exitCode": 0,
-          "durationSeconds": 2.071,
-          "stdoutTail": "{\"ts\": \"2026-09-25T19:26:57.758+00:00\", \"level\": \"INFO\", \"logger\": \"careerforge_api.services.seed\", \"message\": \"demo_user_seeded\", \"event\": \"demo_user_seeded\", \"detail\": \"profile=alex\"}\n{\"ts\": \"2026-09-25T19:26:57.796+00:00\", \"level\": \"INFO\", \"logger\": \"careerforge_api.services.seed\", \"message\": \"demo_candidate_seeded\", \"event\": \"demo_candidate_seeded\", \"detail\": \"projects=3\"}\nseed complete\n  database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db\n  useSqlite: True\n  demoUser: {'id': 'b6fa72b7-1737-4be9-a62f-9bb94678c209', 'created': True, 'slug': 'alex'}\n  demoCandidate: {'seeded': True, 'counts': {'educations': 1, 'experiences': 2, 'projects': 3, 'achievements': 0, 'skills': 16}}\n  skills: {'inserted': 126, 'updated': 0, 'deactivated': 0, 'unchanged': 0, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}\n  prompts: {'inserted': 10, 'bumped': 0, 'unchanged': 0}\n  warnings: []",
+          "durationSeconds": 1.634,
+          "stdoutTail": "{\"ts\": \"2026-09-26T04:24:03.007+00:00\", \"level\": \"INFO\", \"logger\": \"careerforge_api.services.seed\", \"message\": \"demo_user_seeded\", \"detail\": \"profile=alex\", \"event\": \"demo_user_seeded\"}\n{\"ts\": \"2026-09-26T04:24:03.043+00:00\", \"level\": \"INFO\", \"logger\": \"careerforge_api.services.seed\", \"message\": \"demo_candidate_seeded\", \"detail\": \"projects=3\", \"event\": \"demo_candidate_seeded\"}\nseed complete\n  database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db\n  useSqlite: True\n  demoUser: {'id': 'd8188b4a-ae77-4b83-8763-6c2fd9c2d80a', 'created': True, 'slug': 'alex'}\n  demoCandidate: {'seeded': True, 'counts': {'educations': 1, 'experiences': 2, 'projects': 3, 'achievements': 0, 'skills': 16}}\n  skills: {'inserted': 126, 'updated': 0, 'deactivated': 0, 'unchanged': 0, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}\n  prompts: {'inserted': 10, 'bumped': 0, 'unchanged': 0}\n  warnings: []",
           "stderrTail": ""
         },
         {
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe scripts/seed.py",
           "cwd": "D:\\workspace\\epan",
           "exitCode": 0,
-          "durationSeconds": 1.959,
-          "stdoutTail": "seed complete\n  database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db\n  useSqlite: True\n  demoUser: {'id': 'b6fa72b7-1737-4be9-a62f-9bb94678c209', 'created': False, 'slug': 'alex'}\n  demoCandidate: {'seeded': False, 'counts': {}}\n  skills: {'inserted': 0, 'updated': 0, 'deactivated': 0, 'unchanged': 126, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}\n  prompts: {'inserted': 0, 'bumped': 0, 'unchanged': 10}\n  warnings: []",
+          "durationSeconds": 1.415,
+          "stdoutTail": "seed complete\n  database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db\n  useSqlite: True\n  demoUser: {'id': 'd8188b4a-ae77-4b83-8763-6c2fd9c2d80a', 'created': False, 'slug': 'alex'}\n  demoCandidate: {'seeded': False, 'counts': {}}\n  skills: {'inserted': 0, 'updated': 0, 'deactivated': 0, 'unchanged': 126, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}\n  prompts: {'inserted': 0, 'bumped': 0, 'unchanged': 10}\n  warnings: []",
           "stderrTail": ""
         }
       ],
@@ -250,9 +250,9 @@
         },
         "demoUserAfterSeed": {
           "found": true,
-          "id": "b6fa72b7-1737-4be9-a62f-9bb94678c209",
+          "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a",
           "email": "demo@careerforge.ai",
-          "createdAt": "2026-09-25 19:26:57.750458"
+          "createdAt": "2026-09-26 04:24:03.000951"
         },
         "rowsAddedByFirstSeed": {
           "educations": 1,
@@ -276,14 +276,14 @@
       "title": "Production-mode API on the zero-key provider",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:27:00+00:00",
-      "finishedAt": "2026-09-25T19:27:02+00:00",
-      "durationSeconds": 2.839,
+      "startedAt": "2026-09-26T04:24:04+00:00",
+      "finishedAt": "2026-09-26T04:24:06+00:00",
+      "durationSeconds": 2.194,
       "commands": [],
       "observations": {
         "api": {
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
-          "pid": 4600,
+          "pid": 4352,
           "logFile": ".tmp\\release-proof\\api-production.log",
           "ready": true,
           "readyDetail": "HTTP 200"
@@ -317,21 +317,21 @@
           "payload": {
             "app": "CareerForge AI",
             "version": "0.1.0",
-            "commit": "86e8c16fa609109ec6f346ecbd94a0320f2f174e",
-            "commitShort": "86e8c16",
+            "commit": "96f5d336e419bb206c9fa1d7cec3df0e31740bf5",
+            "commitShort": "96f5d33",
             "buildTimestamp": null,
             "environment": "production",
             "pythonVersion": "3.12.10",
             "nodeVersion": "24.13.1",
             "schemaVersion": "v1",
             "taxonomyVersion": "taxonomy@1.0.0",
-            "checkedAt": "2026-09-25T19:27:02.897128Z"
+            "checkedAt": "2026-09-26T04:24:06.884531Z"
           }
         },
         "gitHead": {
           "command": "git rev-parse HEAD",
           "exitCode": 0,
-          "stdout": "86e8c16fa609109ec6f346ecbd94a0320f2f174e"
+          "stdout": "96f5d336e419bb206c9fa1d7cec3df0e31740bf5"
         }
       },
       "notes": [
@@ -343,29 +343,29 @@
       "title": "Built frontend served by `next start` (not `next dev`)",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:27:02+00:00",
-      "finishedAt": "2026-09-25T19:27:34+00:00",
-      "durationSeconds": 31.971,
+      "startedAt": "2026-09-26T04:24:06+00:00",
+      "finishedAt": "2026-09-26T04:24:41+00:00",
+      "durationSeconds": 34.751,
       "commands": [
         {
           "command": "cmd /c pnpm --filter @careerforge/web build",
           "cwd": "D:\\workspace\\epan",
           "exitCode": 0,
-          "durationSeconds": 28.836,
-          "stdoutTail": "\u2026ating static pages (12/17) \n \u2713 Generating static pages (17/17)\n   Finalizing page optimization ...\n   Collecting build traces ...\n\nRoute (app)                                 Size  First Load JS\n\u250c \u25cb /                                    4.79 kB         159 kB\n\u251c \u25cb /_not-found                            132 B         103 kB\n\u251c \u25cb /app                                   132 B         103 kB\n\u251c \u25cb /app/ai-runs                         6.62 kB         156 kB\n\u251c \u25cb /app/analytics                       9.79 kB         152 kB\n\u251c \u25cb /app/applications                      28 kB         212 kB\n\u251c \u25cb /app/costs                           8.42 kB         155 kB\n\u251c \u25cb /app/dashboard                       8.03 kB         176 kB\n\u251c \u25cb /app/evidence-graph                  26.2 kB         210 kB\n\u251c \u25cb /app/interview                       23.1 kB         191 kB\n\u251c \u0192 /app/jobs                            19.3 kB         163 kB\n\u251c \u25cb /app/settings                        3.68 kB         157 kB\n\u251c \u25cb /app/validator                       13.9 kB         176 kB\n\u251c \u0192 /candidate/[slug]                    3.38 kB         172 kB\n\u251c \u0192 /login                               7.85 kB         194 kB\n\u2514 \u25cb /system                              9.64 kB         192 kB\n+ First Load JS shared by all             102 kB\n  \u251c chunks/2041-a536b4593717faf6.js      45.7 kB\n  \u251c chunks/cd581867-35c463cd1d83a918.js  54.2 kB\n  \u2514 other shared chunks (total)          2.54 kB\n\n\n\u25cb  (Static)   prerendered as static content\n\u0192  (Dynamic)  server-rendered on demand",
-          "stderrTail": "$ next build\n\n \u26a0 The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config"
+          "durationSeconds": 31.95,
+          "stdoutTail": "\u2026ating static pages (12/17) \n \u2713 Generating static pages (17/17)\n   Finalizing page optimization ...\n   Collecting build traces ...\n\nRoute (app)                                 Size  First Load JS\n\u250c \u25cb /                                    4.79 kB         159 kB\n\u251c \u25cb /_not-found                            132 B         103 kB\n\u251c \u25cb /app                                   132 B         103 kB\n\u251c \u25cb /app/ai-runs                         6.63 kB         156 kB\n\u251c \u25cb /app/analytics                       9.79 kB         152 kB\n\u251c \u25cb /app/applications                      28 kB         212 kB\n\u251c \u25cb /app/costs                           8.42 kB         155 kB\n\u251c \u25cb /app/dashboard                       8.49 kB         177 kB\n\u251c \u25cb /app/evidence-graph                  26.2 kB         210 kB\n\u251c \u25cb /app/interview                       23.1 kB         191 kB\n\u251c \u0192 /app/jobs                            19.3 kB         163 kB\n\u251c \u25cb /app/settings                        3.68 kB         157 kB\n\u251c \u25cb /app/validator                       13.9 kB         176 kB\n\u251c \u0192 /candidate/[slug]                    3.38 kB         172 kB\n\u251c \u0192 /login                               7.85 kB         194 kB\n\u2514 \u25cb /system                              9.64 kB         192 kB\n+ First Load JS shared by all             102 kB\n  \u251c chunks/2041-a536b4593717faf6.js      45.7 kB\n  \u251c chunks/cd581867-35c463cd1d83a918.js  54.2 kB\n  \u2514 other shared chunks (total)          2.54 kB\n\n\n\u25cb  (Static)   prerendered as static content\n\u0192  (Dynamic)  server-rendered on demand",
+          "stderrTail": "libpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\n$ next build\n\n \u26a0 The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config"
         }
       ],
       "observations": {
         "distExistedBefore": true,
         "buildOutput": {
           "distDir": "apps/web/.next",
-          "buildId": "zy3fECsrvFVJCFeTp0-GL",
+          "buildId": "M6iVD-J14f0P6fAkNLrp-",
           "requiredServerFiles": true
         },
         "nextStart": {
           "command": "cmd /c pnpm --filter @careerforge/web start --port 3341",
-          "pid": 54000,
+          "pid": 23012,
           "logFile": ".tmp\\release-proof\\web-start.log",
           "ready": true,
           "readyDetail": "HTTP 200"
@@ -406,17 +406,17 @@
       "title": "`smoke:api` against the production-mode API",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:27:34+00:00",
-      "finishedAt": "2026-09-25T19:27:37+00:00",
-      "durationSeconds": 3.045,
+      "startedAt": "2026-09-26T04:24:41+00:00",
+      "finishedAt": "2026-09-26T04:24:44+00:00",
+      "durationSeconds": 2.671,
       "commands": [
         {
           "command": "cmd /c pnpm --filter @careerforge/web smoke:api",
           "cwd": "D:\\workspace\\epan",
           "exitCode": 0,
-          "durationSeconds": 3.045,
-          "stdoutTail": "\u2026  GET /applications/board columns=7 total=1 archived=0\n  ok   board column order     wishlist \u00b7 applied \u00b7 oa \u00b7 interview \u00b7 final \u00b7 offer \u00b7 rejected\n  ok   PATCH /applications/reorder status=interview events=2 (\u6bcf\u6b21\u53d8\u66f4\u90fd\u7559\u75d5)\n  ok   GET /analytics/funnel  applications=1 interviews=1 cohort=1 basis=applications\n  ok   GET /analytics/rates   interviewRate=1/1 sufficient=false (n<5)\n  ok   GET /analytics/skill-correlation rows=0\n  ok   GET /analytics/categories category=unknown applications=1\n  ok   GET /analytics/timeline entries=1 months=12 basis=events\n  ok   DELETE /applications/:id deleted, then GET \u2192 NOT_FOUND\n  ok   GET /public (unpublished) 404 \u2014 \u964c\u751f\u4eba\u770b\u5230\u7684\u662f 404\uff0c\u4e0d\u662f\u534a\u6210\u54c1\u9875\n  ok   GET /public/candidate/:slug anonymous ok \u00b7 skills=16 coverage=0.00 hidden=[contact,resume_file] \u00b7 no PII\n  ok   PATCH /public/settings skills hidden \u2192 0 skills on the next anonymous read\n  ok   GET /ai-runs           jd_analysis status=degraded latency=2ms tokens=0 prompt=jd_analysis@v1 steps=4\n  ok   GET /ai-runs/:id       steps=[clean,extract,normalise,assess] calls=1\n  ok   GET /ai-costs          runs=3 calls=3 tokens=0 budget=$1\n  ok   GET /ai-costs/by-agent+by-feature agents=[job,recruiter] features=[JD \u5206\u6790[jd_analysis],\u516c\u5f00\u9875\u751f\u6210[recruiter_publish]]\n  ok   GET /cache/stats       kinds=[llm,embedding,tool] hits=1 misses=2 rate=0.3333\n  ok   GET /prompts           10 prompts, 10 active, all versioned\n  ok   GET unknown route      404 NOT_FOUND with requestId\n\n25 checks passed against http://127.0.0.1:8341/api/v1",
-          "stderrTail": "$ node --experimental-strip-types scripts/smoke-live-api.mts"
+          "durationSeconds": 2.67,
+          "stdoutTail": "\u2026  GET /applications/board columns=7 total=1 archived=0\n  ok   board column order     wishlist \u00b7 applied \u00b7 oa \u00b7 interview \u00b7 final \u00b7 offer \u00b7 rejected\n  ok   PATCH /applications/reorder status=interview events=2 (\u6bcf\u6b21\u53d8\u66f4\u90fd\u7559\u75d5)\n  ok   GET /analytics/funnel  applications=1 interviews=1 cohort=1 basis=applications\n  ok   GET /analytics/rates   interviewRate=1/1 sufficient=false (n<5)\n  ok   GET /analytics/skill-correlation rows=0\n  ok   GET /analytics/categories category=unknown applications=1\n  ok   GET /analytics/timeline entries=1 months=12 basis=events\n  ok   DELETE /applications/:id deleted, then GET \u2192 NOT_FOUND\n  ok   GET /public (unpublished) 404 \u2014 \u964c\u751f\u4eba\u770b\u5230\u7684\u662f 404\uff0c\u4e0d\u662f\u534a\u6210\u54c1\u9875\n  ok   GET /public/candidate/:slug anonymous ok \u00b7 skills=16 coverage=0.00 hidden=[contact,resume_file] \u00b7 no PII\n  ok   PATCH /public/settings skills hidden \u2192 0 skills on the next anonymous read\n  ok   GET /ai-runs           jd_analysis status=degraded latency=1ms tokens=0 prompt=jd_analysis@v1 steps=4\n  ok   GET /ai-runs/:id       steps=[clean,extract,normalise,assess] calls=1\n  ok   GET /ai-costs          runs=3 calls=3 tokens=0 budget=$1\n  ok   GET /ai-costs/by-agent+by-feature agents=[job,recruiter] features=[JD \u5206\u6790[jd_analysis],\u516c\u5f00\u9875\u751f\u6210[recruiter_publish]]\n  ok   GET /cache/stats       kinds=[llm,embedding,tool] hits=1 misses=2 rate=0.3333\n  ok   GET /prompts           10 prompts, 10 active, all versioned\n  ok   GET unknown route      404 NOT_FOUND with requestId\n\n25 checks passed against http://127.0.0.1:8341/api/v1",
+          "stderrTail": "libpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\nlibpng warning: iCCP: known incorrect sRGB profile\n$ node --experimental-strip-types scripts/smoke-live-api.mts"
         }
       ],
       "observations": {
@@ -433,9 +433,9 @@
       "title": "Restart on the same database: no migration, no re-seed",
       "status": "PASS",
       "reason": null,
-      "startedAt": "2026-09-25T19:27:37+00:00",
-      "finishedAt": "2026-09-25T19:27:41+00:00",
-      "durationSeconds": 3.415,
+      "startedAt": "2026-09-26T04:24:44+00:00",
+      "finishedAt": "2026-09-26T04:24:46+00:00",
+      "durationSeconds": 2.606,
       "commands": [],
       "observations": {
         "demoLoginBeforeRestart": {
@@ -444,19 +444,19 @@
         },
         "evidenceWrittenBeforeRestart": {
           "httpStatus": 201,
-          "id": "c859c665-76dd-4f65-847b-c95c71682bf3",
+          "id": "401136ba-8e3e-4d2b-9a4d-60961388608c",
           "title": "Release proof \u00b7 restart durability"
         },
         "stopFirstInstance": {
           "name": "api",
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
-          "pid": 4600,
+          "pid": 4352,
           "wasAlive": true,
           "exitCode": 1
         },
         "restartInstance": {
           "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
-          "pid": 46544,
+          "pid": 47884,
           "logFile": ".tmp\\release-proof\\api-restart.log",
           "ready": true,
           "readyDetail": "HTTP 200"
@@ -523,15 +523,15 @@
         },
         "demoUserBeforeRestart": {
           "found": true,
-          "id": "b6fa72b7-1737-4be9-a62f-9bb94678c209",
+          "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a",
           "email": "demo@careerforge.ai",
-          "createdAt": "2026-09-25 19:26:57.750458"
+          "createdAt": "2026-09-26 04:24:03.000951"
         },
         "demoUserAfterRestart": {
           "found": true,
-          "id": "b6fa72b7-1737-4be9-a62f-9bb94678c209",
+          "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a",
           "email": "demo@careerforge.ai",
-          "createdAt": "2026-09-25 19:26:57.750458"
+          "createdAt": "2026-09-26 04:24:03.000951"
         },
         "alembicRevisionUnchanged": {
           "before": "0009",
@@ -542,7 +542,7 @@
           "hasAccessToken": true
         },
         "evidenceRowSurvivedRestart": {
-          "id": "c859c665-76dd-4f65-847b-c95c71682bf3",
+          "id": "401136ba-8e3e-4d2b-9a4d-60961388608c",
           "present": true,
           "rows": 1
         },
@@ -613,14 +613,14 @@
     {
       "name": "web",
       "command": "cmd /c pnpm --filter @careerforge/web start --port 3341",
-      "pid": 54000,
+      "pid": 23012,
       "wasAlive": true,
       "exitCode": 1
     },
     {
       "name": "api",
       "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
-      "pid": 46544,
+      "pid": 47884,
       "wasAlive": true,
       "exitCode": 1
     }

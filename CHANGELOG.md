@@ -6,6 +6,72 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-26
+
+### Fixed — PHASE 14 · the defects a fresh database found before launch
+
+Every item below was found by running the product against an empty database and reading what it
+actually did, not by reviewing the code. `reports/release-readiness.md` §1 carries the measurements;
+`docs/ROADMAP.md` carries the per-defect record.
+
+- **The AI rate-limit budget counted reads as model spend.** `classify_request` matched AI paths by
+  substring and ignored the method, so `GET /jobs/{id}/match` (reads a stored row) and
+  `GET /ai/interview/{id}` (reads the session store) were charged to the same 20-per-minute bucket as
+  the calls that reach a provider. A user could spend their twenty "AI requests" by reloading a page
+  and then be refused the analysis they wanted. Measured: in the sixty seconds ending at the first
+  `429` the browser suite made 33 requests to AI-marked paths against a bucket of 20, ten of them
+  reads. The budget now covers `POST`/`PUT`/`PATCH` on AI paths — the requests that can spend — with
+  the documented limit, window and default unchanged; `docs/API.md` §1.7 defined the group by
+  endpoint and is corrected in the same commit.
+- **`/system/info` announced an upload budget the limiter was not enforcing.** PHASE 14 made the
+  upload budget a setting; the middleware was switched over and the reporting site was missed, so the
+  status page kept printing the default 20 while the limiter used the configured value. The test
+  asserting it reproduced the same literal, so it could not fail — it now asserts against settings,
+  with a guard that the fixture's value differs from the default.
+- **The browser suite declared no budgets and depended on spec order.** Two separate reds that both
+  read like product bugs: the suite is one user driving 45 flows in ~90 s against a budget designed
+  for a human (the stack now declares its own, as the unit suite already did, and
+  `apps/web/e2e/README.md` writes the whole configuration down), and the shared `jobId` fixture
+  analysed a posting without matching it, so `a11y.spec.ts` — which runs before `jd-analysis.spec.ts`
+  on desktop — waited thirty seconds for a panel whose stored row did not exist yet.
+- **Calibration was published but not comparable.** ECE and Brier were computed into
+  `reports/confidence-calibration.md` and never entered the report's metric set, while
+  `evals/compare.py` carries explicit lower-is-better rules for both names. A calibration change could
+  not appear in a diff or fail a gate. Both are now emitted as `evidence.ece` and `evidence.brier`,
+  with report-only thresholds and the reason they do not gate.
+- Removed three places where the dashboard said something untrue about the product: skeleton cards
+  captioned 「尚未接入的面板」 claiming that `/analytics/timeline` and `/analytics/funnel` were needed
+  (both exist and `/app/analytics` charts them), a permanently disabled 「载入示例数据 · PHASE 3」
+  button, and a stat card rendering a missing 7-day delta as `7d trend · PHASE 10`. The dashboard
+  guard test now fails on any `PHASE \d` or 「尚未接入」 a reader can see.
+
+### Added — PHASE 14
+
+- `GET /dashboard` → `profileStrength.dimensions` and `algorithmVersion`: the five weighted
+  dimensions with the engine's own labels, weights and weighted contributions, which sum to the
+  score. `compute_profile_strength` had always returned them and the endpoint dropped them while the
+  page said the breakdown would arrive later. Rendered under the ring, and asserted against the live
+  response rather than against literals.
+- `apps/web/e2e/README.md` — how to start the two-process stack, which budgets it declares and why,
+  what the specs may assume, and the two gates that exist to fail a build.
+- `reports/release-readiness.md` — the release record: blockers found and fixed, the production proof,
+  the deployment block with its reasons, and an index from every published number to its artefact.
+- `evals/tests/test_calibration_metrics.py` — the calibration wiring, including the direction
+  invariant that motivated it.
+
+### Known limitations — PHASE 14
+
+- **`DEPLOYMENT BLOCKED`**: this machine has no container runtime, no PostgreSQL, no Redis and no
+  cloud credentials, and the repository has no remote. The native path is proved end to end
+  (`reports/release-proof.md`, 7/7) and `docker compose up` is not claimed anywhere. The image build
+  is not yet a CI job; both are PHASE 15's first tasks.
+- One unexplained E2E flake: the interview page stayed on skeletons once in two full runs. The wait is
+  now named and three times longer, and "never hydrated" is distinguishable from "no posting to
+  select"; one non-reproduction is not a fix, and it stays open in `docs/ROADMAP.md`.
+- `evidence.ece` and `evidence.brier` report as `missing` against the PHASE 12 baseline, which
+  predates them; they become comparable at the next baseline refresh.
+- `evidence.unsafe_support_rate` remains 5.00% against a target of 0.02 (gate 0.075).
+
 ### Fixed — PHASE 13 · the observability layer told the truth about what it had measured
 
 PHASE 12 found three defects in the AI observability layer, wrote them down and left them unfixed.

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-09-25T19:13:28.956106+00:00",
-  "git_commit": "86e8c16",
+  "generated_at": "2026-09-26T04:31:27.282486+00:00",
+  "git_commit": "96f5d33",
   "git_dirty": true,
   "provider": "heuristic",
   "provider_chain": [
@@ -77,18 +77,18 @@
     "suites_executed": 4,
     "suites_skipped": 0,
     "cases": 242,
-    "metrics": 39,
+    "metrics": 41,
     "gated_passed": 4,
     "gated_failed": 0,
     "reported_misses": 0,
-    "duration_ms": 926
+    "duration_ms": 813
   },
   "suites": {
     "jd_extraction": {
       "dataset": "jd_extraction",
       "dataset_version": "jd1.0",
       "cases": 120,
-      "duration_ms": 481,
+      "duration_ms": 437,
       "skipped": null,
       "passed": true,
       "metrics": {
@@ -218,12 +218,14 @@
       "dataset": "evidence_validation",
       "dataset_version": "ev2.1",
       "cases": 60,
-      "duration_ms": 329,
+      "duration_ms": 293,
       "skipped": null,
       "passed": true,
       "metrics": {
         "evidence.accuracy": 0.9,
+        "evidence.brier": 0.090405,
         "evidence.degraded_case_rate": 0.0,
+        "evidence.ece": 0.031555,
         "evidence.macro_f1": 0.848105,
         "evidence.micro_f1": 0.9,
         "evidence.partial_recall": 0.666667,
@@ -244,6 +246,22 @@
           "severity": "report",
           "status": "pass",
           "rationale": "实测 0.8833；类别不均衡时它不如 macro F1 有信息量，仅作对照。"
+        },
+        "evidence.brier": {
+          "value": 0.090405,
+          "threshold": 0.15,
+          "direction": "max",
+          "severity": "report",
+          "status": "pass",
+          "rationale": "Brier 分数（概率预测的均方误差），实测 0.0904。与 ECE 互补：它对单个高置信度的错误惩罚更重。同样只记录。"
+        },
+        "evidence.ece": {
+          "value": 0.031555,
+          "threshold": 0.05,
+          "direction": "max",
+          "severity": "report",
+          "status": "pass",
+          "rationale": "期望校准误差（10 桶：置信度 vs 实际正确率）。实测 0.0316（reports/confidence-calibration.md）。PHASE 14 之前这个数字只写在旁路产物里、不进 metrics，因此 compare 看不见它，校准漂移既不会出现在 diff 里也不会失败——本阶段把它并入被比较的指标集。仅记录不门禁：60 个用例上的校准指标做门禁会把噪声当回归；0.05 是文献里常用的宽松界，越过它才值得讨论。"
         },
         "evidence.macro_f1": {
           "value": 0.848105,
@@ -1203,7 +1221,7 @@
       "dataset": "rag_retrieval",
       "dataset_version": "rag1.0",
       "cases": 59,
-      "duration_ms": 50,
+      "duration_ms": 44,
       "skipped": null,
       "passed": true,
       "metrics": {
@@ -1333,7 +1351,7 @@
       "dataset": "interview_relevance",
       "dataset_version": "iv1.0",
       "cases": 3,
-      "duration_ms": 32,
+      "duration_ms": 29,
       "skipped": null,
       "passed": true,
       "metrics": {
