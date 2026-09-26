@@ -35,6 +35,18 @@ x-api-env: &api-env
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
   STORAGE_BACKEND: local
   STORAGE_LOCAL_PATH: /data/uploads
+  # Rate-limit budgets, passed through so this file can configure what `docs/API.md` §1.7 documents.
+  # Until PHASE 15 it could not: the values were readable as settings and documented in `.env.example`,
+  # but nothing in the compose topology forwarded them, so a containerized stack was stuck on the
+  # shipped defaults — including a browser suite that needs more than 20 AI requests a minute
+  # (`apps/web/e2e/README.md` explains why the suite declares its own budgets).
+  RATE_LIMIT_AI_PER_MIN: ${RATE_LIMIT_AI_PER_MIN:-20}
+  RATE_LIMIT_READ_PER_MIN: ${RATE_LIMIT_READ_PER_MIN:-300}
+  RATE_LIMIT_WRITE_PER_MIN: ${RATE_LIMIT_WRITE_PER_MIN:-60}
+  RATE_LIMIT_AUTH_PER_MIN: ${RATE_LIMIT_AUTH_PER_MIN:-10}
+  RATE_LIMIT_UPLOAD_PER_HOUR: ${RATE_LIMIT_UPLOAD_PER_HOUR:-20}
+  # `*` disables the host check; a deployment sets its own hostname(s) here.
+  TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}
 
 services:
   postgres:
