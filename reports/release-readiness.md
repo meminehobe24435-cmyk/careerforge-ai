@@ -11,8 +11,9 @@ written next to it rather than a plausible value.
 
 ## 1. Release blockers: found, fixed, and how each one was found
 
-Five defects were found by running the product against a fresh database rather than by reading it.
-Each is recorded in `docs/ROADMAP.md` under PHASE 14 with the measurement that exposed it.
+Five defects were found by running the product against a fresh database rather than by reading it,
+and a sixth was found while generating the artefacts below. Each is recorded in `docs/ROADMAP.md`
+under PHASE 14 with the measurement that exposed it.
 
 | # | Defect | How it surfaced | Fixed in |
 | --- | --- | --- | --- |
@@ -20,7 +21,8 @@ Each is recorded in `docs/ROADMAP.md` under PHASE 14 with the measurement that e
 | 2 | `/system/info` announced a **hard-coded** upload budget of 20/hour while the limiter enforced the configured value, and the test asserting it reproduced the same literal — so the assertion could not fail | started the stack with `RATE_LIMIT_UPLOAD_PER_HOUR=500`: four of five reported numbers followed the environment, this one did not | `206c440` |
 | 3 | The browser suite declared **no budgets**, which makes CI's `e2e` job red by construction (45 flows in ~90 s is not a human load) | same run as (1); still 23 spending calls per minute after (1) | `6301715` |
 | 4 | The shared `jobId` fixture analysed a posting but never matched it, so two gates depended on **spec execution order** | `a11y.spec.ts` runs before `jd-analysis.spec.ts` on desktop; `GET /jobs/{id}/match` returned `404 not been matched yet` and the panel could not exist | `6301715` |
-| 5 | ECE and Brier were measured and published in `reports/confidence-calibration.md` but never entered the compared metric set, while `evals/compare.py` carried explicit lower-is-better rules for both names — a calibration change could not appear in a diff or fail a gate | reading the eval report's metric list against the tool's own rules | this commit |
+| 5 | ECE and Brier were measured and published in `reports/confidence-calibration.md` but never entered the compared metric set, while `evals/compare.py` carried explicit lower-is-better rules for both names — a calibration change could not appear in a diff or fail a gate | reading the eval report's metric list against the tool's own rules | `de84fad` |
+| 6 | **Every evaluation artefact this project has committed recorded `git_dirty: true`**, clean tree or not: `_git` returned the sentinel `"unknown"` for any empty output and the caller read it with `bool(...)`, so `git status` answering "nothing is modified" produced a truthy string. The provenance flag that decides whether published numbers belong to a commit was therefore always the same value | the tree was verified clean and the freshly generated report still said dirty; calling the helper directly printed `'unknown'` | `58fd9c4` |
 
 One further defect was fixed in the same spirit rather than as a blocker: `GET /dashboard` computed
 the five-dimension Profile Strength breakdown on every request and dropped it, while the page told

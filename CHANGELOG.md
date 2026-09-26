@@ -34,6 +34,11 @@ actually did, not by reviewing the code. `reports/release-readiness.md` §1 carr
   `apps/web/e2e/README.md` writes the whole configuration down), and the shared `jobId` fixture
   analysed a posting without matching it, so `a11y.spec.ts` — which runs before `jd-analysis.spec.ts`
   on desktop — waited thirty seconds for a panel whose stored row did not exist yet.
+- **Every evaluation artefact recorded `git_dirty: true`,** clean tree or not. `_git` returned the
+  sentinel `"unknown"` for any empty output and the caller read it with `bool(...)`, so
+  `git status --porcelain` answering "nothing is modified" produced a truthy string. The flag a reader
+  uses to decide whether the published numbers belong to a commit was always the same value; it now
+  distinguishes clean, dirty and "git could not answer", with tests for all three.
 - **Calibration was published but not comparable.** ECE and Brier were computed into
   `reports/confidence-calibration.md` and never entered the report's metric set, while
   `evals/compare.py` carries explicit lower-is-better rules for both names. A calibration change could
