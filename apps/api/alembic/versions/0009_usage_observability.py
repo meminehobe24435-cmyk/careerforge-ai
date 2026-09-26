@@ -32,11 +32,21 @@ Five changes to the two observability tables, all of them one idea: **"we were n
   all*; now that it does, the row has to say what failed, and free text alone is not something an
   operator can filter on.
 
-The tables are rebuilt by ``batch_alter_table(recreate=True)`` because SQLite cannot ALTER a
-column's nullability or add a CHECK in place. The constraints are re-declared identically plus the
-new ``usage_status_valid`` one, and ``docs/DATABASE.md`` §6 requires a working ``downgrade()``: it
-restores the original shape and deletes the rows the original ``NOT NULL`` columns cannot hold —
-stated here rather than losing them silently.
+The tables are rebuilt by ``batch_alter_table`` because SQLite cannot ALTER a column's nullability or
+add a CHECK in place — but the strategy is ``recreate="auto"``, **not** ``"always"``. ``auto`` asks the
+dialect and still rebuilds on SQLite, where a rebuild is the only option; ``always`` forced the same
+rebuild on PostgreSQL, where it is neither needed nor possible: dropping ``agent_runs`` trips over the
+foreign key ``llm_calls.run_id`` references and the migration dies with
+``DependentObjectsStillExistError: cannot drop constraint pk_agent_runs on table agent_runs because
+other objects depend on it``.
+
+That failure is worth recording rather than just fixing. The PostgreSQL migration path had **never been
+executed** — no PostgreSQL server on the development machine — and the release proof said so in its
+``NOT RUN`` table. The first run of the ``api-postgres`` CI job (2026-09-26) is what turned "the
+migrations are dialect-aware, but that is not evidence" into evidence of a real bug.
+
+``docs/DATABASE.md`` §6 requires a working ``downgrade()``: it restores the original shape and deletes
+the rows the original ``NOT NULL`` columns cannot hold — stated here rather than losing them silently.
 """
 
 from __future__ import annotations
@@ -63,7 +73,9 @@ _COUNT_TYPES: dict[str, sa.types.TypeEngine[object]] = {
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("agent_runs", recreate="always") as batch:
+    # `auto`: rebuild where the dialect cannot ALTER in place (SQLite), alter in place where it can
+    # (PostgreSQL). See the module docstring for the CI failure that `always` produced.
+    with op.batch_alter_table("agent_runs", recreate="auto") as batch:
         for column, column_type in _COUNT_TYPES.items():
             batch.alter_column(column, existing_type=column_type, nullable=True)
         batch.add_column(sa.Column("cached_tokens", sa.Integer(), nullable=True))
@@ -74,7 +86,7 @@ def upgrade() -> None:
             f"usage_status IS NULL OR usage_status IN ({_USAGE_STATUSES})",
         )
 
-    with op.batch_alter_table("llm_calls", recreate="always") as batch:
+    with op.batch_alter_table("llm_calls", recreate="auto") as batch:
         for column, column_type in _COUNT_TYPES.items():
             batch.alter_column(column, existing_type=column_type, nullable=True)
         batch.add_column(sa.Column("cached_tokens", sa.Integer(), nullable=True))
@@ -103,7 +115,7 @@ def downgrade() -> None:
         "OR total_tokens IS NULL OR cost_usd IS NULL OR cost_cny IS NULL"
     )
     for table in ("agent_runs", "llm_calls"):
-        with op.batch_alter_table(table, recreate="always") as batch:
+        with op.batch_alter_table(table, recreate="auto") as batch:
             batch.drop_constraint("usage_status_valid", type_="check")
             batch.drop_column("usage_status")
             batch.drop_column("cached_tokens")
