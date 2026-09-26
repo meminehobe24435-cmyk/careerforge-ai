@@ -86,21 +86,48 @@ def _dataset_manifest() -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
-def _git(*args: str) -> str:
+def _git(*args: str) -> str | None:
+    """One git command's stdout, or ``None`` when git could not answer.
+
+    ``None`` and ``""`` are different statements and used to be the same one. The helper returned the
+    sentinel ``"unknown"`` for *any* empty output, and the caller read it as
+    ``git_dirty=bool(_git("status", "--porcelain"))`` — so a clean tree produced the string
+    ``"unknown"``, which is truthy, and **every** evaluation artefact this project has committed
+    reported `git_dirty: true` regardless of the tree it was generated from. A provenance flag that
+    is always the same value is not a provenance flag; it is a claim nobody can check and that is
+    wrong most of the time. Measured on a verified-clean tree: `status --porcelain` → ``"unknown"``.
+    """
     try:
-        return (
-            subprocess.run(
-                ["git", *args],
-                cwd=REPO_ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            ).stdout.strip()
-            or "unknown"
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - git may be absent
-        return "unknown"
+        return None
+    if completed.returncode != 0 and not completed.stdout.strip():
+        return None
+    return completed.stdout.strip()
+
+
+def _git_or(*args: str, fallback: str = "unknown") -> str:
+    """A field that must be a string: git's answer, or an explicit fallback."""
+    value = _git(*args)
+    return value if value else fallback
+
+
+def _tree_is_dirty(porcelain: str | None) -> bool:
+    """Whether `git status --porcelain` output means the tree is dirty.
+
+    Three cases, and they are not two: text means dirty, the empty string means clean, and `None`
+    (git could not answer) counts as **dirty** — the cleanliness was not proved, and a report that
+    claims a clean tree it never verified is worse than one that admits it does not know. The
+    `git_commit` field says `unknown` in that case, so a reader sees the pair.
+    """
+    return porcelain is None or porcelain != ""
 
 
 async def run_suites(settings: Settings, suite_names: list[str]) -> dict[str, SuiteOutcome]:
@@ -210,13 +237,18 @@ def main() -> int:
         calibration = (payload, markdown)
         calibrated.metrics.update(calibration_metrics(payload))
 
+    # `None` (git could not answer) reads as dirty — see `_tree_is_dirty` — and this field is what a
+    # reader uses to decide whether the numbers are attributable to the commit named beside it.
+    porcelain = _git("status", "--porcelain")
+    git_dirty = _tree_is_dirty(porcelain)
+
     report = build_report(
         outcomes=list(outcomes.values()),
         provider=settings.llm_provider,
         provider_chain=settings.active_provider_chain(),
         model=getattr(settings, f"{settings.llm_provider}_model", None),
-        git_commit=_git("rev-parse", "--short", "HEAD"),
-        git_dirty=bool(_git("status", "--porcelain")),
+        git_commit=_git_or("rev-parse", "--short", "HEAD"),
+        git_dirty=git_dirty,
         datasets=manifest.get("datasets", {}),
         dataset_caveat=str(manifest.get("note", "")),
         versions={
