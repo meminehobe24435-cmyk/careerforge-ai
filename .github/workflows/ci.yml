@@ -197,9 +197,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `with: version` — the package manager version lives in `package.json` under
+      # `packageManager`, and declaring it in both places is an error, not a redundancy:
+      # `pnpm/action-setup` refuses to run with "Multiple versions of pnpm specified" when the
+      # workflow and the manifest disagree. Measured on this workflow's first run (2026-09-26).
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
@@ -280,8 +282,6 @@ jobs:
           cache: pip
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
@@ -379,6 +379,13 @@ jobs:
         # `config -q` parses the file, resolves every `env_file`/variable and fails on a
         # malformed service, so a broken compose file is caught in seconds rather than at
         # deploy time. No daemon is needed for this step.
+        #
+        # The throwaway secret is required, and that is the compose file working as intended:
+        # `JWT_SECRET` is declared `${JWT_SECRET:?...}` there, because a container that boots with a
+        # documented default secret is how a "temporary" deployment becomes a permanent one. The step
+        # validates the file, not a secret, so a value that is obviously not one is the right input.
+        env:
+          JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
         run: docker compose config -q
 
       - name: Build the API image
