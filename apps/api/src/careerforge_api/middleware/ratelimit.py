@@ -5,8 +5,12 @@
     auth (login/register/demo)   10 / minute / IP
     read                        300 / minute / user
     write                        60 / minute / user
-    AI                           20 / minute / user
+    AI                           20 / minute / user   (requests that can spend model tokens)
     upload                       20 / hour   / user
+
+The AI group is the one with a qualifier, and it is a correction rather than a narrowing: the budget
+bounds model spend, so it covers the methods that can spend (see ``_AI_SPENDING_METHODS``). A `GET`
+on an AI path returns stored state and is charged to `read`, exactly like any other read.
 
 The identity is the authenticated user when a valid bearer token is present and the
 client IP otherwise — the limiter runs before the auth dependency, so it decodes
@@ -57,6 +61,19 @@ AUTH_PATHS = ("/auth/login", "/auth/register", "/auth/demo", "/auth/refresh", "/
 
 #: Substrings that mark an AI endpoint (they get their own tighter quota).
 _AI_MARKERS = ("/analyze", "/match", "/optimize", "/interview", "/deep-dive")
+
+#: The methods that can actually spend model tokens, and therefore the only ones the AI budget
+#: applies to.
+#:
+#: The budget exists to bound *spend*: twenty model calls a minute per user. Until PHASE 14 the
+#: ``_AI_MARKERS`` check ignored the method, which put `GET /jobs/{id}/match` and
+#: `GET /ai/interview/{id}` — both of which read a stored row and never reach a provider — in the
+#: same bucket as the calls that do. A user could then exhaust their twenty "AI requests" by
+#: reloading a page and be refused the analysis they actually wanted. Measured, not theorised: the
+#: browser suite hit `429 RATE_LIMITED` twice on `GET /ai/interview/{id}` and `POST /jobs/analyze`
+#: inside one run (PHASE 14 findings, ``docs/ROADMAP.md``), and the same page load was charging the
+#: AI bucket for a read. `DELETE` is excluded for the same reason: it removes a row.
+_AI_SPENDING_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
 #: Substrings that mark an upload endpoint.
 _UPLOAD_MARKERS = ("/import", "/upload", "/documents")
@@ -172,7 +189,7 @@ def classify_request(method: str, path: str, settings: APISettings) -> RateLimit
         # or a self-hosted deployment that ingests more than twenty documents an hour — and a test
         # that passes alone then fails inside a full run reads as a product bug.
         return RateLimitRule("upload", settings.rate_limit_upload_per_hour, 3600.0, "user")
-    if any(marker in normalized for marker in _AI_MARKERS):
+    if upper in _AI_SPENDING_METHODS and any(marker in normalized for marker in _AI_MARKERS):
         return RateLimitRule("ai", settings.rate_limit_ai_per_min, 60.0, "user")
     if upper in _READ_METHODS:
         return RateLimitRule("read", settings.rate_limit_read_per_min, 60.0, "user")

@@ -124,6 +124,13 @@ data: {"code":"AI_PROVIDER_ERROR","message":"..."}
 | AI 端点（analyze/match/optimize/interview） | 20 / 分钟 / 用户；单用户日预算护栏 |
 | 上传                                        | 20 / 小时 / 用户                   |
 
+AI 组只统计**可能消耗模型额度**的请求（`POST`/`PUT`/`PATCH`）。同一路径上的读请求
+（`GET /jobs/{id}/match` 读已存的匹配、`GET /ai/interview/{id}` 读会话）与删除请求
+（`DELETE /ai/interview/{id}`）不经过任何 provider，因此分别计入读/写组：
+这两个读端点在 PHASE 14 之前也吃 AI 配额，用户刷新几次页面就能把「20 次 AI 请求」用光，
+然后在真正需要分析时被 `429` 拦住（实测记录见 `docs/ROADMAP.md` PHASE 14）。
+`POST /documents/{id}/analyze` 归入上传组，因为它与上传共享同一条每小时预算。
+
 响应头：`X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`。
 
 ### 1.8 降级可观测字段
