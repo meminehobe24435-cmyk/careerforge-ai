@@ -1364,6 +1364,109 @@ One sentence each, with where the full story lives. Say these without notes.
    measured zero. Full story: `docs/ROADMAP.md` PHASE 13; `routers/jobs.py` (`get_match`);
    `apps/api/alembic/versions/0009_usage_observability.py`.
 
+## The three questions you will be asked about how this was built
+
+They are not technical, they are the ones an interviewer actually asks about a project of this size, and
+a rehearsed non-answer costs more than the truth does. Answer with the split, then with an example.
+
+### Q62 — How much of this did AI write?
+
+**Short answer.** Most of the code, at a speed I could not have matched by hand — and none of the
+requirements, acceptance criteria, architecture decisions, test design or defect diagnoses. The honest
+way to say it is that I ran the project and the model typed it: I decided what had to be true, and I
+built the machinery that could tell me whether it was.
+
+**Deep dive.**
+
+- **What the model did:** wrote the implementation, in phases I defined, against specifications and
+  acceptance criteria I wrote first (`docs/PRD.md`, `docs/ROADMAP.md` with per-phase exit criteria).
+- **What I did, and can point at:** the phase plan and its exit criteria; the 23 ADRs, each of which
+  records the alternative I rejected and why; the decision that the model may never produce a number
+  (ADR-014); the evaluation design, including the gate severities and the written rationale for every
+  threshold; the corpus I rewrote when I found the first one was circular; and every defect diagnosis in
+  `docs/ROADMAP.md` — because a generated implementation does not diagnose itself.
+- **What made this different from "asking a model for an app":** every phase had to _run_, not just
+  compile. A phase was finished when its tests passed, its artefacts regenerated, and its defects were
+  either fixed or written down. That constraint is what turned a fast generator into a project.
+
+**Evidence in repo.** `docs/ROADMAP.md` (per-phase findings, each naming how the defect was found);
+`docs/DECISIONS.md` (ADR-014 and the rejected alternatives); `evals/config.py` (every threshold with its
+rationale); `docs/QUALITY.md` §5–§7 (the evaluation that found the product's own bugs).
+
+### Q63 — So is this "vibe coded"? Did the AI write it and you just shipped it?
+
+**Short answer.** If that means "generated without verification", no — and the repository is built to
+prove it. The distinguishing feature of this project is not how the code was produced; it is that
+**nothing in it is trusted on the strength of having been produced**. There is an evaluation harness, a
+browser suite, a release proof and a published list of what could not be verified.
+
+**Deep dive.**
+
+- **The cheap test of that claim:** ask what the project's own measurements say is _wrong_ with it.
+  `unsafe_support_rate` is 5% against a target of 2%, keyword-only retrieval beats the hybrid, there is
+  no durable vector index, and the deployment has no public URL. Those are in the README, not in a
+  footnote.
+- **The stronger test:** whether independent checks ever contradicted the implementation. They did, ten
+  times, and the fixes are commits with the diagnosis attached — for example a rate limiter that
+  charged page _reads_ to a model-spend budget (found by a browser suite, 33 requests against a bucket
+  of 20), and a `git_dirty` flag that could only ever be true (found while generating a release
+  artefact, not by reading code).
+- **And the newest one, which is the honest ending to this answer:** CI ran for the first time on a
+  clean machine and found six defects, three of them in the product — a migration that had never run on
+  PostgreSQL, a prompt registry that resolves only for an editable install, and an image missing the
+  dependencies that read a PDF. All three were invisible locally, where the whole suite was green.
+
+**Evidence in repo.** `reports/release-readiness.md` (what is proved, what is not); `docs/ROADMAP.md`
+PHASE 15 findings (the six defects CI found); `.github/workflows/ci.yml` (six jobs, including one that
+brings the whole containerized stack up and runs the browser suite against it).
+
+### Q64 — What was the hardest part? (three versions of the answer)
+
+**Short answer, AI interviewer.** Making the claim gate _conservative without making it useless_ — the
+tension between `support_recall` (do not reject honest sentences) and `unsafe_support_rate` (do not
+accept invented ones), decided by rules rather than by a model, and then measured. The first corpus said
+100% recall because it was labelled by the rules under test; the real number was 0%, and two genuine
+policy defects were behind it.
+
+**Short answer, software interviewer.** The transaction boundary around observability: a failed request
+rolled its transaction back, which erased the record of the failure along with the failure, so the
+system was blind exactly when it mattered. The fix was a failure journal written by the outermost
+middleware on its own session after the transaction had settled — and the two rejected alternatives are
+documented in the module, because the interesting part of that answer is why the obvious fixes do not
+work.
+
+**Short answer, HR.** Scoping. Fifteen phases, one person, and the discipline to stop: the last phase
+was not "add features", it was "prove what exists, publish the gaps, and write the material that lets
+somebody else evaluate it in fifteen minutes".
+
+**Evidence in repo.** `docs/QUALITY.md` §5 (the corpus replacement and the two defects);
+`packages/ai/careerforge_ai/services/failure_journal.py` (the fix and its rejected alternatives, in the
+docstring); `docs/ROADMAP.md` (the phase exit criteria, including PHASE 15's "no new features" rule).
+
+### Q65 — What was your biggest failure on this project?
+
+**Short answer.** The first evaluation I built measured itself. It reported `support_recall 1.0000` — a
+perfect score — because the corpus labels were generated by the same rules that were being evaluated. I
+believed it long enough to be pleased with it.
+
+**Deep dive.**
+
+- **How I found it:** by asking what the benchmark would look like if the system were wrong. The second
+  question about any metric is "who wrote the labels, and did they know the answer?", and the answer here
+  was "my own implementation did".
+- **What it cost:** the honest number was `0.0000`, and behind it two real defects in the decision
+  policy — scope-inflated claims were being granted _supported_, and a model-reported blocker was
+  softened by the mere presence of retrieval hits.
+- **What replaced it:** 60 hand-authored adversarial cases with human gold labels, split into nine
+  evidence kinds, with the failure cases named (`ev-0036`, `ev-0039`) and published as the residual 5%.
+- **The lesson I would actually give:** a benchmark you generate from your own implementation is a
+  mirror. It is the single most useful thing I learned on this project, and it is why every claim in the
+  README now points at an artefact rather than at the prose.
+
+**Evidence in repo.** `docs/QUALITY.md` §5 (the old corpus, the replacement, the first honest run);
+`evals/suites/evidence_validation.py` and the corpus modules; `reports/eval-report.json` (the numbers
+that replaced the perfect one).
+
 ## Questions whose honest answer is: I did not measure that
 
 Say the boundary out loud; it is more persuasive than a confident guess.

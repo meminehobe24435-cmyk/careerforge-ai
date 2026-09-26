@@ -49,7 +49,12 @@ def _repo_root() -> Path:
     more than the path it marks.
     """
     for start in (Path(__file__).resolve(), Path.cwd().resolve()):
-        for parent in start.parents:
+        # The starting directory itself is part of the walk: `Path.parents` does not include it, and
+        # running from the repository root is the most common case of all — CI's `api-sqlite` job runs
+        # `pytest -q` from there. Without this, the repository root was never examined as a *starting*
+        # point and only the `__file__` walk could find it, which is exactly the case that fails when
+        # the imported package is not editable.
+        for parent in (start, *start.parents):
             if (parent / "pnpm-workspace.yaml").exists() or (parent / ".git").exists():
                 return parent
     return Path(__file__).resolve().parents[3]

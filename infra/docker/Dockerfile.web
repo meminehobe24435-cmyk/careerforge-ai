@@ -59,6 +59,13 @@ RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
 # Standalone output keeps the image small; it is enabled in next.config.ts.
+#
+# All three of these paths must exist for the build to succeed, and two of them did not: the
+# `output: 'standalone'` setting was missing from `next.config.ts` (fixed there), and `apps/web/public`
+# did not exist at all in the repository — Next.js does not require it, git cannot track an empty
+# directory, and nothing else referenced it, so the copy failed with
+# `failed to calculate checksum … "/repo/apps/web/public": not found`. The directory now carries a
+# `.gitkeep`, which is the only reason it survives a clone.
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/public
