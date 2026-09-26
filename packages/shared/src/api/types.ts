@@ -143,9 +143,32 @@ export interface RefreshRequest {
  * 4. Dashboard aggregate (API.md §2.10)
  * ------------------------------------------------------------------ */
 
+/**
+ * One of the five weighted dimensions behind the Profile Strength score.
+ *
+ * `weighted` is what that dimension contributed to the total (`raw * weight * 100`), so the five
+ * `weighted` values add up to `score` and a reader can check the headline number instead of trusting
+ * it. The engine has always produced this; the API began forwarding it in PHASE 14.
+ */
+export interface DashboardStrengthDimension {
+  key: string;
+  label: string;
+  /** 0..1, before weighting. */
+  raw: number;
+  weight: number;
+  weighted: number;
+}
+
 export interface DashboardProfileStrength {
   score: number;
   delta7d?: number;
+  /**
+   * Optional rather than required: an older payload shape has only the total, and the page renders
+   * the total alone in that case rather than inventing a breakdown.
+   */
+  dimensions?: DashboardStrengthDimension[];
+  /** e.g. `strength@1.0.0` — the arithmetic this score came from. */
+  algorithmVersion?: string | null;
 }
 
 /** Fractions are 0..1 for the three coverage/match metrics; the rest are counts. */

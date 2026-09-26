@@ -16,6 +16,7 @@ import itertools
 
 from fastapi import FastAPI
 from httpx import AsyncClient
+import pytest
 
 from tests.conftest import EnvelopeCheck, Session, UserFactory
 
@@ -77,6 +78,7 @@ async def test_dashboard_matches_the_frozen_client_shape(
         "meta",
     }
     assert isinstance(data["profileStrength"]["score"], int | float)
+    assert set(data["profileStrength"]) == {"score", "delta7d", "dimensions", "algorithmVersion"}
     stats = data["stats"]
     assert set(stats) == {
         "evidenceCoverage",
@@ -95,6 +97,50 @@ async def test_dashboard_matches_the_frozen_client_shape(
     assert isinstance(data["skillsRadar"], list)
     assert isinstance(data["recentJobs"], list)
     assert isinstance(data["nextActions"], list)
+
+
+async def test_the_strength_breakdown_adds_up_to_the_strength_score(
+    client: AsyncClient, envelope: EnvelopeCheck, make_user: UserFactory
+) -> None:
+    """The headline number is checkable, not merely announced.
+
+    The engine has always produced the five dimensions, their weights and their weighted
+    contributions; this endpoint used to drop them and send the total alone, while the dashboard told
+    the reader the breakdown would arrive later. A breakdown is only worth forwarding if it is the
+    *same* arithmetic as the total, so this asserts the sum rather than the presence of five objects.
+
+    The account is its own (`make_user`), not the shared demo one: `_evidence_ready` ingests material
+    once, and doing that to the demo account makes `evidenceCoverage` read 1.0 before
+    `test_numbers_come_from_stored_rows` can observe it rise — which is exactly how this test broke
+    that one the first time it was written.
+    """
+    account = await make_user(display_name="Strength Breakdown")
+    await _evidence_ready(client, account)
+
+    response = await client.get("/api/v1/dashboard", headers=account.headers)
+    assert response.status_code == 200, response.text
+    strength = envelope(response)["data"]["profileStrength"]
+
+    dimensions = strength["dimensions"]
+    assert len(dimensions) == 5, "the engine scores five weighted dimensions"
+    assert strength["algorithmVersion"], "a score without its algorithm version is unattributable"
+    for dimension in dimensions:
+        assert set(dimension) == {"key", "label", "raw", "weight", "weighted"}
+        assert dimension["label"], f"{dimension['key']} must carry the engine's own label"
+        assert 0.0 <= dimension["raw"] <= 1.0
+        # weighted = raw * weight * 100, recomputed here on purpose: if the service ever starts
+        # deriving the contributions separately from the total, this is where the two disagree.
+        assert dimension["weighted"] == pytest.approx(
+            dimension["raw"] * dimension["weight"] * 100, abs=0.01
+        )
+    assert sum(dimension["weighted"] for dimension in dimensions) == pytest.approx(
+        strength["score"], abs=0.6
+    )
+    assert sum(dimension["weight"] for dimension in dimensions) == pytest.approx(1.0, abs=1e-6)
+    # An account with evidence must actually score above zero, or the arithmetic above would hold
+    # just as well on five zeros.
+    assert strength["score"] > 0
+    assert any(dimension["weighted"] > 0 for dimension in dimensions)
 
 
 async def test_tracker_metrics_are_the_boards_real_counts(

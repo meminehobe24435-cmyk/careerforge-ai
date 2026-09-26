@@ -1024,7 +1024,51 @@ AI 相关响应统一携带：
 {
   "success": true,
   "data": {
-    "profileStrength": { "score": 82, "delta7d": 3 },
+    "profileStrength": {
+      "score": 82,
+      "delta7d": 3,
+      // PHASE 14 起返回：引擎一直在算的五维拆解（careerforge_ai.scoring.profile_strength）。
+      // weighted = raw × weight × 100，五项 weighted 相加等于 score —— 头条数字因此可以被核对，
+      // 而不是只能相信。旧载荷没有这一项，前端在缺失时只画总分，不自己推算拆解。
+      "dimensions": [
+        {
+          "key": "completeness",
+          "label": "资料完整度",
+          "raw": 0.9,
+          "weight": 0.3,
+          "weighted": 27.0,
+        },
+        {
+          "key": "evidence_coverage",
+          "label": "证据覆盖率",
+          "raw": 0.72,
+          "weight": 0.25,
+          "weighted": 18.0,
+        },
+        {
+          "key": "evidence_quality",
+          "label": "证据质量",
+          "raw": 0.81,
+          "weight": 0.2,
+          "weighted": 16.2,
+        },
+        {
+          "key": "github_signal",
+          "label": "GitHub 信号",
+          "raw": 0.74,
+          "weight": 0.15,
+          "weighted": 11.1,
+        },
+        {
+          "key": "achievement_bonus",
+          "label": "成果加分",
+          "raw": 0.97,
+          "weight": 0.1,
+          "weighted": 9.7,
+        },
+      ],
+      "algorithmVersion": "strength@1.0.0",
+    },
     "stats": {
       "evidenceCoverage": 0.72,
       "skillCoverage": 0.68,

@@ -17,6 +17,7 @@ test.describe('Dashboard', () => {
   test('renders the profile strength, the six stat cards and the recent-jobs card from the API', async ({
     signedInPage: page,
     session,
+    api,
   }) => {
     await page.goto('/app/dashboard');
 
@@ -35,6 +36,25 @@ test.describe('Dashboard', () => {
     const ring = strengthSection.getByRole('img', { name: /^Profile Strength/ });
     await expect(ring).toBeVisible();
     await expect(ring).toHaveAccessibleName(/Profile Strength \d+ \/ 100/);
+
+    // The breakdown the API sends, rendered with the API's own labels and contributions. Asserted
+    // against the live response rather than against literals, because the labels live in the engine
+    // (`careerforge_ai.scoring.profile_strength`) and the page is not allowed to keep its own copy.
+    const dashboard = await api.json<{
+      profileStrength: {
+        score: number;
+        dimensions: Array<{ key: string; label: string; weighted: number }>;
+      };
+    }>('GET', '/dashboard');
+    expect(dashboard.profileStrength.dimensions.length).toBe(5);
+    const breakdown = strengthSection.getByTestId('strength-dimensions');
+    await expect(breakdown).toBeVisible();
+    for (const dimension of dashboard.profileStrength.dimensions) {
+      const row = breakdown.locator(`[data-dimension="${dimension.key}"]`);
+      await expect(row).toContainText(dimension.label);
+      await expect(row).toContainText(dimension.weighted.toFixed(1));
+    }
+
     await expect(
       strengthSection.getByRole('heading', { level: 3, name: 'Profile Strength' }),
     ).toBeVisible();

@@ -26,6 +26,7 @@ __all__ = [
     "DashboardRecentJob",
     "DashboardResponse",
     "DashboardStats",
+    "DashboardStrengthDimension",
     "SkillRadarPoint",
 ]
 
@@ -34,10 +35,35 @@ class _CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
+class DashboardStrengthDimension(_CamelModel):
+    """One of the five weighted dimensions behind the Profile Strength score.
+
+    The engine has always returned these (``careerforge_ai.scoring.profile_strength`` computes each
+    dimension, its weight and its weighted contribution, and says in its own module docstring why:
+    *"a single opaque number tells a user nothing they can act on; a breakdown tells them exactly
+    which gap to close first"*). This endpoint threw them away and sent only the total, while the
+    dashboard printed a sentence telling the user the breakdown would arrive in a later phase. The
+    numbers were being computed on every request and discarded, so the page claimed less than the
+    server knew.
+    """
+
+    key: str
+    label: str
+    #: 0..1, before weighting.
+    raw: float
+    weight: float
+    #: ``raw * weight * 100`` — the points this dimension contributed to the total.
+    weighted: float
+
+
 class DashboardProfileStrength(_CamelModel):
     score: float
     #: ``None`` when nothing was measured a week ago — not the same statement as "no change".
     delta_7d: float | None = Field(default=None, alias="delta7d")
+    #: The five dimensions in the engine's own order, with the engine's own labels.
+    dimensions: list[DashboardStrengthDimension] = Field(default_factory=list)
+    #: ``strength@1.0.0`` — so a score can be read against the arithmetic that produced it.
+    algorithm_version: str | None = Field(default=None, alias="algorithmVersion")
 
 
 class DashboardStats(_CamelModel):

@@ -78,7 +78,7 @@ export function StatCard({ label, value, kind, definition, delta, unavailable }:
                   {delta > 0 ? `+${delta}` : `${delta}`} / 7d
                 </span>
               ) : (
-                <span className="text-tertiary font-mono text-[11px]">7d trend · PHASE 10</span>
+                <span className="text-tertiary font-mono text-[11px]">本指标不提供 7 天对比</span>
               )}
             </div>
 

@@ -46,7 +46,17 @@ const JOB: DashboardRecentJob = {
 
 function dashboardOf(overrides: Partial<DashboardResponse> = {}): DashboardResponse {
   return {
-    profileStrength: { score: 82 },
+    profileStrength: {
+      score: 82,
+      algorithmVersion: 'strength@1.0.0',
+      dimensions: [
+        { key: 'completeness', label: '资料完整度', raw: 0.9, weight: 0.3, weighted: 27 },
+        { key: 'evidence_coverage', label: '证据覆盖率', raw: 0.72, weight: 0.25, weighted: 18 },
+        { key: 'evidence_quality', label: '证据质量', raw: 0.81, weight: 0.2, weighted: 16.2 },
+        { key: 'github_signal', label: 'GitHub 信号', raw: 0.74, weight: 0.15, weighted: 11.1 },
+        { key: 'achievement_bonus', label: '成果加分', raw: 0.97, weight: 0.1, weighted: 9.7 },
+      ],
+    },
     stats: {
       evidenceCoverage: 0.62,
       skillCoverage: 0.5,
@@ -155,5 +165,45 @@ describe('the dashboard recent-jobs panel', () => {
     expect(await screen.findByText('还没有岗位数据')).toBeInTheDocument();
     expect(document.querySelector('[data-recent-job-list]')).toBeNull();
     expect(document.querySelector('[data-recent-jobs-table]')).toBeNull();
+  });
+});
+
+describe('the profile-strength breakdown', () => {
+  it("prints the API's own five dimensions, with the API's own numbers", async () => {
+    renderView();
+    const list = await screen.findByTestId('strength-dimensions');
+
+    // The engine's labels, not a second copy maintained in the browser.
+    for (const label of ['资料完整度', '证据覆盖率', '证据质量', 'GitHub 信号', '成果加分']) {
+      expect(within(list).getByText(label, { exact: false })).toBeInTheDocument();
+    }
+    // The contribution printed is the one the API sent, down to the decimal: `27.0`, not `27`.
+    for (const weighted of ['27.0', '18.0', '16.2', '11.1', '9.7']) {
+      expect(within(list).getByText(weighted)).toBeInTheDocument();
+    }
+    expect(screen.getByText(/strength@1\.0\.0/)).toBeInTheDocument();
+  });
+
+  it('prints the total alone when the payload carries no breakdown', async () => {
+    mocked.dashboard.mockResolvedValue(dashboardOf({ profileStrength: { score: 82 } }));
+    renderView();
+    await screen.findByRole('heading', { level: 3, name: 'Profile Strength' });
+
+    // Absent dimensions must not become five zeroes: `—` and nothing else is the honest rendering.
+    expect(screen.queryByTestId('strength-dimensions')).toBeNull();
+    expect(screen.getByLabelText('Profile Strength 82 / 100')).toBeInTheDocument();
+  });
+
+  it('keeps internal phase vocabulary out of everything a reader can see', async () => {
+    renderView();
+    await screen.findByRole('heading', { level: 3, name: 'Profile Strength' });
+
+    // This page used to say "载入示例数据 · PHASE 3", "尚未接入的面板" and "7d trend · PHASE 10", and
+    // two of the three cards claimed endpoints were needed while those endpoints existed and shipped
+    // on /app/analytics. Guarding the whole rendered page is the cheap version of that lesson, and it
+    // catches the next one too.
+    const rendered = document.body.textContent ?? '';
+    expect(rendered).not.toMatch(/PHASE\s*\d/i);
+    expect(rendered).not.toMatch(/尚未接入/);
   });
 });

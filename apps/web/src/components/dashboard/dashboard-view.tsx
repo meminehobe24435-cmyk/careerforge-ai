@@ -11,7 +11,6 @@ import {
   EmptyState,
   ErrorState,
   Separator,
-  Skeleton,
 } from '@careerforge/ui';
 import { isApiError } from '@careerforge/shared';
 import type { DashboardResponse, DashboardStats } from '@careerforge/shared';
@@ -234,13 +233,7 @@ export function DashboardView() {
         <EmptyState
           icon={<Sparkles className="size-5" />}
           title="这个账号还没有任何数据"
-          description="Demo 账号（demo@careerforge.ai）预置了完整候选人数据；如果你是新账号，可以稍后载入示例数据。"
-          action={
-            // TODO(phase-3): call POST /profile/import with the sample dataset.
-            <Button variant="secondary" disabled>
-              载入示例数据 · PHASE 3
-            </Button>
-          }
+          description="Demo 账号（demo@careerforge.ai）预置了完整候选人数据。新账号目前没有「一键载入示例数据」——材料要通过 POST /profile/import 导入，与其放一个按不动的按钮，不如把这件事说清楚。"
           hint="GET /dashboard → stats 全为 0"
         />
       ) : null}
@@ -259,6 +252,8 @@ export function DashboardView() {
               <ProfileStrengthRing
                 score={profileStrength.score}
                 delta7d={profileStrength.delta7d ?? null}
+                dimensions={profileStrength.dimensions ?? null}
+                algorithmVersion={profileStrength.algorithmVersion ?? null}
               />
             </CardContent>
           </Card>
@@ -323,37 +318,51 @@ export function DashboardView() {
         </Card>
       </section>
 
-      <section
-        aria-labelledby="dash-pending-heading"
-        className="grid grid-cols-1 gap-4 lg:grid-cols-3"
-      >
-        <h2 id="dash-pending-heading" className="sr-only">
-          尚未接入的面板
+      {/*
+        What this page does *not* show, and where it actually is.
+
+        Until PHASE 14 these three slots were skeleton cards captioned 「尚未接入的面板」 with notes
+        naming internal phases — two of them saying that `/analytics/timeline` and `/analytics/funnel`
+        were needed, while both endpoints existed and `/app/analytics` charts them. A dashboard that
+        tells a visitor the product is missing something it ships is worse than one that says nothing,
+        so the slots now name the real destination and link to it. The one panel that genuinely has no
+        chart anywhere is named as such instead of rendered as a fake skeleton.
+      */}
+      <section aria-labelledby="dash-more-heading" className="flex flex-col gap-3">
+        <h2 id="dash-more-heading" className="text-primary text-sm font-medium">
+          更深入的分析
         </h2>
-        {[
-          {
-            title: '技能雷达',
-            note: 'data.skillsRadar 已返回，图表组件在 PHASE 10 引入（Recharts）。',
-          },
-          {
-            title: '证据增长趋势',
-            note: '近 30 天证据数与平均置信度：需要 /analytics/timeline（PHASE 10）。',
-          },
-          {
-            title: '投递漏斗',
-            note: '需要 /analytics/funnel，PHASE 9 接入。',
-          },
-        ].map((panel) => (
-          <Card key={panel.title} className="min-w-0">
-            <CardHeader>
-              <CardTitle>{panel.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              <Skeleton className="h-24" />
-              <p className="text-tertiary text-[11px] leading-relaxed">{panel.note}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            { title: '投递漏斗', where: '/app/analytics', detail: '到达过每一阶段的岗位数' },
+            {
+              title: '时间趋势与里程碑',
+              where: '/app/analytics',
+              detail: '按月投递 / 面试 / Offer',
+            },
+            {
+              title: '技能与面试成功率',
+              where: '/app/analytics',
+              detail: '两组的 Wilson 区间对照',
+            },
+          ].map((panel) => (
+            <Card key={panel.title} className="min-w-0">
+              <CardContent className="flex flex-col gap-1.5 pt-4">
+                <Link
+                  href={panel.where}
+                  className="text-primary text-xs font-medium hover:underline"
+                >
+                  {panel.title} →
+                </Link>
+                <p className="text-tertiary text-[11px] leading-relaxed">{panel.detail}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <p className="text-tertiary text-[11px] leading-relaxed">
+          技能雷达图（`GET /dashboard` 已返回 `skillsRadar`）目前没有图表组件，因此本页不画它——
+          用占位图冒充一张雷达图会让读者以为看到了数据。
+        </p>
       </section>
 
       <p className="text-tertiary flex items-center gap-2 font-mono text-[11px]">

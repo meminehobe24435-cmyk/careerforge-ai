@@ -119,6 +119,20 @@ class DashboardService:
             profile_strength={
                 "score": round(strength.score),
                 "delta7d": await self._strength_delta(user.id, strength.score),
+                # The engine's breakdown, forwarded rather than recomputed: the labels, the weights
+                # and the weighted contributions are one artefact, and re-deriving any of them here
+                # would create a second source of truth for the same arithmetic (ADR-014).
+                "dimensions": [
+                    {
+                        "key": dimension.key,
+                        "label": dimension.label,
+                        "raw": dimension.raw,
+                        "weight": dimension.weight,
+                        "weighted": dimension.weighted,
+                    }
+                    for dimension in strength.dimensions
+                ],
+                "algorithmVersion": strength.formula_version,
             },
             stats=stats,
             skills_radar=await self._skills_radar(skills_with_evidence),
