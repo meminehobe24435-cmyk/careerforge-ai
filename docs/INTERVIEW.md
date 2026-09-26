@@ -10,46 +10,82 @@ reproducible from the repository — that is the point of the file.
 
 ## 30-second version
 
-> CareerForge AI is an **evidence-driven career OS**. Ordinary AI résumé tools generate text straight
-> from a prompt; CareerForge first builds your résumé, projects and repositories into an **Evidence
-> Graph**, then uses AI for job matching, claim validation and interviews — with every generated
-> sentence traceable to evidence you actually have.
+Structure: problem → solution → the one innovation → the result. Say it, do not read it.
+
+> "AI made a good-looking résumé free, which means the scarce thing is now **proving** what is on it.
+> CareerForge is an evidence-driven career OS: your résumé, projects and repositories become an
+> evidence graph, and every sentence the product wants to write is checked against it first.
 >
-> To keep the AI from being confidently wrong, I evaluate it independently: evidence F1, an **unsafe
-> support rate**, RAG Hit@K and confidence calibration. 1,385 tests, four evaluation suites, and it
-> all runs with no API key.
+> The innovation is that **the model is never allowed to produce a number** — rules run first, retrieval
+> finds your evidence, and the model only answers 'does this evidence support this claim?'. Confidence
+> is arithmetic on top.
+>
+> And I measured it rather than trusting it: 242 evaluation cases across four suites. It accepts 5% of
+> unsupported claims — down from 10% before the evaluation found two real defects — and fabricated
+> numbers are refused outright. It all runs with no API key."
 
 ## 60-second version
 
-> CareerForge AI is a job-search platform built around one idea: **a sentence goes onto your résumé
-> only if your own evidence supports it.** So the interesting engineering is not the chatbot, it is
-> the gate. Claims are checked in a fixed order — deterministic rules, then retrieval over your
-> repository and documents, then a model verdict, then arithmetic — and the model never produces a
-> number, only a judgement that the arithmetic then weighs.
+Structure: architecture → evidence graph → RAG and the validator → evaluation → engineering.
+
+> "**Architecture.** Three layers with one rule enforced by a script: the Python AI core cannot import
+> the web framework or the ORM, so it is testable and evaluable on its own. FastAPI and PostgreSQL sit
+> above it; Next.js 15 in front.
 >
-> I evaluated it the way you would a model: 242 cases across four suites (JD extraction, claim
-> validation, RAG retrieval, interview relevance), plus confidence calibration. The evaluation found
-> real defects — it showed the gate accepting 10% of unsupported claims, and the two causes were
-> both fixable in the decision policy. It now accepts 5%, and the fabricated-number rate is zero.
+> **Evidence graph.** Your material becomes nodes and edges — a skill is connected to the project that
+> used it, the repository that contains it and the file that proves it — each with a confidence from a
+> five-factor weighted formula that a database CHECK enforces.
 >
-> Everything runs with no API key: the default provider is a deterministic rule engine, so CI,
-> 1,385 tests and 45 browser flows all pass for free.
+> **Retrieval and the validator.** A claim goes through deterministic rules first (a quantified claim
+> with no quantitative evidence never reaches the model), then hybrid retrieval — BM25 plus vectors,
+> RRF-fused — over your own evidence, then a model verdict that may only judge _support_, then the
+> arithmetic that produces the confidence.
+>
+> **Evaluation.** Four labelled suites, 242 cases, 41 metrics, each with a threshold and a written
+> rationale: evidence macro F1 0.8481, retrieval Hit@5 0.9661, and calibration measured as ECE.
+>
+> **Engineering.** 1,385 tests across four layers, 45 browser flows including the accessibility gate,
+> six CI jobs — one of which builds both images, brings the whole compose stack up on PostgreSQL with
+> pgvector and runs the browser suite against the containers. All of it with no API key."
 
-## 3-minute version
+## 3-minute version — walk the product, do not narrate it
 
-Add: the four-layer test strategy and what each layer uniquely caught (`docs/QUALITY.md` §1);
-the ADRs that shaped it (the model produces no numbers — ADR-014; the provider chain always ends at
-heuristic — ADR-009); the evidence-confidence formula (five weighted factors, mirrored by a DB
-`CHECK`); the honest gaps (unsafe support 0.05, structured-output tokens, two scope-inflation
-cases) and why they are not fixed yet. Walk the demo in `docs/DEMO.md` if you have a screen.
+Use a screen. The flow and the words are in [`DEMO.md`](./DEMO.md); this is the 3-minute cut of it.
 
-## 5-minute version
+| min       | screen                                             | what you say while it loads                                                                                                                                                                                                                                                  |
+| --------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:00–0:30 | **Evidence Graph** (`/app/evidence-graph`)         | "This is the whole idea. Click a skill — STM32 — and you get the project that used it, the file that proves it, and the five factors that produced its confidence. Nothing here is generated."                                                                               |
+| 0:30–1:10 | **JD Intelligence** (`/app/jobs`)                  | "Paste a posting. It becomes a three-level skill tree, each requirement quoting the JD's own sentence, and the match score is arithmetic — five weighted dimensions with the formula printed beside it. The gaps are named, not softened."                                   |
+| 1:10–2:00 | **Claim Validator** (`/app/validator`)             | "Now the part the project exists for. Here is a sentence my evidence supports and here is one I invented. Same endpoint, opposite verdicts — and the rejection comes with the reasons: which rule fired, which sources were found, what confidence the arithmetic produced." |
+| 2:00–2:30 | **Interview** (`/app/interview`)                   | "The same evidence drives an adaptive interview: the questions come from the posting's requirements, difficulty moves with your answers, and the scorecard is seven dimensions at the end."                                                                                  |
+| 2:30–3:00 | **AI Runs / Costs** (`/app/ai-runs`, `/app/costs`) | "And because none of that should be a black box: every run is traced, every model call is metered, and where the provider did not report usage the number is `null` rather than zero — the total says it is a floor."                                                        |
 
-Add, after the 3-minute material: the failure-injection approach (a scripted provider that times
-out, hangs, 429s, emits malformed JSON, returns the wrong shape, crashes or exhausts a budget — and
-what each one proved about degradation); the coverage scope argument (why 92.5% of the _core_ and
-not 75% of the _repository_); and the two things you would do next with another week (a durable
-pgvector index, and the `SKILL_NOT_IN_GRAPH` false-positive audit).
+If the demo is unavailable, say so and switch to the recorded GIF plus [`CODE_TOUR.md`](./CODE_TOUR.md)
+(§"Presentation kit" in [`PORTFOLIO.md`](./PORTFOLIO.md) has the exact sentence).
+
+## 5-minute deep dive — for the second interview or a tech lead
+
+Eight parts, in this order, roughly forty seconds each:
+
+1. **Problem** — generation is cheap, proof is not; the failure that matters is a well-written claim
+   the candidate cannot defend.
+2. **Architecture** — the three layers and the one enforced rule (the core may not import the web
+   framework); why that makes the AI evaluable at all.
+3. **Evidence Graph** — nodes, edges, and the five-factor confidence formula with its version and its
+   database CHECK.
+4. **Claim Validator** — the four stages in order, and the decision that the model may judge support
+   but never produce a number (ADR-014).
+5. **Evaluation** — four suites, 242 cases, 41 gated metrics with rationales; what the evaluation found
+   (10% unsafe acceptance, two policy defects) and what it still says is wrong (5% against a 2% target,
+   two named cases).
+6. **Observability** — per-call metering with a usage envelope, the failure journal that survives a
+   rolled-back transaction, and `null` rather than `0` when nobody reported.
+7. **Trade-offs** — hybrid retrieval _losing_ to BM25 at Hit@5 and staying published; the in-process
+   queue and vector index and why health says so; the keyless provider as the default rather than a
+   downgrade.
+8. **Real bugs** — two or three from [`ROADMAP.md`](./ROADMAP.md): the AI quota that charged page
+   reads, the `git_dirty` flag that could only ever be true, and the PostgreSQL migration that had
+   never been executed until CI ran it.
 
 ---
 

@@ -93,6 +93,18 @@ jobs:
       - name: Datasets are in sync with the generator
         run: python evals/generate_datasets.py --check
 
+      - name: Guards — layering, file length, design tokens, README figures
+        # These four ran only through `scripts/release_proof.py` and pre-commit, which means a
+        # contributor who never ran either could merge a violation — `docs/QUALITY.md` said they were
+        # gated in CI, and it was wrong about that. They are cheap and deterministic, so they belong
+        # where they can actually fail a build. `check_readme_metrics.py` reads the artefacts this job
+        # regenerates above, so it checks the numbers against what actually ran.
+        run: |
+          python scripts/check_layering.py
+          python scripts/check_file_length.py
+          python scripts/check_design_tokens.py
+          python scripts/check_readme_metrics.py
+
       - name: Evaluation suites
         # Exits 2 when a *gate* threshold is missed; `report`-severity misses are printed and do not
         # fail the build. No API key is needed: the suite runs the zero-key provider chain.

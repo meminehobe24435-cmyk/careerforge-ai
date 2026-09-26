@@ -218,14 +218,23 @@ breaking the production code it protects and watching it go red —
 
 ## 8. CI gates
 
-| job          | command                                                                      | gating                                          |
-| ------------ | ---------------------------------------------------------------------------- | ----------------------------------------------- |
-| python-tests | `pytest packages/ai/tests apps/api/tests evals/tests -q`                     | yes                                             |
-| web-tests    | `pnpm --filter @careerforge/web test`                                        | yes                                             |
-| web-build    | `pnpm --filter @careerforge/web build`                                       | yes                                             |
-| evals        | `python evals/run.py` + `python evals/generate_datasets.py --check`          | yes — a missed **gate** threshold fails the job |
-| guards       | `ruff`, `mypy`, `check_layering`, `check_file_length`, `check_design_tokens` | yes                                             |
-| e2e          | `pnpm --filter @careerforge/web test:e2e` against a started stack            | yes, on the desktop project                     |
+| job             | what it runs                                                                                                                                                                              | gating |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `api-sqlite`    | ruff · mypy (AI core strict + API) · the three pytest suites · dataset-sync check · the evaluation suites · core-domain coverage gate · the four guards · migrations · the contract smoke | yes    |
+| `api-postgres`  | `alembic upgrade head` and the full API suite against **PostgreSQL 16 + pgvector**                                                                                                        | yes    |
+| `web`           | prettier check · typecheck · lint · build · 365 component tests                                                                                                                           | yes    |
+| `e2e`           | the browser suite against a started stack — **both projects**, desktop and mobile, with the axe gate                                                                                      | yes    |
+| `images`        | `docker compose config -q` · both image builds · the API container booting and answering its own health check                                                                             | yes    |
+| `compose-stack` | the whole topology on PostgreSQL+pgvector and Redis: migrations, seed twice, pgvector and schema checks, health/ready/**version**, then the browser suite against the containers          | yes    |
+
+`python scripts/release_proof.py` runs the same free path natively (fresh database → migrations → seed
+twice → production-mode API → built frontend → 25 contract checks → restart) for a machine with no
+container runtime, and `reports/release-proof.md` records what it could **not** reach there.
+
+The guards — `check_layering`, `check_file_length`, `check_design_tokens`, `check_readme_metrics` —
+run in `api-sqlite` as of PHASE 15. Until then they existed only in pre-commit and the release proof,
+and this table claimed CI gated them; a guard that is not run is not a guard, and `check_readme_metrics`
+exists because four documents were found quoting a previous phase's numbers as current.
 
 Real-model evaluation (`python evals/run.py --provider deepseek`) and the real-provider E2E smoke
 are **manual**, because they cost money and depend on a key. The default CI path needs no API key

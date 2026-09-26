@@ -102,6 +102,18 @@ apps/api` installs its sibling core as a _regular_ package, shadowing the editab
   and English for four roles, 150/300-character project descriptions, screenshots, slide outline).
 - `.dockerignore`, `.nvmrc`, and a root `pytest.ini` that makes the eval suite importable however
   pytest was invoked.
+- `scripts/check_readme_metrics.py`, and the four guards moved into CI. The README claims every number
+  in it "comes from a real build/test/eval artifact"; nothing checked that, and PHASE 14 found four
+  documents quoting a previous phase's measurements as if they were current. The guard derives each
+  expected value from the artefact and fails if the README no longer contains it — on its first run it
+  found `Hit@1` printed as `0.848` where the report's 50/59 rounds once to `0.847`, a double-rounding
+  drift of exactly the kind it exists to catch. The guards themselves had been running only in
+  pre-commit and the release proof while `docs/QUALITY.md` described them as CI gates, so they now run
+  in `api-sqlite`, and that table now describes the six jobs CI actually has.
+- `docs/INTERVIEW.md`'s four pitches rebuilt to the structures they are used in: problem → solution →
+  innovation → result for 30 seconds, architecture → graph → retrieval/validator → evaluation →
+  engineering for 60, a timed screen-by-screen demo walk for three minutes, and the eight-part order
+  for a five-minute deep dive.
 
 ### Added — PHASE 14
 

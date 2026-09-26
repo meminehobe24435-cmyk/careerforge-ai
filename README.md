@@ -280,6 +280,7 @@ pnpm typecheck && pnpm lint                              # TypeScript strict + E
 python scripts/check_layering.py                         # architecture guard
 python scripts/check_file_length.py                      # the 500-line rule
 python scripts/check_design_tokens.py                    # no raw colours in components
+python scripts/check_readme_metrics.py                   # every README figure still matches reports/
 ```
 
 **1,385 tests, and none of them need an API key** — the default provider is a deterministic rule
@@ -297,7 +298,7 @@ and publishes the numbers with the gaps still visible.
 | JD extraction                                | required-skill **F1 0.883** · quoted-evidence grounding **1.000** · distractor leakage **0.000**             |
 | Evidence validation                          | accuracy **0.900** · macro F1 **0.848** · unsupported recall **0.935** · support recall **0.950**            |
 | **Unsafe support rate**                      | **0.050** — the share of unsupported claims wrongly accepted · fabricated-number acceptance **0.000**        |
-| RAG retrieval                                | **Hit@1 0.848 · Hit@3 0.966 · Hit@5 0.966 · MRR 0.901** (59 queries, 3 arms)                                 |
+| RAG retrieval                                | **Hit@1 0.847 · Hit@3 0.966 · Hit@5 0.966 · MRR 0.901** (59 queries, 3 arms)                                 |
 | Interview relevance                          | required-skill coverage **0.833** · duplicate questions **0.000** · cross-role leakage **0.000**             |
 | Confidence calibration                       | **ECE 0.032** · Brier **0.090** (top bucket +0.063 over-confident, 15 cases)                                 |
 | Coverage                                     | core domain **92.5%** of 1,683 statements                                                                    |
