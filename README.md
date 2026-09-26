@@ -147,16 +147,19 @@ Full design: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · Decisions: [`do
 
 ## Documentation
 
-| Document                                  | Contents                                                             |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| [PRD.md](./docs/PRD.md)                   | Product definition, personas, requirements, non-goals, risks         |
-| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System design, agent orchestration, RAG pipeline, security           |
-| [DATABASE.md](./docs/DATABASE.md)         | 32-table schema, indexes, pgvector config, local parity layer        |
-| [API.md](./docs/API.md)                   | REST surface, error codes, SSE contracts, rate limits                |
-| [UI.md](./docs/UI.md)                     | Design system, tokens, sitemap, page specs, a11y, responsiveness     |
-| [ROADMAP.md](./docs/ROADMAP.md)           | 16 phases with exit criteria and progress tracker                    |
-| [DECISIONS.md](./docs/DECISIONS.md)       | 22 ADRs with rejected alternatives                                   |
-| INTERVIEW.md                              | How to present this project (60s / 3min / 5min deep dive) — PHASE 14 |
+| Document                                                                                              | Contents                                                                    |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [PRD.md](./docs/PRD.md)                                                                               | Product definition, personas, requirements, non-goals, risks                |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md)                                                             | System design, agent orchestration, RAG pipeline, security                  |
+| [DATABASE.md](./docs/DATABASE.md)                                                                     | 32-table schema, indexes, pgvector config, local parity layer               |
+| [API.md](./docs/API.md)                                                                               | REST surface, error codes, SSE contracts, rate limits                       |
+| [UI.md](./docs/UI.md)                                                                                 | Design system, tokens, sitemap, page specs, a11y, responsiveness            |
+| [QUALITY.md](./docs/QUALITY.md)                                                                       | Testing strategy, evaluation design, measured gaps and their owners         |
+| [ROADMAP.md](./docs/ROADMAP.md)                                                                       | 16 phases with exit criteria, findings per phase, live progress tracker     |
+| [DECISIONS.md](./docs/DECISIONS.md)                                                                   | 22 ADRs with rejected alternatives                                          |
+| [DEPLOYMENT.md](./docs/DEPLOYMENT.md)                                                                 | Compose path, managed services, env matrix, post-deploy proof, rollback     |
+| [DEMO.md](./docs/DEMO.md) · [INTERVIEW.md](./docs/INTERVIEW.md) · [PORTFOLIO.md](./docs/PORTFOLIO.md) | The demo script, the spoken versions, and the résumé/STAR material          |
+| [release-readiness.md](./reports/release-readiness.md)                                                | The release record: blockers found, proof, deployment block, evidence index |
 
 ---
 
