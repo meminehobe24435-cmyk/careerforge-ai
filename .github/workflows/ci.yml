@@ -13,7 +13,13 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "20"
+  # Node 22, not 20, and the reason is a hard requirement rather than a preference: pnpm 11.7.0 (the
+  # version this repository pins in `package.json` → `packageManager`) imports `node:sqlite`, which
+  # does not exist before Node 22.5. On Node 20 pnpm itself fails with
+  # `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite` — which is what the first two CI
+  # runs reported, from `actions/setup-node` (whose pnpm cache step shells out to pnpm) and from
+  # `infra/docker/Dockerfile.web` (whose base image was `node:20-alpine`).
+  NODE_VERSION: "22"
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
@@ -435,3 +441,174 @@ jobs:
           echo
           docker logs cf-api --tail 20
           docker rm -f cf-api
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The containerized stack, actually started.
+  #
+  # Two jobs above touch the container path: `images` builds the images, and
+  # `api-postgres` runs the suite against a pgvector service container. Neither
+  # brings the *topology* up: the one-shot migration service, the API, the worker,
+  # Redis and the built frontend, wired the way `docker-compose.yml` wires them.
+  # Until this job existed, `docker compose up` had never been executed anywhere —
+  # the release proof says so in its NOT RUN table, and the honest consequence was
+  # that `v1.0.0` could not be tagged.
+  #
+  # This is the deployment proof this repository can produce without a cloud
+  # account: a real PostgreSQL 16 + pgvector, a real Redis, migrations from an
+  # empty database, the demo seed applied twice, the published health/readiness/
+  # version contract, and the full browser suite — desktop and mobile, accessibility
+  # gate included — against the *containerized* URLs rather than against processes
+  # started on the runner.
+  #
+  # What it still is not: a public URL. No hosting account or credential is
+  # available to this project, so the demo link an interviewer would open does not
+  # exist yet. That remains the one claim nothing here makes.
+  # ───────────────────────────────────────────────────────────────────────────
+  compose-stack:
+    name: Containers · full stack · migrations · browser E2E
+    runs-on: ubuntu-latest
+    env:
+      # The compose file requires this rather than defaulting it (see `x-api-env`), and a CI value is
+      # the right kind of secret here: obvious, disposable, never used outside this job.
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0000
+      POSTGRES_PASSWORD: careerforge
+      ENVIRONMENT: development
+      # The browser talks to `localhost:3000`, so that is the origin the API must allow. Getting this
+      # wrong is the failure mode `e2e/cors.spec.ts` exists to catch, and it shows up in the browser only.
+      CORS_ORIGINS: http://localhost:3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      # The suite is one user driving 45 flows in ~90 seconds; apps/web/e2e/README.md explains why the
+      # browser stack declares its own budgets instead of running on the shipped defaults.
+      RATE_LIMIT_AI_PER_MIN: "600"
+      RATE_LIMIT_READ_PER_MIN: "10000"
+      RATE_LIMIT_WRITE_PER_MIN: "10000"
+      RATE_LIMIT_UPLOAD_PER_HOUR: "500"
+      E2E_BASE_URL: http://localhost:3000
+      E2E_API_URL: http://localhost:8000/api/v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install the Python packages (for the seed script)
+        # `scripts/seed.py` runs from the runner against the *published* PostgreSQL port, because the API
+        # image deliberately does not ship `scripts/` — it is the deployment image, not the repository.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/ai[dev]"
+          pip install -e "apps/api[dev]"
+
+      - name: Install Node dependencies (for the browser suite)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the images
+        run: docker compose build
+
+      - name: Bring the stack up
+        run: docker compose up -d
+
+      - name: The migration service must have succeeded
+        # `api` waits on `migrate` with `service_completed_successfully`, so a healthy API is already
+        # evidence — but "it worked" is not the same as "it exited 0", and a failed one-shot container
+        # would otherwise leave the reason inside its own logs.
+        run: |
+          for _ in $(seq 1 60); do
+            cid=$(docker compose ps -aq migrate)
+            if [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = "false" ]; then break; fi
+            sleep 2
+          done
+          cid=$(docker compose ps -aq migrate)
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$cid")
+          echo "migrate exited with $code"
+          docker compose logs --no-log-prefix migrate
+          test "$code" = "0"
+
+      - name: The API and the frontend must answer
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:8000/api/v1/system/health >/dev/null && break
+            sleep 2
+          done
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:3000/login >/dev/null && break
+            sleep 2
+          done
+          echo "--- containers ---"
+          docker compose ps
+          echo "--- web routes (the built image, not next dev) ---"
+          for path in / /login /system; do
+            printf '%s ' "$path"
+            curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000$path"
+          done
+
+      - name: pgvector is real, and the schema came from the migrations
+        # The point of the containerized path is the *other* backend: if this were SQLite in disguise,
+        # `VECTOR_BACKEND=pgvector` would be a comment rather than a fact.
+        run: |
+          docker compose exec -T postgres psql -U careerforge -d careerforge -tAc \
+            "SELECT extname FROM pg_extension ORDER BY extname" | tee /tmp/extensions.txt
+          grep -qx vector /tmp/extensions.txt
+          tables=$(docker compose exec -T postgres psql -U careerforge -d careerforge -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+          echo "tables in the migrated schema: $tables"
+          test "$tables" -ge 28
+
+      - name: The published contract answers, including the version proof
+        # `/system/version` is the deployment's identity. If it does not name the commit that was
+        # pushed then whatever is answering is not this release, and every other claim in this job
+        # would be about a different build. PHASE 15 requires exactly this check before `v1.0.0`.
+        run: |
+          curl -s http://localhost:8000/api/v1/system/health > /tmp/health.json
+          curl -s http://localhost:8000/api/v1/system/ready > /tmp/ready.json
+          curl -s http://localhost:8000/api/v1/system/version > /tmp/version.json
+          python - <<'PY'
+          import json, os
+
+          health = json.load(open("/tmp/health.json"))
+          ready = json.load(open("/tmp/ready.json"))
+          version = json.load(open("/tmp/version.json"))
+
+          print("health :", json.dumps(health.get("data", {}).get("checks", {}), ensure_ascii=False))
+          print("ready  :", json.dumps({k: ready.get("data", {}).get(k) for k in ("ready", "gate", "degraded")}, ensure_ascii=False))
+          print("version:", json.dumps(version.get("data", {}), ensure_ascii=False))
+
+          assert health["success"] is True, health
+          assert health["data"]["checks"]["database"]["status"] == "ok", health
+          assert ready["data"]["ready"] is True, ready
+
+          head = os.environ["GITHUB_SHA"]
+          raw = json.dumps(version.get("data", {}))
+          assert head[:7] in raw or head in raw, (
+              f"/system/version does not name this commit ({head[:7]}): {raw}"
+          )
+          print("version proof ok: the running build names this commit")
+          PY
+
+      - name: The demo seed is idempotent, twice, against the real database
+        env:
+          USE_SQLITE: "false"
+          DATABASE_URL: postgresql+asyncpg://careerforge:careerforge@localhost:5432/careerforge
+          QUEUE_BACKEND: redis
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          python scripts/seed.py | tail -5
+          python scripts/seed.py | tail -5
+
+      - name: The browser suite against the containerized stack
+        # Desktop and mobile, accessibility gate included, real Chrome. The same suite the `e2e` job runs
+        # against processes; running it here is what turns "the images build" into "the stack works".
+        run: pnpm --filter @careerforge/web test:e2e
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --no-log-prefix --tail 200
