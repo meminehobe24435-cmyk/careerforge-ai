@@ -33,8 +33,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+# Both of these, in this order, and the order is the point.
+#
+# `--from=deps` brings the workspace packages' *installed* `node_modules` (the links pnpm created), but
+# that stage only ever had their `package.json` files — so on its own the builder had no source for
+# `@careerforge/ui`, `@careerforge/shared` or `@careerforge/config`. `next build` then failed with
+# `TS6053: File '@careerforge/config/tsconfig/nextjs.json' not found`, which is `apps/web/tsconfig.json`
+# extending a preset that was never copied. The context copy below overlays the real source on top.
 COPY --from=deps /repo/packages ./packages
-COPY package.json pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY packages ./packages
 COPY apps/web ./apps/web
 
 RUN pnpm --filter @careerforge/web build

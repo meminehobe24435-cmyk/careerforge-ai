@@ -7,7 +7,8 @@
 
 Related: [`reports/README.md`](../reports/README.md) (the current numbers) ·
 [`ROADMAP.md`](./ROADMAP.md) (per-phase findings) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9
-(observability) · [`AI_DESIGN.md`](./AI_DESIGN.md) (why the model never produces numbers).
+(observability) · [`DECISIONS.md`](./DECISIONS.md) ADR-014 (why the model never produces a number) ·
+[`CODE_TOUR.md`](./CODE_TOUR.md) (the five files, for a reader who wants the code rather than the rule).
 
 ## 1. Testing strategy: four layers, each earning its cost
 

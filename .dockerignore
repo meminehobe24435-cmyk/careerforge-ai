@@ -1,0 +1,50 @@
+# Build-context exclusions.
+#
+# There was no `.dockerignore` in this repository until PHASE 15, which meant every build sent the whole
+# working tree to the daemon — `node_modules/`, `.venv/`, `.next/`, `.git/`, `data/`, the coverage
+# artefacts — and, worse than the wasted upload, allowed `COPY packages ./packages` (which the web image
+# needs for the workspace sources) to overlay the host's installed dependencies on top of the ones the
+# image resolved for itself. A `node_modules` tree built on Windows copied into a Linux image does not
+# merely waste space; it replaces the correct native binaries with unusable ones. That failure mode is
+# invisible on the machine that builds it and fatal on every other.
+#
+# The images copy what they need explicitly (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
+# `.npmrc`, `packages/*/package.json`, `apps/*/src`, `apps/api/alembic*`, `prompts/`), so nothing here
+# removes anything a Dockerfile asks for.
+
+.git
+.gitignore
+.gitattributes
+
+# Installed dependencies, from any package manager, at any depth.
+node_modules
+**/node_modules
+
+# Build output and caches.
+.next
+**/.next
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.pytest-tmp
+.pytest-p14
+.tmp
+coverage
+.coverage
+.coverage.*
+*.log
+
+# Local runtime state and generated artefacts: the compose volumes supply these at run time.
+data
+reports/*
+!reports/README.md
+playwright-report
+test-results
+docs/assets
+
+# Editor and OS noise.
+.DS_Store
+.idea
+.vscode
