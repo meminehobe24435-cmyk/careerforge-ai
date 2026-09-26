@@ -1,6 +1,6 @@
 # Release proof — native fresh-install path
 
-- generated: `2026-09-26T04:24:47+00:00`
+- generated: `2026-09-26T08:52:37+00:00`
 - overall: **PASS** — 7 passed, 0 failed, 0 not run
 - containerized: **false** — No container runtime on this machine: `docker`, `podman` and `docker-compose` are all absent (probed and recorded in the `container-runtime` step), so `docker compose up` could not be executed. Every step below was run natively.
 
@@ -72,7 +72,7 @@ contract smoke test → a restart against the same database.
 
 ```
 $ D:\workspace\epan\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head    # cwd=D:\workspace\epan\apps\api
-exit=0 in 1.243s
+exit=0 in 1.341s
 ```
 ```text
 INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
@@ -90,7 +90,7 @@ INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, PHASE 13: usage 
 ```
 ```
 $ D:\workspace\epan\.venv\Scripts\python.exe -m alembic -c alembic.ini current    # cwd=D:\workspace\epan\apps\api
-exit=0 in 1.169s
+exit=0 in 1.126s
 ```
 ```text
 0009 (head)
@@ -101,7 +101,7 @@ INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
 ```
 ```
 $ D:\workspace\epan\.venv\Scripts\python.exe -m alembic -c alembic.ini heads    # cwd=D:\workspace\epan\apps\api
-exit=0 in 0.855s
+exit=0 in 0.833s
 ```
 ```text
 0009 (head)
@@ -125,15 +125,15 @@ exit=0 in 0.855s
 
 ```
 $ D:\workspace\epan\.venv\Scripts\python.exe scripts/seed.py    # cwd=D:\workspace\epan
-exit=0 in 1.634s
+exit=0 in 1.518s
 ```
 ```text
-{"ts": "2026-09-26T04:24:03.007+00:00", "level": "INFO", "logger": "careerforge_api.services.seed", "message": "demo_user_seeded", "detail": "profile=alex", "event": "demo_user_seeded"}
-{"ts": "2026-09-26T04:24:03.043+00:00", "level": "INFO", "logger": "careerforge_api.services.seed", "message": "demo_candidate_seeded", "detail": "projects=3", "event": "demo_candidate_seeded"}
+{"ts": "2026-09-26T08:51:15.423+00:00", "level": "INFO", "logger": "careerforge_api.services.seed", "message": "demo_user_seeded", "event": "demo_user_seeded", "detail": "profile=alex"}
+{"ts": "2026-09-26T08:51:15.451+00:00", "level": "INFO", "logger": "careerforge_api.services.seed", "message": "demo_candidate_seeded", "event": "demo_candidate_seeded", "detail": "projects=3"}
 seed complete
   database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db
   useSqlite: True
-  demoUser: {'id': 'd8188b4a-ae77-4b83-8763-6c2fd9c2d80a', 'created': True, 'slug': 'alex'}
+  demoUser: {'id': '6534fe47-4810-436f-b038-fdabbe87fb7a', 'created': True, 'slug': 'alex'}
   demoCandidate: {'seeded': True, 'counts': {'educations': 1, 'experiences': 2, 'projects': 3, 'achievements': 0, 'skills': 16}}
   skills: {'inserted': 126, 'updated': 0, 'deactivated': 0, 'unchanged': 0, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}
   prompts: {'inserted': 10, 'bumped': 0, 'unchanged': 0}
@@ -141,13 +141,13 @@ seed complete
 ```
 ```
 $ D:\workspace\epan\.venv\Scripts\python.exe scripts/seed.py    # cwd=D:\workspace\epan
-exit=0 in 1.415s
+exit=0 in 1.496s
 ```
 ```text
 seed complete
   database: sqlite+aiosqlite:///D:/workspace/epan/data/release_proof.db
   useSqlite: True
-  demoUser: {'id': 'd8188b4a-ae77-4b83-8763-6c2fd9c2d80a', 'created': False, 'slug': 'alex'}
+  demoUser: {'id': '6534fe47-4810-436f-b038-fdabbe87fb7a', 'created': False, 'slug': 'alex'}
   demoCandidate: {'seeded': False, 'counts': {}}
   skills: {'inserted': 0, 'updated': 0, 'deactivated': 0, 'unchanged': 126, 'total': 126, 'taxonomyVersion': 'taxonomy@1.0.0', 'categories': {'language': 17, 'embedded': 36, 'domain': 9, 'ai': 16, 'backend': 12, 'database': 6, 'frontend': 8, 'devops': 7, 'tool': 9, 'soft': 6}}
   prompts: {'inserted': 0, 'bumped': 0, 'unchanged': 10}
@@ -246,10 +246,10 @@ seed complete
     "users": 1
   },
   "demoUserAfterSeed": {
-    "createdAt": "2026-09-26 04:24:03.000951",
+    "createdAt": "2026-09-26 08:51:15.417206",
     "email": "demo@careerforge.ai",
     "found": true,
-    "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a"
+    "id": "6534fe47-4810-436f-b038-fdabbe87fb7a"
   },
   "exitCodes": {
     "first": 0,
@@ -278,14 +278,14 @@ seed complete
   "api": {
     "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
     "logFile": ".tmp\\release-proof\\api-production.log",
-    "pid": 4352,
+    "pid": 16528,
     "ready": true,
     "readyDetail": "HTTP 200"
   },
   "gitHead": {
     "command": "git rev-parse HEAD",
     "exitCode": 0,
-    "stdout": "96f5d336e419bb206c9fa1d7cec3df0e31740bf5"
+    "stdout": "53c657867316bb020d2bfbec3e58796eb3b39465"
   },
   "health": {
     "httpStatus": 200,
@@ -315,9 +315,9 @@ seed complete
     "payload": {
       "app": "CareerForge AI",
       "buildTimestamp": null,
-      "checkedAt": "2026-09-26T04:24:06.884531Z",
-      "commit": "96f5d336e419bb206c9fa1d7cec3df0e31740bf5",
-      "commitShort": "96f5d33",
+      "checkedAt": "2026-09-26T08:51:19.452376Z",
+      "commit": "53c657867316bb020d2bfbec3e58796eb3b39465",
+      "commitShort": "53c6578",
       "environment": "production",
       "nodeVersion": "24.13.1",
       "pythonVersion": "3.12.10",
@@ -335,7 +335,7 @@ seed complete
 
 ```
 $ cmd /c pnpm --filter @careerforge/web build    # cwd=D:\workspace\epan
-exit=0 in 31.95s
+exit=0 in 70.861s
 ```
 ```text
 …ating static pages (12/17) 
@@ -370,20 +370,6 @@ Route (app)                                 Size  First Load JS
 ƒ  (Dynamic)  server-rendered on demand
 ```
 ```text
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
 $ next build
 
  ⚠ The Next.js plugin was not detected in your ESLint configuration. See https://nextjs.org/docs/app/api-reference/config/eslint#migrating-existing-config
@@ -391,7 +377,7 @@ $ next build
 ```json
 {
   "buildOutput": {
-    "buildId": "M6iVD-J14f0P6fAkNLrp-",
+    "buildId": "33kfz5KTUDQeyZTvPOMn4",
     "distDir": "apps/web/.next",
     "requiredServerFiles": true
   },
@@ -399,7 +385,7 @@ $ next build
   "nextStart": {
     "command": "cmd /c pnpm --filter @careerforge/web start --port 3341",
     "logFile": ".tmp\\release-proof\\web-start.log",
-    "pid": 23012,
+    "pid": 51044,
     "ready": true,
     "readyDetail": "HTTP 200"
   },
@@ -437,7 +423,7 @@ $ next build
 
 ```
 $ cmd /c pnpm --filter @careerforge/web smoke:api    # cwd=D:\workspace\epan
-exit=0 in 2.67s
+exit=0 in 1.858s
 ```
 ```text
 …  GET /applications/board columns=7 total=1 archived=0
@@ -463,20 +449,6 @@ exit=0 in 2.67s
 25 checks passed against http://127.0.0.1:8341/api/v1
 ```
 ```text
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
-libpng warning: iCCP: known incorrect sRGB profile
 $ node --experimental-strip-types scripts/smoke-live-api.mts
 ```
 ```json
@@ -596,31 +568,31 @@ $ node --experimental-strip-types scripts/smoke-live-api.mts
     "httpStatus": 200
   },
   "demoUserAfterRestart": {
-    "createdAt": "2026-09-26 04:24:03.000951",
+    "createdAt": "2026-09-26 08:51:15.417206",
     "email": "demo@careerforge.ai",
     "found": true,
-    "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a"
+    "id": "6534fe47-4810-436f-b038-fdabbe87fb7a"
   },
   "demoUserBeforeRestart": {
-    "createdAt": "2026-09-26 04:24:03.000951",
+    "createdAt": "2026-09-26 08:51:15.417206",
     "email": "demo@careerforge.ai",
     "found": true,
-    "id": "d8188b4a-ae77-4b83-8763-6c2fd9c2d80a"
+    "id": "6534fe47-4810-436f-b038-fdabbe87fb7a"
   },
   "evidenceRowSurvivedRestart": {
-    "id": "401136ba-8e3e-4d2b-9a4d-60961388608c",
+    "id": "972b9530-a988-4c01-83d0-b1ad1fc9a344",
     "present": true,
     "rows": 1
   },
   "evidenceWrittenBeforeRestart": {
     "httpStatus": 201,
-    "id": "401136ba-8e3e-4d2b-9a4d-60961388608c",
+    "id": "972b9530-a988-4c01-83d0-b1ad1fc9a344",
     "title": "Release proof \u00b7 restart durability"
   },
   "restartInstance": {
     "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
     "logFile": ".tmp\\release-proof\\api-restart.log",
-    "pid": 47884,
+    "pid": 37172,
     "ready": true,
     "readyDetail": "HTTP 200"
   },
@@ -628,7 +600,7 @@ $ node --experimental-strip-types scripts/smoke-live-api.mts
     "command": "D:\\workspace\\epan\\.venv\\Scripts\\python.exe -m uvicorn careerforge_api.main:app --host 127.0.0.1 --port 8341",
     "exitCode": 1,
     "name": "api",
-    "pid": 4352,
+    "pid": 16528,
     "wasAlive": true
   }
 }
