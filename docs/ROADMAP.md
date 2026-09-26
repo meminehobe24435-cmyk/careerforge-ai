@@ -233,12 +233,23 @@ PHASE 12 记录了三处「知道但没修」的可观测缺陷（`docs/QUALITY.
 | 2   | **失败请求不留任何痕迹**：tracker 在请求事务内写库，抛错时整体回滚（400/500 前后 `agent_runs` 计数不变），与 `executor.py` 注释「observability is never lost」矛盾                            | PHASE 12 失败注入套件（`docs/QUALITY.md` §7.2） | 新增 **failure journal**：`failed` 运行改由 journal 持有，请求事务结束（回滚完成）后由**最外层中间件**用独立 session 写入。拒绝的方案写进 `failure_journal.py`：SAVEPOINT（仍随事务回滚）、请求事务进行中另开 session（SQLite 单写者 → 死锁）。写入前经 sanitizer：密钥/令牌/整篇文档一律不出现在行里                                                                             |
 | 3   | **`skill_not_in_graph` 只是 warning**：证据里完全没有的技术仍可判 `partially_supported`                                                                                                       | PHASE 12 评测 + `docs/QUALITY.md` §7.4          | 用**技能词表**（`parsing/skill_mentions.py`）替代子串判断：claim 与材料都归一化到 canonical skill，taxonomy 能识别且材料中彻底不存在的技能 → **blocker（判 unsupported）**；taxonomy 不认识的 token 仍是 warning。误伤审计：`packages/ai/tests/test_skill_presence.py`（30 例，`K8s`/`Kubernetes`、`实时操作系统`/`FreeRTOS`、`C++17`/`C++`、`AWS Lambda` 等）                    |
 
-### PHASE 14 · README & 材料
+### PHASE 14 · README & 材料 ✅
 
 | 项           | 内容                                                                                                                                                                                                                                                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **产出**     | README（含徽章、Live Demo、截图、GIF、架构、功能、Quick Start、API、Testing、Security、Roadmap、Engineering Decisions、Limitations、Contributing）；`docs/INTERVIEW.md`（面试讲法：60 秒 / 3 分钟 / 5 分钟 Deep Dive / HR 版 / 技术版 / 可能问题与参考答案）；简历项目描述（STAR，仅使用真实数据）；幻灯片友好版架构图 |
 | **退出标准** | README 第一屏 30 秒内能看懂"这是什么 + 为什么不一样"；所有数字来自真实产物；GIF ≤ 3MB 且能展示核心交互                                                                                                                                                                                                                 |
+
+**收口结果（`v1.0.0-rc.1`）**：退出标准全部达成。README 第一屏写明状态与可复现命令；**所有数字改为对照
+`reports/` 里的产物重写**——本轮发现 README/INTERVIEW/QUALITY/DEMO 引用的仍是 PHASE 12 的旧值，
+而且全都**低报**了项目（1,025 tests → 1,385；11 条 E2E → 45；claim gate 0.8833 → 0.9000；ECE 0.0166
+→ 0.0316；覆盖率 91.9% → 92.5%），其中 INTERVIEW Q5 那句「12 个判 unsupported」在 9 个 gold partial
+上根本不可能成立，已改为引用混淆矩阵本身。交付物补上 `docs/PORTFOLIO.md`（简历文案 + STAR 四则故事 +
+两张可上幻灯片的 Mermaid 图）与 `reports/release-readiness.md`（发布记录，含 `DEPLOYMENT BLOCKED`
+一节的四条落地命令）。GIF 0.46 MB。
+
+> 唯一未达成的部分是「Live Demo 链接」：`DEPLOYMENT BLOCKED`，原因见 `reports/release-readiness.md` §4，
+> 因此 README 里放的是本机构建产出的截图与 GIF，并如实说明它们从哪来。
 
 #### PHASE 14 实测问题记录（发布前收口，发现 → 修复）
 
@@ -257,12 +268,25 @@ PHASE 12 记录了三处「知道但没修」的可观测缺陷（`docs/QUALITY.
 
 > 未修复：第 5 条的偶发本身（一次/两轮）仍未被解释——修好标记与超时后没有再出现，但「一次没复现」不等于「已修好」，因此按未解释记录在此。
 
-### PHASE 15 · Deployment
+### PHASE 15 · Deployment 🚧 DEPLOYMENT BLOCKED
 
 | 项           | 内容                                                                                                                                                                                                                          |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **产出**     | 多阶段 Dockerfile（web/api）；`docker-compose.yml` 全链路实测；部署配置（Vercel / Render 或 Railway / Neon 或 Supabase / Upstash）；`docs/DEPLOYMENT.md`；CHANGELOG + Release `v1.0.0` + Release Notes；GitHub About / Topics |
 | **退出标准** | 线上 Demo 可访问且 Demo 账号数据完整；`docker compose up` 在本机（若可用）成功；镜像构建进 CI；发布说明与实际功能一致                                                                                                         |
+
+**当前状态（`v1.0.0-rc.1`）**：
+
+| 退出标准                 | 状态                                                                                                                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 镜像构建进 CI            | ✅ 已加 `images` 作业（`docker compose config -q` + 两个镜像构建 + 容器内 `/system/health`、`/system/ready` 探活）。**该作业在本机从未执行过**——没有容器运行时，所以它绿不绿要等推到 GitHub 才知道；这一点写在作业注释与 `docs/DEPLOYMENT.md` §0 里。 |
+| `docker compose up` 实测 | ❌ **BLOCKED**：本机没有 `docker` / `podman` / `docker-compose`（release proof 第 1 步探到并记入 `NOT RUN` 表）。等价的原生路径已 7/7 跑通，且**没有任何产物声称跑过 compose**。                                                                      |
+| 线上 Demo 可访问         | ❌ **BLOCKED**：本机没有云账号/凭据，仓库也没有 remote（`git remote -v` 为空）。按 PHASE 14 §103 输出 `DEPLOYMENT BLOCKED`，不伪造 Live URL。                                                                                                         |
+| 发布说明与实际功能一致   | ✅ `CHANGELOG.md` 已提升到 `1.0.0`；`reports/release-readiness.md` 给出每条数字对应的产物。GitHub About / Topics 需要仓库地址，随部署一起阻塞。                                                                                                       |
+| `docs/DEPLOYMENT.md`     | ✅ 已交付：compose 路径、托管服务矩阵、环境变量表（含「配错会发生什么」）、部署后复验、回滚、运维注意事项；未执行的步骤逐条标 `[unwitnessed]`。                                                                                                       |
+
+要关闭这个阶段，只需要一台有容器运行时和云凭据的机器执行 `reports/release-readiness.md` §4 里的四条命令。
+在此之前 **`v1.0.0` 不打标签**——`docker compose up` 没有被见证过，而那是本次发布唯一拒绝声称的事情。
 
 ---
 
